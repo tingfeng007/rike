@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>日课 · 每日英语</title>
+<meta name="description" content="一个人的英语单词间隔重复工具。每天五分钟，学完就走。">
+<meta name="theme-color" content="#EFE9DC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131210" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="日课">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ══════════ 页面视图（由 app.js 渲染）══════════ -->
+<main id="app" class="app" data-tabs="on" aria-live="polite"></main>
+
+<!-- ══════════ 底部导航 ══════════ -->
+<nav class="tabbar" id="tabbar" hidden>
+  <button class="tab" data-nav="home">今日</button>
+  <button class="tab" data-nav="ai">加词</button>
+  <button class="tab" data-nav="stats">统计</button>
+  <button class="tab" data-nav="settings">设置</button>
+</nav>
+
+<!-- ══════════ 学习会话（独立覆盖层，逐张局部更新以免打断动画）══════════ -->
+<section id="study" class="study" hidden role="dialog" aria-modal="true" aria-label="学习会话">
+  <header class="study-bar">
+    <button class="icon-btn" id="btnQuit" aria-label="退出本次学习">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="rail"><div class="rail-fill" id="railFill"></div></div>
+    <div class="counter" id="counter">0 / 0</div>
+  </header>
+
+  <div class="deck" id="deck">
+    <article class="card" id="card" tabindex="0">
+      <div class="card-kind">
+        <span class="tag" id="cardTag">新词</span>
+        <span id="cardDeck">四级核心</span>
+        <span class="stamp" id="cardStamp"></span>
+      </div>
+
+      <h1 class="word" id="cardWord">word</h1>
+
+      <div class="ipa-row">
+        <span class="ipa" id="cardIpa"></span>
+        <button class="speak" id="btnSpeak" aria-label="朗读这个单词">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.8a4.6 4.6 0 0 1 0 6.4"/><path d="M18.4 5.9a8.8 8.8 0 0 1 0 12.2"/></svg>
+        </button>
+      </div>
+
+      <p class="hint" id="cardHint">轻点卡片，或按「显示释义」</p>
+
+      <div class="reveal" id="reveal">
+        <div class="inner"><div class="pad">
+          <hr class="rule">
+          <span class="pos" id="cardPos">v.</span>
+          <div class="meaning" id="cardMeaning"></div>
+          <figure class="example">
+            <p class="ex-en" id="cardExEn"></p>
+            <p class="ex-cn" id="cardExCn"></p>
+          </figure>
+          <div class="card-meta" id="cardMeta"></div>
+        </div></div>
+      </div>
+    </article>
+  </div>
+
+  <footer class="actions" id="actions"></footer>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<noscript>
+  <p style="padding:40px 24px;font-size:15px;line-height:1.9">
+    这个应用需要 JavaScript 才能运行。<br>请在浏览器设置中开启后重新打开。
+  </p>
+</noscript>
+
+<script src="srs.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
