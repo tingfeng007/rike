@@ -14,7 +14,7 @@
     meta: 'rike.meta.v1',
     custom: 'rike.custom.v1'
   };
-  var VERSION = '0.2.0';
+  var VERSION = '0.3.0';
 
   var DEFAULT_SETTINGS = {
     dailyNew: 12,
