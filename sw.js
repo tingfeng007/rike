@@ -27,6 +27,7 @@ var ASSETS = [
   './style.css',
   './app.js',
   './srs.js',
+  './quiz.js',
   './words.json',
   './manifest.json',
   './fonts/fraunces-normal.woff2',

@@ -42,37 +42,8 @@
   </header>
 
   <div class="deck" id="deck">
-    <article class="card" id="card" tabindex="0">
-      <div class="card-kind">
-        <span class="tag" id="cardTag">新词</span>
-        <span id="cardDeck">四级核心</span>
-        <span class="stamp" id="cardStamp"></span>
-      </div>
-
-      <h1 class="word" id="cardWord">word</h1>
-
-      <div class="ipa-row">
-        <span class="ipa" id="cardIpa"></span>
-        <button class="speak" id="btnSpeak" aria-label="朗读这个单词">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.8a4.6 4.6 0 0 1 0 6.4"/><path d="M18.4 5.9a8.8 8.8 0 0 1 0 12.2"/></svg>
-        </button>
-      </div>
-
-      <p class="hint" id="cardHint">轻点卡片，或按「显示释义」</p>
-
-      <div class="reveal" id="reveal">
-        <div class="inner"><div class="pad">
-          <hr class="rule">
-          <span class="pos" id="cardPos">v.</span>
-          <div class="meaning" id="cardMeaning"></div>
-          <figure class="example">
-            <p class="ex-en" id="cardExEn"></p>
-            <p class="ex-cn" id="cardExCn"></p>
-          </figure>
-          <div class="card-meta" id="cardMeta"></div>
-        </div></div>
-      </div>
-    </article>
+    <!-- 卡片内容由 app.js 按题型动态生成（认词 / 拼写 / 听音 / 选义） -->
+    <article class="card" id="card" tabindex="0"></article>
   </div>
 
   <footer class="actions" id="actions"></footer>
@@ -87,6 +58,7 @@
 </noscript>
 
 <script src="srs.js"></script>
+<script src="quiz.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

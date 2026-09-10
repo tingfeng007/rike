@@ -113,6 +113,8 @@
       lapses: card.lapses || 0,
       lastRating: rating,
       graduatingInterval: card.graduatingInterval == null ? c.graduatingInterval : card.graduatingInterval,
+      // 各题型答对/答错的计数由 quiz.js 维护，这里只负责原样带过去，别弄丢
+      skills: card.skills,
       history: (card.history || []).concat([{ t: now, r: rating }])
     };
     if (out.history.length > 60) out.history = out.history.slice(-60);

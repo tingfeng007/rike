@@ -14,7 +14,7 @@
     meta: 'rike.meta.v1',
     custom: 'rike.custom.v1'
   };
-  var VERSION = '0.3.0';
+  var VERSION = '0.4.0';
 
   var DEFAULT_SETTINGS = {
     dailyNew: 12,
@@ -24,6 +24,13 @@
     autoSpeak: true,
     speechRate: 1,
     dayBoundaryHour: 4,
+
+    // ── 题型 ──
+    // 「认词」是基础题型，始终开启，不给开关 —— 关掉它就不是背单词 App 了
+    modeSpell: true,         // 看中文 + 听发音 → 拼出英文
+    modeListen: true,        // 只听发音 → 拼出英文
+    modeChoice: true,        // 看英文 → 从 4 个中文释义里选
+    spellHint: true,         // 拼写/听音时给「提示」按钮（露首字母）
 
     // ── AI ──
     aiProvider: 'deepseek',
@@ -568,14 +575,29 @@
     return out;
   }
 
+  /** 反复出问题的词：遗忘次数 + 拼写/听音错误次数综合排序 */
   function troubleWords(limit) {
     var out = [];
     for (var i = 0; i < S.words.length; i++) {
       var w = S.words[i], c = S.progress[w.id];
-      if (c && c.lapses > 0) out.push({ w: w, c: c });
+      if (!c) continue;
+      var spellFail = Quiz.failCount(c, 'spell') + Quiz.failCount(c, 'listen');
+      var lapses = c.lapses || 0;
+      if (lapses === 0 && spellFail === 0) continue;
+      out.push({ w: w, c: c, lapses: lapses, spellFail: spellFail, score: lapses * 2 + spellFail });
     }
-    out.sort(function (a, b) { return b.c.lapses - a.c.lapses || b.c.reps - a.c.reps; });
+    out.sort(function (a, b) { return b.score - a.score || b.c.reps - a.c.reps; });
     return out.slice(0, limit);
+  }
+
+  /** 各题型累计练了多少张 */
+  function modeTotals() {
+    var t = { recognize: 0, spell: 0, listen: 0, choice: 0 };
+    S.sessions.forEach(function (s) {
+      var m = s.modes || {};
+      for (var k in t) t[k] += m[k] || 0;
+    });
+    return t;
   }
 
   /* ═══════════════ 5. 持久化 ═══════════════ */
@@ -798,12 +820,26 @@
     var trouble = troubleWords(10);
     var troubleHtml = trouble.length
       ? '<div class="trouble">' + trouble.map(function (t) {
+          var badge = [];
+          if (t.lapses) badge.push('忘 ' + t.lapses);
+          if (t.spellFail) badge.push('拼错 ' + t.spellFail);
           return '<button data-act="say" data-word="' + esc(t.w.word) + '">' +
             '<span class="w">' + esc(t.w.word) + '</span>' +
             '<span class="m">' + esc(t.w.meaning_cn) + '</span>' +
-            '<span class="c">忘 ' + t.c.lapses + ' 次</span></button>';
+            '<span class="c">' + badge.join(' · ') + '</span></button>';
         }).join('') + '</div>'
-      : '<div class="empty">还没有反复忘掉的词。<br>继续保持。</div>';
+      : '<div class="empty">还没有反复出错的词。<br>继续保持。</div>';
+
+    // 各题型练了多少
+    var mt = modeTotals();
+    var mtTotal = mt.recognize + mt.spell + mt.listen + mt.choice;
+    var modeColor = { recognize: 'var(--ink-3)', spell: 'var(--zhu)', listen: 'var(--dian)', choice: 'var(--zhe)' };
+    var modeBars = Quiz.MODES.map(function (m) {
+      var pct = mtTotal ? Math.round(mt[m] / mtTotal * 100) : 0;
+      return '<div class="bar-row"><span class="nm">' + Quiz.label(m) + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + pct + '%;background:' + modeColor[m] + '"></span></span>' +
+        '<span class="vl">' + mt[m] + '</span></div>';
+    }).join('');
 
     var rate = (function () {
       var r = [0, 0, 0, 0];
@@ -829,6 +865,14 @@
         '<div class="sec">' +
           '<div class="sec-head"><h2>词库构成</h2><span>共 ' + totalWords + ' 词</span></div>' +
           '<div class="bars">' + bars + '</div>' +
+        '</div>' +
+
+        '<div class="sec">' +
+          '<div class="sec-head"><h2>题型分布</h2><span>累计 ' + mtTotal + ' 张</span></div>' +
+          '<div class="bars">' + modeBars + '</div>' +
+          '<div class="desc" style="margin-top:12px;font-size:11.5px;color:var(--ink-3);line-height:1.7">' +
+            '认词只证明"看到能想起意思"。拼写和听音才是"用得出"的那一半。' +
+          '</div>' +
         '</div>' +
 
         '<div class="sec">' +
@@ -905,6 +949,30 @@
             seg('dailyReviewCap', [{ v: 30, t: '30' }, { v: 60, t: '60' }, { v: 100, t: '100' }, { v: 0, t: '不限' }], s.dailyReviewCap) +
             '<div class="desc">超出上限的卡片自动顺延到明天，不会滚成复习债。这是这个 App 和你以前用过的那些最大的不同。</div>' +
           '</div>' +
+        '</div>' +
+
+        '<div class="sec">' +
+          '<div class="sec-head"><h2>题型</h2><span>' + (1 + (s.modeSpell ? 1 : 0) + (s.modeListen ? 1 : 0) + (s.modeChoice ? 1 : 0)) + ' / 4 种</span></div>' +
+          '<div class="field"><div class="desc">复习到一定程度的词会自动换题型考你。' +
+            '没见过、还在学习阶段的词只出「认词」—— 让人拼一个从没见过的词没有意义。</div></div>' +
+          '<div class="switch" data-act="toggle" data-key="modeSpell">' +
+            '<span class="lb">拼写 · 看中文打英文</span>' +
+            '<span class="track' + (s.modeSpell ? ' on' : '') + '"></span>' +
+          '</div>' +
+          '<div class="switch" data-act="toggle" data-key="modeListen">' +
+            '<span class="lb">听音 · 只听发音打单词</span>' +
+            '<span class="track' + (s.modeListen ? ' on' : '') + '"></span>' +
+          '</div>' +
+          '<div class="switch" data-act="toggle" data-key="modeChoice">' +
+            '<span class="lb">选义 · 从 4 个释义里选</span>' +
+            '<span class="track' + (s.modeChoice ? ' on' : '') + '"></span>' +
+          '</div>' +
+          '<div class="switch" data-act="toggle" data-key="spellHint">' +
+            '<span class="lb">拼写时给「提示」按钮</span>' +
+            '<span class="track' + (s.spellHint ? ' on' : '') + '"></span>' +
+          '</div>' +
+          '<div class="field"><div class="desc">拼错一两个字母算「差一点」，按「模糊」记 —— 不会一次手滑就把攒了很久的间隔打回原形。' +
+            '四个字母以内的短词从严（cat 和 cut 是两个词）。用了提示再答对，同样按「模糊」算。</div></div>' +
         '</div>' +
 
         '<div class="sec">' +
@@ -1177,6 +1245,21 @@
 
   /* ═══════════════ 11. 学习会话 ═══════════════ */
 
+  /** 这次给这张卡出什么题 */
+  function pickModeFor(id, forceRecognize) {
+    if (forceRecognize) return 'recognize';
+    var mode = Quiz.pickMode(S.progress[id], {
+      spell: S.settings.modeSpell,
+      listen: S.settings.modeListen,
+      choice: S.settings.modeChoice
+    });
+    // 选义题至少要 3 个选项。词库太小、或释义重复太多的时候退回认词
+    if (mode === 'choice' && Quiz.buildChoices(S.byId.get(id), S.words).length < 3) {
+      mode = 'recognize';
+    }
+    return mode;
+  }
+
   function buildSession(opts) {
     opts = opts || {};
     var now = Date.now();
@@ -1188,10 +1271,15 @@
     }
     dueIds.sort(function (a, b) { return S.progress[a].dueAt - S.progress[b].dueAt; });
 
+    // 「只学 1 个词」一律出认词题：这个模式的用途是"再忙也能完成今天"，
+    // 不该在通勤路上突然甩一道拼写题给你
+    var one = opts.limit === 1;
     var queue = [];
-    if (opts.limit === 1) {
-      if (dueIds.length) queue.push(dueIds[0]);
-      else if (newIds.length) queue.push(newIds[0]);
+    function push(id) { queue.push({ id: id, mode: pickModeFor(id, one) }); }
+
+    if (one) {
+      if (dueIds.length) push(dueIds[0]);
+      else if (newIds.length) push(newIds[0]);
     } else {
       var cap = S.settings.dailyReviewCap === 0 ? dueIds.length : S.settings.dailyReviewCap;
       var rev = dueIds.slice(0, cap);
@@ -1200,16 +1288,17 @@
       // 交错排队：每 4 张复习夹 1 个新词，节奏不至于闷
       var a = 0, b = 0;
       while (a < rev.length || b < nw.length) {
-        for (var k = 0; k < 4 && a < rev.length; k++) queue.push(rev[a++]);
-        if (b < nw.length) queue.push(nw[b++]);
+        for (var k = 0; k < 4 && a < rev.length; k++) push(rev[a++]);
+        if (b < nw.length) push(nw[b++]);
       }
     }
 
     return {
-      queue: queue, index: 0, revealed: false,
-      startedAt: now, ratings: [0, 0, 0, 0],
+      queue: queue, index: 0,
+      revealed: false, answered: false, busy: false, result: null, choiceOptions: null,
+      startedAt: now, ratings: [0, 0, 0, 0], modes: {},
       newIds: {}, revIds: {}, requeues: {},
-      mode: opts.limit === 1 ? 'one' : 'day'
+      kind: one ? 'one' : 'day'
     };
   }
 
@@ -1229,8 +1318,114 @@
   function currentCard() {
     var s = S.session;
     if (!s) return null;
-    var id = s.queue[s.index];
-    return { id: id, word: S.byId.get(id), card: S.progress[id] || null };
+    var item = s.queue[s.index];
+    if (!item) return null;
+    return { id: item.id, mode: item.mode, word: S.byId.get(item.id), card: S.progress[item.id] || null };
+  }
+
+  function ipaOf(w) {
+    return (S.settings.accent === 'uk' ? w.phonetic_uk : w.phonetic_us) || w.phonetic_uk || w.phonetic_us || '';
+  }
+
+  /** 卡片上半部分（题目区）。答案绝不提前渲染进 DOM —— 拼写题的单词只能出现在作答之后 */
+  function cardTopHtml(cur) {
+    var w = cur.word, card = cur.card, mode = cur.mode;
+    var isNew = !card || card.state === 'new';
+    var isRelearn = !isNew && card.state === 'learning';
+    if (mode === 'choice' && S.session.choiceOptions && S.session.choiceOptions.length < 3) mode = 'recognize';
+
+    var tagCls, tagText;
+    if (mode === 'recognize') {
+      tagCls = isNew ? 'new' : (isRelearn ? 'relearn' : '');
+      tagText = isNew ? '新词' : (isRelearn ? '重学' : '复习');
+    } else {
+      tagCls = 'quiz';
+      tagText = Quiz.label(mode);
+    }
+
+    var head =
+      '<div class="card-kind">' +
+        '<span class="tag ' + tagCls + '">' + tagText + '</span>' +
+        '<span>' + esc(w.deck || '') + '</span>' +
+        '<span class="stamp">' + (isNew ? '' : '第 ' + ((card.reps || 0) + 1) + ' 次') + '</span>' +
+      '</div>';
+
+    if (mode === 'recognize' || mode === 'choice') {
+      return head +
+        '<h1 class="word" id="cardWord">' + esc(w.word) + '</h1>' +
+        '<div class="ipa-row">' +
+          '<span class="ipa" id="cardIpa">' + esc(ipaOf(w)) + '</span>' +
+          '<button class="speak" id="btnSpeak" aria-label="朗读这个单词">' + speakerSvg() + '</button>' +
+        '</div>' +
+        (mode === 'choice'
+          ? '<div class="choices" id="choices">' + (S.session.choiceOptions || []).map(function (o, i) {
+              return '<button class="choice" data-choice="' + i + '">' +
+                '<span class="k">' + 'ABCD'.charAt(i) + '</span>' +
+                '<span class="t">' + esc(o.text) + '</span></button>';
+            }).join('') + '</div>'
+          : '<p class="hint" id="cardHint">轻点卡片，或按「显示释义」</p>');
+    }
+
+    var typeBox =
+      '<div class="type-row">' +
+        '<input id="typeInput" class="type-input" type="text" enterkeyhint="done" ' +
+          'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" ' +
+          'placeholder="打出这个单词">' +
+      '</div>';
+
+    if (mode === 'spell') {
+      return head +
+        '<div class="prompt-cn" id="promptCn">' + esc(w.meaning_cn || '') + '</div>' +
+        '<div class="ipa-row">' +
+          '<button class="speak" id="btnSpeak" aria-label="听发音">' + speakerSvg() + '</button>' +
+          '<span class="dim">点一下听发音</span>' +
+        '</div>' +
+        typeBox +
+        '<p class="hint" id="cardHint">看中文，打出英文</p>' +
+        '<p class="hint-line" id="hintLine"></p>';
+    }
+
+    // listen：不给中文，只听
+    return head +
+      '<button class="big-speak" id="btnSpeak" aria-label="播放发音">' + speakerSvg() + '</button>' +
+      typeBox +
+      '<p class="hint" id="cardHint">听发音，打出这个单词</p>' +
+      '<p class="hint-line" id="hintLine"></p>';
+  }
+
+  /**
+   * 答案区：始终先渲染成一个空壳。
+   * 内容等到「揭示」或「作答」时才由 fillAnswer 填进去 ——
+   * 否则答案（以及含目标词的例句）会提前躺在 DOM 里，
+   * 拼写题就变成了抄写题。
+   */
+  function cardRevealHtml() {
+    return '<div class="reveal" id="reveal"><div class="inner"><div class="pad" id="answerPad"></div></div></div>';
+  }
+
+  function fillAnswer(cur) {
+    var pad = $('answerPad');
+    if (!pad) return;
+    var w = cur.word, mode = cur.mode;
+    var showWord = Quiz.isTyping(mode);     // 拼写/听音：答案就是单词本身
+    var showMeaning = (mode !== 'spell');   // 拼写题的中文已经在题目里了，不用重复
+
+    pad.innerHTML =
+      (showWord ? '<div class="answer-word" id="cardWord">' + esc(w.word) + '</div>' : '') +
+      '<hr class="rule">' +
+      '<div class="answer-line">' +
+        '<span class="pos" id="cardPos">' + esc(w.pos || '') + '</span>' +
+        '<span class="ipa" id="cardIpa">' + esc(ipaOf(w)) + '</span>' +
+      '</div>' +
+      (showMeaning ? '<div class="meaning" id="cardMeaning">' + esc(w.meaning_cn || '') + '</div>' : '') +
+      (w.example_en
+        ? '<figure class="example">' +
+            '<p class="ex-en" id="cardExEn">' + highlight(w.example_en, w.word) + '</p>' +
+            '<p class="ex-cn" id="cardExCn">' + esc(w.example_cn || '') + '</p>' +
+          '</figure>'
+        : '') +
+      '<div class="card-meta" id="cardMeta"></div>';
+    fillMeta(cur);
   }
 
   function renderCard() {
@@ -1239,28 +1434,30 @@
     if (s.index >= s.queue.length) return finishSession(false);
 
     var cur = currentCard();
-    var w = cur.word, card = cur.card;
-    var isNew = !card || card.state === 'new';
-    var isRelearn = !isNew && card.state === 'learning';
+    if (!cur || !cur.word) { s.index++; return renderCard(); }
 
     s.revealed = false;
+    s.answered = false;
+    s.busy = false;
+    s.result = null;
+    s.usedHint = false;
+
+    // 选义题的选项在这里生成并缓存，判分时必须用同一份
+    if (cur.mode === 'choice') {
+      s.choiceOptions = Quiz.buildChoices(cur.word, S.words);
+      if (s.choiceOptions.length < 3) { cur.mode = 'recognize'; s.choiceOptions = null; }
+    } else {
+      s.choiceOptions = null;
+    }
+
     var cardEl = $('card');
-    cardEl.classList.remove('revealed', 'leaving');
-    $('reveal').classList.remove('on');
+    cardEl.className = 'card mode-' + cur.mode;
+    cardEl.innerHTML = cardTopHtml(cur) + cardRevealHtml();
 
-    var tag = $('cardTag');
-    tag.textContent = isNew ? '新词' : (isRelearn ? '重学' : '复习');
-    tag.className = 'tag' + (isNew ? ' new' : isRelearn ? ' relearn' : '');
-    $('cardDeck').textContent = w.deck || '';
-    $('cardStamp').textContent = isNew ? '' : '第 ' + ((card.reps || 0) + 1) + ' 次';
-
-    $('cardWord').textContent = w.word;
-    $('cardIpa').textContent = (S.settings.accent === 'uk' ? w.phonetic_uk : w.phonetic_us) || '';
-    $('cardHint').style.opacity = '';
-    $('cardHint').textContent = '轻点卡片，或按「显示释义」';
-
-    for (var i = 0; i < s.queue.length; i++) {
-      if (i > s.index) { Speech.preload(S.byId.get(s.queue[i]).word); break; }
+    // 预热下一张的音频
+    for (var i = s.index + 1; i < s.queue.length; i++) {
+      var nw = S.byId.get(s.queue[i].id);
+      if (nw) { Speech.preload(nw.word); break; }
     }
 
     $('railFill').style.width = Math.round(s.index / s.queue.length * 100) + '%';
@@ -1271,21 +1468,55 @@
     void cardEl.offsetWidth;
     cardEl.style.animation = '';
 
-    renderActions(false);
-    if (S.settings.autoSpeak) Speech.pronounce(w.word);
+    renderActions();
+    if (S.settings.autoSpeak) Speech.pronounce(cur.word.word);
+
+    if (Quiz.isTyping(cur.mode)) {
+      var input = $('typeInput');
+      if (input) setTimeout(function () { try { input.focus(); } catch (e) {} }, 80);
+    }
   }
 
-  function renderActions(revealed) {
+  function renderActions() {
+    var s = S.session;
+    if (!s) return;
     var box = $('actions');
-    if (!revealed) {
-      box.innerHTML = '<button class="btn-reveal" data-act="reveal">显示释义</button>';
+    var cur = currentCard();
+    if (!cur) { box.innerHTML = ''; return; }
+
+    // 已作答：只剩「继续」，评分已经算好了
+    if (s.answered) {
+      box.innerHTML = '<button class="btn-reveal" data-act="nextq">继续</button>';
       return;
     }
-    var cur = currentCard();
+
+    if (cur.mode === 'recognize') {
+      if (!s.revealed) {
+        box.innerHTML = '<button class="btn-reveal" data-act="reveal">显示释义</button>';
+      } else {
+        box.innerHTML = rateGridHtml(cur);
+      }
+      return;
+    }
+
+    if (Quiz.isTyping(cur.mode)) {
+      box.innerHTML =
+        '<div class="type-actions">' +
+          (S.settings.spellHint ? '<button class="btn-side" data-act="hint">提示</button>' : '') +
+          '<button class="btn-reveal" data-act="submit">提交</button>' +
+        '</div>';
+      return;
+    }
+
+    // 选义：选项就在卡片上，底部不需要按钮
+    box.innerHTML = '<p class="hint center">选一个你认为对的释义</p>';
+  }
+
+  function rateGridHtml(cur) {
     var card = cur.card || SRS.newCard(Date.now());
     var now = Date.now();
     var labels = ['忘了', '模糊', '记得', '秒懂'];
-    box.innerHTML = '<div class="rate-grid">' + labels.map(function (lb, i) {
+    return '<div class="rate-grid">' + labels.map(function (lb, i) {
       return '<button class="rate" data-rate="' + i + '">' +
         '<span class="lb">' + lb + '</span>' +
         '<span class="wn">' + esc(SRS.describe(card, i, now, cfg())) + '</span>' +
@@ -1293,38 +1524,145 @@
     }).join('') + '</div>';
   }
 
-  function revealCard() {
-    var s = S.session;
-    if (!s || s.revealed) return;
-    s.revealed = true;
-    var cur = currentCard();
-    var w = cur.word;
-    $('cardPos').textContent = w.pos || '';
-    $('cardMeaning').textContent = w.meaning_cn || '';
-    $('cardExEn').innerHTML = highlight(w.example_en || '', w.word);
-    $('cardExCn').textContent = w.example_cn || '';
-    var c = cur.card;
-    var meta = [];
+  function fillMeta(cur) {
+    var meta = $('cardMeta');
+    if (!meta) return;
+    var c = cur.card, w = cur.word, parts = [];
     if (c && c.reps) {
-      meta.push('复习 <b>' + c.reps + '</b> 次');
-      meta.push('间隔 <b>' + SRS.formatDays(c.intervalDays || 0) + '</b>');
-      if (c.lapses) meta.push('忘过 <b>' + c.lapses + '</b> 次');
-      meta.push('难度系数 <b>' + (c.ease || 2.5).toFixed(2) + '</b>');
+      parts.push('复习 <b>' + c.reps + '</b> 次');
+      parts.push('间隔 <b>' + SRS.formatDays(c.intervalDays || 0) + '</b>');
+      if (c.lapses) parts.push('忘过 <b>' + c.lapses + '</b> 次');
+      var spellFail = Quiz.failCount(c, 'spell') + Quiz.failCount(c, 'listen');
+      if (spellFail) parts.push('拼错 <b>' + spellFail + '</b> 次');
+      parts.push('难度系数 <b>' + (c.ease || 2.5).toFixed(2) + '</b>');
     } else {
-      meta.push('第一次见到这个词');
-      if (w.tags && w.tags.length) meta.push('标签 <b>' + esc(w.tags.join(' · ')) + '</b>');
+      parts.push('第一次见到这个词');
+      if (w.tags && w.tags.length) parts.push('标签 <b>' + esc(w.tags.join(' · ')) + '</b>');
     }
-    $('cardMeta').innerHTML = meta.join('');
-    $('reveal').classList.add('on');
-    $('card').classList.add('revealed');
-    $('cardHint').style.opacity = '0';
-    renderActions(true);
+    meta.innerHTML = parts.join('');
   }
 
-  function rateCard(rating) {
+  /** 认词模式：显示释义 */
+  function revealCard() {
     var s = S.session;
-    if (!s || !s.revealed) return;
-    var id = s.queue[s.index];
+    if (!s || s.revealed || s.answered) return;
+    var cur = currentCard();
+    if (!cur || cur.mode !== 'recognize') return;
+    s.revealed = true;
+    fillAnswer(cur);
+    $('reveal').classList.add('on');
+    $('card').classList.add('revealed');
+    var h = $('cardHint');
+    if (h) h.style.opacity = '0';
+    renderActions();
+  }
+
+  /** 拼写/听音：提交作答 */
+  function submitTyping() {
+    var s = S.session;
+    if (!s || s.answered || s.busy) return;
+    var cur = currentCard();
+    var input = $('typeInput');
+    if (!cur || !input) return;
+    var g = Quiz.gradeTyping(input.value, cur.word.word);
+    if (g.verdict === 'empty') { toast('先打出你记得的拼写'); return; }
+    finishAnswer(cur, g);
+  }
+
+  /** 选义：点了某个选项 */
+  function pickChoice(i) {
+    var s = S.session;
+    if (!s || s.answered || s.busy) return;
+    var cur = currentCard();
+    var picked = (s.choiceOptions || [])[i];
+    if (!cur || !picked) return;
+    finishAnswer(cur, picked.ok
+      ? { verdict: 'right', rating: Quiz.RATING.GOOD }
+      : { verdict: 'wrong', rating: Quiz.RATING.AGAIN }, i);
+  }
+
+  /** 提示：露出首字母和长度 */
+  function showHint() {
+    var s = S.session;
+    if (!s || s.answered) return;
+    var cur = currentCard();
+    var line = $('hintLine');
+    if (!cur || !line) return;
+    line.textContent = '提示：' + Quiz.hintOf(cur.word.word);
+    s.usedHint = true;
+  }
+
+  // 判定结果 → CSS 类名。别直接用 g.verdict 拼类名：
+  // typo 对应的类是 v-near，直接拼会得到 v-typo，样式里没有这个选择器，
+  // 「差一点」就会变成没有任何视觉反馈（这个 bug 被 e2e 抓到过一次）
+  var VERDICT_CLASS = { right: 'v-right', typo: 'v-near', wrong: 'v-wrong', empty: 'v-wrong' };
+
+  function verdictHtml(g) {
+    if (g.verdict === 'right') return '<b>✓ 对了</b><span>拼得很准</span>';
+    if (g.verdict === 'typo') {
+      if (g.hinted) return '<b>差一点</b><span>用了提示，这次按「模糊」算</span>';
+      return '<b>差一点</b><span>拼错了 ' + (g.dist || 1) + ' 个字母</span>';
+    }
+    return '<b>没拼对</b><span>正确答案在下面</span>';
+  }
+
+  /** 作答后：锁住输入、标出对错、展开答案 */
+  function finishAnswer(cur, g, pickedIdx) {
+    var s = S.session;
+    // 用了提示还答对，不该算「记得」—— 按「模糊」处理
+    if (s.usedHint && g.verdict === 'right') g = { verdict: 'typo', rating: Quiz.RATING.HARD, hinted: true };
+    s.answered = true;
+    s.result = g;
+
+    var cardEl = $('card');
+    var input = $('typeInput');
+    if (input) {
+      input.disabled = true;
+      input.classList.add(g.verdict === 'right' ? 'v-right' : (g.verdict === 'typo' ? 'v-near' : 'v-wrong'));
+    }
+
+    if (cur.mode === 'choice') {
+      var nodes = cardEl.querySelectorAll('.choice');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].disabled = true;
+        var o = (s.choiceOptions || [])[i];
+        if (!o) continue;
+        if (o.ok) nodes[i].classList.add('is-right');
+        else if (i === pickedIdx) nodes[i].classList.add('is-wrong');
+      }
+    }
+
+    // 顶部对错条（拼写/听音才有，认词和选义本身就有视觉反馈）
+    if (Quiz.isTyping(cur.mode)) {
+      var banner = document.createElement('div');
+      banner.className = 'verdict ' + (VERDICT_CLASS[g.verdict] || 'v-wrong');
+      banner.innerHTML = verdictHtml(g);
+      cardEl.insertBefore(banner, $('reveal'));
+    }
+
+    fillAnswer(cur);
+    $('reveal').classList.add('on');
+    cardEl.classList.add('revealed');
+    var h = $('cardHint');
+    if (h) h.style.opacity = '0';
+    renderActions();
+  }
+
+  /** 继续下一张 */
+  function nextQuestion() {
+    var s = S.session;
+    if (!s || !s.answered) return;
+    applyRating(s.result ? s.result.rating : Quiz.RATING.GOOD);
+  }
+
+  function applyRating(rating) {
+    var s = S.session;
+    if (!s || s.busy) return;
+    s.busy = true;
+
+    var item = s.queue[s.index];
+    if (!item) { s.busy = false; return; }
+    var id = item.id, mode = item.mode;
     var now = Date.now();
     var before = S.progress[id];
     var wasNew = !before || before.state === 'new';
@@ -1333,23 +1671,26 @@
 
     var next = SRS.rate(base, rating, now, cfg());
     if (!next.firstSeenAt) next.firstSeenAt = base.firstSeenAt;
+    // 每个题型单独记对错：拼写考砸过的词，之后会被优先再考拼写
+    next.skills = Quiz.recordSkill(base.skills, mode, rating >= Quiz.RATING.GOOD, now);
     S.progress[id] = next;
 
     s.ratings[rating]++;
+    s.modes[mode] = (s.modes[mode] || 0) + 1;
     if (wasNew) s.newIds[id] = 1; else s.revIds[id] = 1;
 
-    // 「忘了」的卡片本次会话里再过一遍
-    if (rating === 0) {
+    // 「忘了」的卡片本次会话里再过一遍，而且用同一个题型
+    if (rating === Quiz.RATING.AGAIN) {
       var n = s.requeues[id] || 0;
-      if (n < 3) { s.requeues[id] = n + 1; s.queue.push(id); }
+      if (n < 3) { s.requeues[id] = n + 1; s.queue.push({ id: id, mode: mode }); }
     }
 
     persistProgress();
 
-    var cardEl = $('card');
-    cardEl.classList.add('leaving');
+    $('card').classList.add('leaving');
     setTimeout(function () {
       s.index++;
+      s.busy = false;
       renderCard();
     }, 170);
   }
@@ -1365,6 +1706,7 @@
       newCount: Object.keys(s.newIds).length,
       reviewCount: Object.keys(s.revIds).length,
       ratings: ratings,
+      modes: s.modes || {},
       completed: !aborted
     };
 
@@ -1375,6 +1717,8 @@
         prev.newCount += rec.newCount;
         prev.reviewCount += rec.reviewCount;
         prev.ratings = prev.ratings.map(function (v, i) { return v + ratings[i]; });
+        prev.modes = prev.modes || {};
+        for (var mk in rec.modes) prev.modes[mk] = (prev.modes[mk] || 0) + rec.modes[mk];
         prev.completed = prev.completed || rec.completed;
         S.lastSession = prev;
       } else {
@@ -1466,10 +1810,11 @@
   var NUMERIC = { dailyNew: 1, dailyReviewCap: 1, speechRate: 1 };
 
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-nav],[data-act],[data-set],[data-rate]');
+    var t = e.target.closest('[data-nav],[data-act],[data-set],[data-rate],[data-choice]');
     if (!t) return;
 
-    if (t.hasAttribute('data-rate')) return rateCard(+t.getAttribute('data-rate'));
+    if (t.hasAttribute('data-rate')) return applyRating(+t.getAttribute('data-rate'));
+    if (t.hasAttribute('data-choice')) return pickChoice(+t.getAttribute('data-choice'));
     if (t.hasAttribute('data-nav')) return go(t.getAttribute('data-nav'));
     if (t.hasAttribute('data-set')) return applySetting(t);
 
@@ -1479,6 +1824,9 @@
       case 'start-one': startSession({ limit: 1 }); break;
       case 'start-extra': startSession({ newExtra: 5 }); break;
       case 'reveal': revealCard(); break;
+      case 'submit': submitTyping(); break;
+      case 'hint': showHint(); break;
+      case 'nextq': nextQuestion(); break;
       case 'nav': go(t.getAttribute('data-to') || 'home'); break;
       case 'say': Speech.pronounce(t.getAttribute('data-word')); break;
       case 'toggle': toggleSetting(t.getAttribute('data-key')); break;
@@ -1540,37 +1888,64 @@
     render();
   }
 
-  // 学习卡片的交互
+  // ── 学习卡片的交互 ──
   $('btnQuit').addEventListener('click', function () {
-    // 已评分的卡片在 rateCard 里就落盘了，退出不丢任何东西
+    // 已评分的卡片在 applyRating 里就落盘了，退出不丢任何东西
     var rated = S.session ? S.session.ratings.reduce(function (a, b) { return a + b; }, 0) : 0;
     finishSession(true);
     toast(rated > 0 ? '已退出，' + rated + ' 张的进度都存好了' : '已退出，进度随时保留');
   });
-  $('btnSpeak').addEventListener('click', function (e) {
-    e.stopPropagation();
-    var cur = currentCard();
-    if (cur) Speech.pronounce(cur.word.word);
-  });
+
+  // 卡片内容是按题型动态生成的，没法提前绑事件，所以统一委托到 #card 上
   $('card').addEventListener('click', function (e) {
-    if (e.target.closest('#btnSpeak')) return;
-    // 点例句 → 朗读整句
-    if (e.target.closest('#cardExEn')) {
-      var cur = currentCard();
-      if (cur) { Speech.unlock(); Speech.tts(cur.word.example_en); }
+    var cur = currentCard();
+
+    // 喇叭：四种题型通用
+    if (e.target.closest('.speak') || e.target.closest('.big-speak')) {
+      e.stopPropagation();
+      if (cur) { Speech.unlock(); Speech.pronounce(cur.word.word); }
       return;
     }
+    // 点例句 → 朗读整句
+    if (e.target.closest('#cardExEn')) {
+      if (cur && cur.word.example_en) { Speech.unlock(); Speech.tts(cur.word.example_en); }
+      return;
+    }
+    // 认词模式：点卡片任意处显示释义
     var s = S.session;
-    if (!s || s.revealed) return;
-    revealCard();
+    if (!s || s.answered || s.revealed || !cur) return;
+    if (cur.mode === 'recognize' && !e.target.closest('.reveal')) revealCard();
   });
 
   document.addEventListener('keydown', function (e) {
-    if (!S.session) return;
-    if (e.key === 'Escape') { finishSession(true); return; }
     var s = S.session;
-    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (!s.revealed) revealCard(); return; }
-    if (s.revealed && /^[1-4]$/.test(e.key)) { e.preventDefault(); rateCard(+e.key - 1); }
+    if (!s) return;
+    if (e.key === 'Escape') { finishSession(true); return; }
+
+    // 打字题：输入框里回车 = 提交 / 继续（桌面上测试用）
+    if (e.target && e.target.id === 'typeInput' && e.key === 'Enter') {
+      e.preventDefault();
+      if (s.answered) nextQuestion(); else submitTyping();
+      return;
+    }
+
+    var cur = currentCard();
+    if (!cur) return;
+
+    if (s.answered) {
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); nextQuestion(); }
+      return;
+    }
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      if (cur.mode === 'recognize' && !s.revealed) revealCard();
+      return;
+    }
+    if (/^[1-4]$/.test(e.key)) {
+      e.preventDefault();
+      if (cur.mode === 'choice') pickChoice(+e.key - 1);
+      else if (cur.mode === 'recognize' && s.revealed) applyRating(+e.key - 1);
+    }
   });
 
   // 设置项里的文本框 / 下拉框：只在 change 时写回，避免边打字边重绘把光标顶掉
