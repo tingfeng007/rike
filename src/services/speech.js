@@ -23,20 +23,67 @@ class TTSService {
     this.pickBestVoice();
   }
 
-  pickBestVoice(accent = 'en-US') {
+  getAvailableFemaleVoices() {
+    if (!this.voices || this.voices.length === 0) {
+      if (this.synth) this.voices = this.synth.getVoices();
+    }
+    if (!this.voices) return [];
+
+    const maleKeywords = [
+      'daniel', 'david', 'george', 'oliver', 'guy', 'mark',
+      'james', 'john', 'tom', 'male', 'richard', 'steve', 'fred'
+    ];
+
+    return this.voices
+      .filter((v) => v.lang.startsWith('en'))
+      .filter((v) => {
+        const nameLower = v.name.toLowerCase();
+        return !maleKeywords.some((m) => nameLower.includes(m));
+      })
+      .sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        // Priority for premium iOS voices (Ava & Samantha) and modern Natural voices (Jenny/Aria)
+        const getScore = (name) =>
+          (name.includes('ava') ? 100 : 0) +
+          (name.includes('samantha') ? 80 : 0) +
+          (name.includes('jenny') || name.includes('aria') ? 70 : 0) +
+          (name.includes('serena') ? 60 : 0) +
+          (name.includes('enhanced') || name.includes('premium') ? 40 : 0) +
+          (name.includes('natural') ? 30 : 0);
+        return getScore(bName) - getScore(aName);
+      });
+  }
+
+  pickBestVoice(accent = 'en-US', specifiedURI = '') {
+    if (!this.voices || this.voices.length === 0) {
+      if (this.synth) this.voices = this.synth.getVoices();
+    }
     if (!this.voices || this.voices.length === 0) return null;
 
-    const filtered = this.voices.filter((v) => v.lang.startsWith('en'));
-    if (filtered.length === 0) return this.voices[0];
+    // 1. If user explicitly selected a voice in settings, use it
+    if (specifiedURI) {
+      const match = this.voices.find((v) => v.voiceURI === specifiedURI);
+      if (match) {
+        this.preferredVoice = match;
+        return match;
+      }
+    }
 
-    // Preference hierarchy: Enhanced/Natural > Google > Samantha/Daniel > Microsoft > generic
-    const best =
-      filtered.find((v) => v.lang.includes(accent.replace('-', '_')) && (v.name.includes('Natural') || v.name.includes('Enhanced') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Daniel'))) ||
-      filtered.find((v) => v.lang.startsWith(accent.slice(0, 2))) ||
-      filtered[0];
+    // 2. Prioritize high-quality female voices (especially Ava / Samantha on iOS)
+    const femaleVoices = this.getAvailableFemaleVoices();
+    if (femaleVoices.length > 0) {
+      const accentPrefix = accent.slice(0, 2);
+      const matched = femaleVoices.find((v) => v.lang.startsWith(accentPrefix));
+      const best = matched || femaleVoices[0];
+      this.preferredVoice = best;
+      return best;
+    }
 
-    this.preferredVoice = best;
-    return best;
+    // Fallback: any English voice
+    const fallback = this.voices.find((v) => v.lang.startsWith('en')) || this.voices[0];
+    this.preferredVoice = fallback;
+    return fallback;
   }
 
   speak(text, options = {}) {
@@ -46,7 +93,6 @@ class TTSService {
     }
 
     return new Promise((resolve) => {
-      // Cancel prior speech
       this.synth.cancel();
 
       if (!text || !text.trim()) {
@@ -57,13 +103,17 @@ class TTSService {
       const settings = StorageService.getSettings();
       const utterance = new SpeechSynthesisUtterance(text.trim());
 
-      const voice = this.pickBestVoice(options.accent || settings.voiceAccent || 'en-US');
+      const voice = this.pickBestVoice(
+        options.accent || settings.voiceAccent || 'en-US',
+        options.voiceURI || settings.preferredVoiceURI
+      );
       if (voice) {
         utterance.voice = voice;
       }
-      utterance.lang = options.accent || settings.voiceAccent || 'en-US';
+      utterance.lang = voice ? voice.lang : (options.accent || settings.voiceAccent || 'en-US');
       utterance.rate = options.rate !== undefined ? options.rate : (settings.voiceRate || 0.95);
-      utterance.pitch = options.pitch !== undefined ? options.pitch : (settings.voicePitch || 1.0);
+      // Pitch 1.05 gives sweet, clear female tone
+      utterance.pitch = options.pitch !== undefined ? options.pitch : (settings.voicePitch || 1.05);
 
       utterance.onend = () => {
         resolve();

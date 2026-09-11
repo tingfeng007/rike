@@ -60,8 +60,9 @@ export const DEFAULT_SETTINGS = {
   baseUrl: 'https://api.deepseek.com',
   model: 'deepseek-chat',
   voiceRate: 0.95,
-  voicePitch: 1.0,
+  voicePitch: 1.05,
   voiceAccent: 'en-US',
+  preferredVoiceURI: '',
   autoPlayOralAudio: true,
   currentScenarioId: 'daily_chat',
 };

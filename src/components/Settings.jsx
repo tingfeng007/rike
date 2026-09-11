@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings as SettingsIcon,
   Key,
@@ -29,6 +29,18 @@ export default function Settings() {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [testStatus, setTestStatus] = useState({ state: 'idle', message: '' }); // 'idle' | 'testing' | 'success' | 'error'
   const [showPwaGuide, setShowPwaGuide] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState(() => tts.getAvailableFemaleVoices());
+
+  // Reload voices when speech system initializes
+  useEffect(() => {
+    const updateVoices = () => {
+      setAvailableVoices(tts.getAvailableFemaleVoices());
+    };
+    updateVoices();
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = updateVoices;
+    }
+  }, []);
 
   // Sync settings when changed
   const updateSetting = (key, value) => {
@@ -136,10 +148,14 @@ export default function Settings() {
 
   // Test Voice Speech
   const handleTestSpeech = () => {
-    tts.speak('Hello there! Your speech synthesis audio is working beautifully.', {
-      accent: settings.voiceAccent,
-      rate: settings.voiceRate,
-    });
+    tts.speak(
+      "Hi there! I'm Echo, your English coach. I'm so excited to help you speak with natural confidence!",
+      {
+        accent: settings.voiceAccent,
+        rate: settings.voiceRate,
+        voiceURI: settings.preferredVoiceURI,
+      }
+    );
   };
 
   const currentPreset = PROVIDER_PRESETS[settings.provider] || PROVIDER_PRESETS.custom;
@@ -344,6 +360,28 @@ export default function Settings() {
               <option value="en-US">美式英语 (American English - en-US)</option>
               <option value="en-GB">英式英语 (British English - en-GB)</option>
             </select>
+          </div>
+
+          {/* Voice Selection */}
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              外教音色选择 (精选自然女声)
+            </label>
+            <select
+              value={settings.preferredVoiceURI || ''}
+              onChange={(e) => updateSetting('preferredVoiceURI', e.target.value)}
+              className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+            >
+              <option value="">✨ 智能优选（iPhone 推荐：Ava / Samantha 自然甜美女声）</option>
+              {availableVoices.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  👩 {v.name} ({v.lang})
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-600 mt-1">
+              💡 默认优先匹配苹果 iOS 高品质自然女声，音色更甜美、抑扬顿挫更地道。
+            </p>
           </div>
 
           {/* Voice Rate Slider */}
