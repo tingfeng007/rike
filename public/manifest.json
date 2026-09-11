@@ -2,13 +2,16 @@
   "name": "LingoFlow 英语伴侣",
   "short_name": "LingoFlow",
   "description": "集口语对练、精读伴读与艾宾浩斯生词本于一体的随身英语学习工作台",
-  "start_url": "/",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
-  "theme_color": "#0c8ce9",
+  "theme_color": "#0284c7",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "./icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
