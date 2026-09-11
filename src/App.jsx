@@ -32,7 +32,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-100 font-sans">
+    <div className="flex flex-col h-[100dvh] w-full max-w-lg mx-auto overflow-hidden bg-slate-100 font-sans shadow-2xl relative">
       {/* Main View Container */}
       <main className="flex-1 overflow-hidden relative">
         {activeTab === 'oral' && (
@@ -44,7 +44,10 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation Bar (Mobile-first TabBar) */}
-      <nav className="flex-none bg-white border-t border-slate-200/90 px-2 py-1.5 shadow-lg select-none z-20" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 12px), 10px)' }}>
+      <nav 
+        className="flex-none bg-white border-t border-slate-200/90 px-2 py-1 shadow-lg select-none z-20" 
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
+      >
         <div className="max-w-md mx-auto grid grid-cols-4 gap-1">
           {/* Tab 1: Oral */}
           <button

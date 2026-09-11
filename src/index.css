@@ -4,16 +4,39 @@
 
 @layer base {
   :root {
-    --safe-area-inset-bottom: env(safe-area-inset-bottom, 16px);
+    --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-inset-top: env(safe-area-inset-top, 0px);
   }
 
+  html, body {
+    height: 100%;
+    height: 100dvh;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: fixed;
+  }
+
+  #root {
+    height: 100%;
+    height: 100dvh;
+    width: 100%;
+    overflow: hidden;
+  }
+
   body {
-    @apply bg-slate-50 text-slate-900 antialiased select-none;
+    @apply bg-slate-100 text-slate-900 antialiased select-none;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
-    overscroll-behavior-y: none;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent iOS Safari auto-zoom on input focus */
+  input, textarea, select {
+    font-size: 16px !important;
   }
 
   /* Allow text selection inside reader and text areas */

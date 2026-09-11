@@ -290,7 +290,10 @@ export default function SmartReader() {
   return (
     <div className="flex flex-col h-full bg-slate-50 relative">
       {/* Top Header */}
-      <header className="flex-none bg-white border-b border-slate-200 px-4 py-3 shadow-xs">
+      <header 
+        className="flex-none bg-white border-b border-slate-200 px-4 py-2.5 shadow-xs"
+        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}
+      >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
             <BookOpen className="w-5 h-5 text-sky-600" />
