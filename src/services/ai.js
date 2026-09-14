@@ -318,7 +318,9 @@ export async function getOralCoachResponseStream({
 }) {
   const targetWordsPrompt =
     targetWords.length > 0
-      ? `用户当前正在复习以下重点生词: [${targetWords.join(', ')}]。如果情境自然，请尽量在你的回答中恰当地使用它们，或者巧妙地引导用户在下一句使用它们。`
+      ? `用户正在进行【口语实战生词通缉挑战】，目标挑战词汇为: [${targetWords.join(', ')}]。
+请在你的提问中巧妙设计情境，引导用户在接下来的回答中主动使用这些词汇。
+特别注意：如果用户在上一句话中已经成功使用了这些单词中的任何一个，请在你的 replyText 开头真诚地热情表扬用户用词地道自然（例如 "Brilliant use of the word '${targetWords[0]}'! That sounded super natural."），给用户强烈的正向成就感！`
       : '';
 
   const systemPrompt = `You are "Echo", a friendly, empathetic, and encouraging personal native English speaking coach.
@@ -385,18 +387,6 @@ CRITICAL: You must return your response in strictly valid JSON format matching t
   }
 }
 
-/**
- * 4. Quick Paragraph Translation for Reader
- */
-export async function translateParagraphWithAI(paragraph) {
-  const prompt = `请将以下英文段落准确翻译为地道、通顺的中文，直接返回译文内容，不要包含任何多余前缀或寒暄：\n\n"${paragraph}"`;
-  const messages = [
-    { role: 'system', content: 'You are a professional bilingual translator. Output only the translation.' },
-    { role: 'user', content: prompt },
-  ];
-  const raw = await callAICompletion({ messages, temperature: 0.3 });
-  return raw.trim();
-}
 export async function getOralCoachResponse({
   history = [],
   userMessage,
@@ -479,5 +469,63 @@ export async function generateVocabularyQuiz(words) {
   ];
 
   const raw = await callAICompletion({ messages, temperature: 0.4, responseFormatJson: true });
+  return extractJson(raw);
+}
+
+/**
+ * 5. Quick Paragraph Translation for Reader
+ */
+export async function translateParagraphWithAI(paragraph) {
+  const prompt = `请将以下英文段落准确翻译为地道、通顺的中文，直接返回译文内容，不要包含任何多余前缀或寒暄：\n\n"${paragraph}"`;
+  const messages = [
+    { role: 'system', content: 'You are a professional bilingual translator. Output only the translation.' },
+    { role: 'user', content: prompt },
+  ];
+  const raw = await callAICompletion({ messages, temperature: 0.3 });
+  return raw.trim();
+}
+
+/**
+ * 6. Vocab Story Studio (AI Micro-Drama Generator)
+ */
+export async function generateVocabStoryWithAI({
+  words = [],
+  genre = 'mystery',
+}) {
+  const genreLabels = {
+    mystery: '悬疑推理 (Suspense / Detective)',
+    workplace: '硅谷职场 (Tech & Workplace Drama)',
+    romance: '都市温情 (Heartwarming Romance)',
+    cyberpunk: '未来科幻 (Cyberpunk / Sci-Fi)',
+  };
+  const genreDesc = genreLabels[genre] || genreLabels.mystery;
+  const wordsFormatted = words.map((w) => `${w.word} (${w.translation || ''})`).join(', ');
+
+  const prompt = `你是一位才华横溢的双语微小说作家与影视编剧。
+请为英语自学者创作一篇极具情节张力与画面感的英语微短剧/小说（约 150~220 英文词）。
+题材风格: 【${genreDesc}】。
+
+核心任务要求：
+1. 必须将以下所有目标生词【严丝合缝、自然巧妙地融入情节中】，每个生词在故事中出现时，必须使用 Markdown 加粗标记为 **word**（例如 **ubiquitous**）:
+[${wordsFormatted}]
+
+2. 故事必须扣人心弦，节奏紧凑，分成 2~3 个自然段落。
+
+3. 请以严格的 JSON 格式输出，格式如下：
+{
+  "title": "A Punchy English Title",
+  "titleCn": "生动吸引人的中文译名",
+  "storyEn": "The full English micro-story with the **target words** bolded in Markdown...",
+  "storyCn": "对应的高水准优雅中文译文...",
+  "genre": "${genre}",
+  "usedWords": ["考察词1", "考察词2"]
+}`;
+
+  const messages = [
+    { role: 'system', content: 'You are an elite bilingual fiction author. Output strictly valid JSON.' },
+    { role: 'user', content: prompt },
+  ];
+
+  const raw = await callAICompletion({ messages, temperature: 0.7, responseFormatJson: true });
   return extractJson(raw);
 }

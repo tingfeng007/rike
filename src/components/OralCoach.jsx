@@ -11,7 +11,10 @@ import {
   BookmarkPlus,
   CheckCircle2,
   Flame,
+  Target,
+  Trophy,
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import { SCENARIOS } from '../data/scenarios';
 import { StorageService } from '../services/storage';
 import { getOralCoachResponseStream } from '../services/ai';
@@ -32,6 +35,8 @@ export default function OralCoach({ onNavigateToVocab }) {
   const [revealedCnIds, setRevealedCnIds] = useState({});
   const [practiceWithVocab, setPracticeWithVocab] = useState(true);
   const [addedWordFeedback, setAddedWordFeedback] = useState({});
+  const [activatedWords, setActivatedWords] = useState({});
+  const [missionToast, setMissionToast] = useState(null);
 
   const messagesEndRef = useRef(null);
   const isSttSupported = stt.isSupported();
@@ -83,6 +88,51 @@ export default function OralCoach({ onNavigateToVocab }) {
     if (!text || isLoading) return;
 
     setInputText('');
+
+    const targetWords = getActiveTargetWords();
+
+    // Check if user hit any target words! (Wanted Words Mission)
+    const hitWords = targetWords.filter((w) =>
+      new RegExp(`\\b${w}\\b`, 'i').test(text)
+    );
+
+    if (hitWords.length > 0) {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#f59e0b', '#3b82f6', '#10b981', '#ec4899'],
+      });
+
+      setActivatedWords((prev) => {
+        const next = { ...prev };
+        hitWords.forEach((hw) => {
+          next[hw.toLowerCase()] = true;
+        });
+        return next;
+      });
+
+      // Boost word in vocabulary
+      hitWords.forEach((hw) => {
+        const allWords = StorageService.getVocabulary();
+        const found = allWords.find((v) => v.word.toLowerCase() === hw.toLowerCase());
+        if (found) {
+          StorageService.updateWordSRS(found.id, 'good');
+          const reloaded = StorageService.getVocabulary();
+          const tIdx = reloaded.findIndex((v) => v.id === found.id);
+          if (tIdx >= 0) {
+            const tags = reloaded[tIdx].tags || [];
+            if (!tags.includes('🔥 实战激活')) {
+              reloaded[tIdx].tags = ['🔥 实战激活', ...tags];
+              StorageService.saveVocabulary(reloaded);
+            }
+          }
+        }
+      });
+
+      setMissionToast(`🎯 恭喜！成功在对话中实战激活生词 [${hitWords.join(', ')}]！掌握度升级！`);
+      setTimeout(() => setMissionToast(null), 4000);
+    }
 
     const now = Date.now();
     const userMsg = {
@@ -313,7 +363,45 @@ export default function OralCoach({ onNavigateToVocab }) {
             );
           })}
         </div>
+
+        {/* Wanted Words Mission Banner */}
+        {practiceWithVocab && StorageService.getVocabulary().slice(0, 3).length > 0 && (
+          <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-850 flex-none mr-2">
+              <Target className="w-3.5 h-3.5 text-amber-600" />
+              <span>生词通缉令：</span>
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
+              {StorageService.getVocabulary().slice(0, 3).map((item) => {
+                const isHit = activatedWords[item.word.toLowerCase()];
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => tts.speak(item.word)}
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-medium border flex items-center gap-1 flex-none transition-all ${
+                      isHit
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold shadow-xs scale-105'
+                        : 'bg-amber-50/80 text-amber-900 border-amber-200 hover:bg-amber-100'
+                    }`}
+                    title={`点击听发音：${item.translation || ''}`}
+                  >
+                    <span>{isHit ? '🔥 已激活' : '🎯'}</span>
+                    <span className="font-mono">{item.word}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </header>
+
+      {/* Floating Mission Success Toast */}
+      {missionToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
+          <Trophy className="w-4 h-4 text-amber-200" />
+          <span>{missionToast}</span>
+        </div>
+      )}
 
       {/* Chat Messages List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -513,13 +601,16 @@ export default function OralCoach({ onNavigateToVocab }) {
           <div className="mb-2 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-between text-xs text-rose-700 animate-pulse">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-              <span>正在聆听你的英语发音... 请清晰说话</span>
+              <span>正在聆听... 说完点右侧立即发送</span>
             </div>
             <button
-              onClick={toggleRecording}
-              className="text-rose-800 font-semibold underline"
+              onClick={() => {
+                toggleRecording();
+                setTimeout(() => handleSendMessage(), 200);
+              }}
+              className="bg-emerald-600 text-white font-semibold px-2.5 py-1 rounded-md text-[11px] hover:bg-emerald-700 transition-colors shadow-xs"
             >
-              完成录音
+              🚀 说完，立即发送
             </button>
           </div>
         )}

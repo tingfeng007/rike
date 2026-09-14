@@ -14,10 +14,18 @@ import {
   AlertTriangle,
   Flame,
   Target,
+  Film,
+  Headphones,
+  BookPlus,
+  X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
-import { analyzeWordWithAI, generateVocabularyQuiz } from '../services/ai';
+import {
+  analyzeWordWithAI,
+  generateVocabularyQuiz,
+  generateVocabStoryWithAI,
+} from '../services/ai';
 import { tts } from '../services/speech';
 
 export default function VocabularySRS() {
@@ -44,6 +52,15 @@ export default function VocabularySRS() {
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [quizScore, setQuizScore] = useState(null);
+
+  // Vocab Story Studio states
+  const [showStoryModal, setShowStoryModal] = useState(false);
+  const [storyGenre, setStoryGenre] = useState('mystery');
+  const [selectedStoryWords, setSelectedStoryWords] = useState([]);
+  const [isGeneratingStory, setIsGeneratingStory] = useState(false);
+  const [generatedStory, setGeneratedStory] = useState(null);
+  const [isPlayingStory, setIsPlayingStory] = useState(false);
+  const [isSavedToReader, setIsSavedToReader] = useState(false);
 
   // Reload vocabulary from storage
   const reloadVocabulary = (forcePractice = false) => {
@@ -161,6 +178,71 @@ export default function VocabularySRS() {
     }
   };
 
+  // Open story studio modal
+  const handleOpenStoryStudio = () => {
+    const defaultWords = vocabulary.slice(0, 4).map((w) => w.word);
+    setSelectedStoryWords(defaultWords);
+    setGeneratedStory(null);
+    setIsSavedToReader(false);
+    setShowStoryModal(true);
+  };
+
+  // Generate Story
+  const handleGenerateStory = async () => {
+    if (selectedStoryWords.length === 0) {
+      alert('请至少勾选 1 个生词融入故事');
+      return;
+    }
+
+    setIsGeneratingStory(true);
+    try {
+      const wordsToUse = vocabulary.filter((w) => selectedStoryWords.includes(w.word));
+      const res = await generateVocabStoryWithAI({
+        words: wordsToUse,
+        genre: storyGenre,
+      });
+      setGeneratedStory(res);
+      setIsSavedToReader(false);
+      confetti({
+        particleCount: 60,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    } catch (err) {
+      alert(`微剧场生成失败: ${err.message}`);
+    } finally {
+      setIsGeneratingStory(false);
+    }
+  };
+
+  // Play Story Audio
+  const handleTogglePlayStory = () => {
+    if (!generatedStory) return;
+    if (isPlayingStory) {
+      tts.stop();
+      setIsPlayingStory(false);
+    } else {
+      setIsPlayingStory(true);
+      const plainText = generatedStory.storyEn.replace(/\*\*/g, '');
+      tts.speak(plainText).finally(() => {
+        setIsPlayingStory(false);
+      });
+    }
+  };
+
+  // Save to SmartReader
+  const handleSaveStoryToReader = () => {
+    if (!generatedStory) return;
+    const plainContent = generatedStory.storyEn.replace(/\*\*/g, '');
+    StorageService.saveArticle({
+      title: `${generatedStory.title} (${generatedStory.titleCn || '微剧场'})`,
+      level: 'AI 生词微剧场',
+      content: plainContent,
+      tags: ['生词微剧场', storyGenre],
+    });
+    setIsSavedToReader(true);
+  };
+
   // Start AI Quiz
   const handleGenerateQuiz = async () => {
     if (vocabulary.length < 2) {
@@ -264,13 +346,24 @@ export default function VocabularySRS() {
             </span>
           </div>
 
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1 bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>添加生词</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleOpenStoryStudio}
+              className="flex items-center gap-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition-all active:scale-95"
+              title="一键把难记生词写成悬疑微小说与有声广播剧"
+            >
+              <Film className="w-3.5 h-3.5 text-amber-100" />
+              <span>生词微剧场</span>
+            </button>
+
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1 bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>添加生词</span>
+            </button>
+          </div>
         </div>
 
         {/* Study Habit Stats Bar */}
@@ -806,6 +899,189 @@ export default function VocabularySRS() {
           </div>
         )}
       </div>
+
+      {/* Vocab Story Studio Modal */}
+      {showStoryModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-lg rounded-3xl p-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Film className="w-5 h-5 text-amber-500" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    生词微剧场 · AI 专属小说
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    把背不会的单词编进高潮迭起的故事中，听广播剧沉浸式记忆
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  tts.stop();
+                  setIsPlayingStory(false);
+                  setShowStoryModal(false);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Genre Select */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-2">
+                第一步：选择剧场风格
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'mystery', icon: '🕵️‍♂️', label: '悬疑推理', desc: '深夜密室、暗藏线索' },
+                  { id: 'workplace', icon: '💼', label: '硅谷职场', desc: '商战博弈、产品发布' },
+                  { id: 'romance', icon: '☕', label: '都市温情', desc: '街角咖啡、治愈遇见' },
+                  { id: 'cyberpunk', icon: '🚀', label: '未来科幻', desc: '霓虹夜市、AI觉醒' },
+                ].map((g) => (
+                  <div
+                    key={g.id}
+                    onClick={() => setStoryGenre(g.id)}
+                    className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      storyGenre === g.id
+                        ? 'bg-amber-50 border-amber-400 text-amber-900 font-semibold shadow-xs ring-1 ring-amber-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-bold">
+                      <span>{g.icon}</span>
+                      <span>{g.label}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{g.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Words To Include */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                第二步：选择要融入剧场的生词 (点击切换)
+              </label>
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1">
+                {vocabulary.slice(0, 10).map((w) => {
+                  const isChecked = selectedStoryWords.includes(w.word);
+                  return (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStoryWords((prev) =>
+                          isChecked ? prev.filter((item) => item !== w.word) : [...prev, w.word]
+                        );
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs transition-all border ${
+                        isChecked
+                          ? 'bg-sky-600 text-white border-sky-600 font-medium shadow-xs'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>{w.word}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Generate Button */}
+            {!generatedStory && (
+              <button
+                onClick={handleGenerateStory}
+                disabled={isGeneratingStory || selectedStoryWords.length === 0}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5"
+              >
+                {isGeneratingStory ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>AI 编剧正在构思情节与对话...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-200" />
+                    <span>🎬 开始生成专属微剧场</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Generated Story Display */}
+            {generatedStory && (
+              <div className="bg-amber-50/60 border border-amber-200/90 rounded-2xl p-4 space-y-3 animate-fade-in">
+                <div className="flex items-start justify-between pb-2 border-b border-amber-200/60">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">
+                      {generatedStory.title}
+                    </h4>
+                    <p className="text-xs text-amber-800 font-medium mt-0.5">
+                      {generatedStory.titleCn}
+                    </p>
+                  </div>
+
+                  {/* Audio Play Button */}
+                  <button
+                    onClick={handleTogglePlayStory}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition-all ${
+                      isPlayingStory
+                        ? 'bg-rose-500 text-white animate-pulse'
+                        : 'bg-amber-200/80 hover:bg-amber-300 text-amber-900'
+                    }`}
+                  >
+                    <Headphones className="w-3.5 h-3.5" />
+                    <span>{isPlayingStory ? '停止播放' : '有声朗读'}</span>
+                  </button>
+                </div>
+
+                {/* English Story Body */}
+                <div className="text-xs text-slate-800 leading-relaxed select-text space-y-2 font-serif">
+                  {generatedStory.storyEn.split('\n\n').map((para, idx) => (
+                    <p key={idx}>{para}</p>
+                  ))}
+                </div>
+
+                {/* Chinese Translation */}
+                <div className="pt-2 border-t border-amber-200/60 text-xs text-slate-600 leading-relaxed select-text">
+                  <span className="font-semibold text-amber-800 block mb-1 text-[11px]">
+                    🇨🇳 中文剧情译文:
+                  </span>
+                  <p>{generatedStory.storyCn}</p>
+                </div>
+
+                {/* Actions: Save to Reader or Regenerate */}
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={handleSaveStoryToReader}
+                    disabled={isSavedToReader}
+                    className={`flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all ${
+                      isSavedToReader
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-white hover:bg-amber-100 text-slate-700 border border-slate-200'
+                    }`}
+                  >
+                    <BookPlus className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{isSavedToReader ? '已存入精读伴读库 ✅' : '存入精读伴读'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleGenerateStory}
+                    disabled={isGeneratingStory}
+                    className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>换个题材重写</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Manual Add Word Modal */}
       {showAddModal && (
