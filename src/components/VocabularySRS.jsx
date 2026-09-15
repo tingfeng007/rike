@@ -28,6 +28,16 @@ import {
 } from '../services/ai';
 import { tts } from '../services/speech';
 
+// Fisher-Yates random shuffle utility
+function shuffleArray(array) {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 export default function VocabularySRS() {
   const [activeTab, setActiveTab] = useState('flashcard'); // 'flashcard' | 'list' | 'quiz'
   const [vocabulary, setVocabulary] = useState([]);
@@ -62,7 +72,7 @@ export default function VocabularySRS() {
   const [isPlayingStory, setIsPlayingStory] = useState(false);
   const [isSavedToReader, setIsSavedToReader] = useState(false);
 
-  // Reload vocabulary from storage
+  // Reload vocabulary from storage with randomized shuffling
   const reloadVocabulary = (forcePractice = false) => {
     const words = StorageService.getVocabulary();
     setVocabulary(words);
@@ -73,14 +83,15 @@ export default function VocabularySRS() {
     const due = words.filter((w) => !w.nextReviewDate || w.nextReviewDate <= now + 60 * 60 * 1000);
     
     if (forcePractice) {
-      // User explicitly requested extra practice session
-      const sampleSet = words.slice(0, Math.min(10, words.length));
-      setDueCards(sampleSet);
+      // Randomly sample 8 words from entire deck
+      const randomBatch = shuffleArray(words).slice(0, Math.min(8, words.length));
+      setDueCards(randomBatch);
       setCurrentIndex(0);
       setIsFlipped(false);
       setReviewCompleted(false);
     } else if (due.length > 0) {
-      setDueCards(due);
+      // Shuffle due cards to eliminate predictable position memory
+      setDueCards(shuffleArray(due));
       setCurrentIndex(0);
       setIsFlipped(false);
       setReviewCompleted(false);
@@ -616,9 +627,10 @@ export default function VocabularySRS() {
                   {vocabulary.length > 0 && (
                     <button
                       onClick={() => reloadVocabulary(true)}
-                      className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
+                      className="w-full py-2.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
                     >
-                      随便翻翻（自主温故 10 词）
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>🎲 随便翻翻（随机抽选 8 词强化）</span>
                     </button>
                   )}
                   <button

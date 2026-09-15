@@ -37,6 +37,20 @@ export default function OralCoach({ onNavigateToVocab }) {
   const [addedWordFeedback, setAddedWordFeedback] = useState({});
   const [activatedWords, setActivatedWords] = useState({});
   const [missionToast, setMissionToast] = useState(null);
+  const [wantedWordsList, setWantedWordsList] = useState([]);
+
+  // Randomly refresh wanted words
+  const refreshWantedWords = () => {
+    const words = StorageService.getVocabulary();
+    const unmastered = words.filter((w) => w.status !== 'mastered');
+    const pool = unmastered.length >= 3 ? unmastered : words;
+    const shuffled = [...pool].sort(() => 0.5 - Math.random());
+    setWantedWordsList(shuffled.slice(0, 3));
+  };
+
+  useEffect(() => {
+    refreshWantedWords();
+  }, [currentScenario.id]);
 
   const messagesEndRef = useRef(null);
   const isSttSupported = stt.isSupported();
@@ -78,6 +92,9 @@ export default function OralCoach({ onNavigateToVocab }) {
   // Get active target words from vocabulary
   const getActiveTargetWords = () => {
     if (!practiceWithVocab) return [];
+    if (wantedWordsList.length > 0) {
+      return wantedWordsList.map((w) => w.word);
+    }
     const words = StorageService.getVocabulary();
     return words.slice(0, 3).map((w) => w.word);
   };
@@ -364,15 +381,15 @@ export default function OralCoach({ onNavigateToVocab }) {
           })}
         </div>
 
-        {/* Wanted Words Mission Banner */}
-        {practiceWithVocab && StorageService.getVocabulary().slice(0, 3).length > 0 && (
+        {/* Wanted Words Mission Banner with Shuffle */}
+        {practiceWithVocab && wantedWordsList.length > 0 && (
           <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
             <div className="flex items-center gap-1 text-[11px] font-bold text-amber-900 flex-none mr-2">
               <Target className="w-3.5 h-3.5 text-amber-600" />
               <span>生词通缉令：</span>
             </div>
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
-              {StorageService.getVocabulary().slice(0, 3).map((item) => {
+              {wantedWordsList.map((item) => {
                 const isHit = activatedWords[item.word.toLowerCase()];
                 return (
                   <button
@@ -391,6 +408,14 @@ export default function OralCoach({ onNavigateToVocab }) {
                 );
               })}
             </div>
+            <button
+              onClick={refreshWantedWords}
+              className="flex-none ml-1.5 p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-100/60 rounded-md text-[10.5px] transition-colors flex items-center gap-0.5"
+              title="随机换一批通缉生词挑战"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span className="hidden sm:inline">换一批</span>
+            </button>
           </div>
         )}
       </header>
