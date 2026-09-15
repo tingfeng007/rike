@@ -307,6 +307,43 @@ export async function analyzeSentenceWithAI(sentence) {
 }
 
 /**
+ * Compress older oral-chat turns into a lightweight memory capsule.
+ * Keeps long conversations coherent without sending the entire history on every request.
+ */
+function buildOralConversationContext(history, userMessage) {
+  const getText = (message) => (
+    typeof message.content === 'string'
+      ? message.content
+      : message.replyText || message.text || ''
+  ).trim();
+
+  const normalized = history
+    .map((message) => ({ role: message.role, content: getText(message) }))
+    .filter((message) => message.content);
+
+  // OralCoach already appends the current user message before calling this service.
+  // Remove it here because userMessage is added once at the end of the final request.
+  const last = normalized.at(-1);
+  const historyWithoutCurrent =
+    last?.role === 'user' && last.content === userMessage.trim()
+      ? normalized.slice(0, -1)
+      : normalized;
+
+  const recentMessages = historyWithoutCurrent.slice(-8);
+  const earlierMessages = historyWithoutCurrent.slice(0, -8);
+  const memoryLines = earlierMessages.slice(-24).map((message) => {
+    const speaker = message.role === 'user' ? 'Learner' : 'Echo';
+    const compactText = message.content.replace(/\s+/g, ' ').slice(0, 260);
+    return `${speaker}: ${compactText}`;
+  });
+
+  return {
+    recentMessages,
+    memoryCapsule: memoryLines.join('\n').slice(-4200),
+  };
+}
+
+/**
  * 3. Oral Dialogue with Dual-Track Feedback (Chat + Correction) - Stream Support
  */
 export async function getOralCoachResponseStream({
@@ -348,12 +385,14 @@ CRITICAL: You must return your response in strictly valid JSON format matching t
   ]
 }`;
 
+  const { recentMessages, memoryCapsule } = buildOralConversationContext(history, userMessage);
+  const memoryPrompt = memoryCapsule
+    ? `\n\nEARLIER CONVERSATION MEMORY (compressed transcript):\n${memoryCapsule}\nUse this memory only to preserve the learner's previously shared background, preferences, plans, and conversational continuity. Do not repeat it verbatim.`
+    : '';
+
   const formattedMessages = [
-    { role: 'system', content: systemPrompt },
-    ...history.slice(-8).map((m) => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : m.replyText || m.text,
-    })),
+    { role: 'system', content: `${systemPrompt}${memoryPrompt}` },
+    ...recentMessages,
     { role: 'user', content: userMessage },
   ];
 
@@ -423,12 +462,14 @@ CRITICAL: You must return your response in strictly valid JSON format matching t
   ]
 }`;
 
+  const { recentMessages, memoryCapsule } = buildOralConversationContext(history, userMessage);
+  const memoryPrompt = memoryCapsule
+    ? `\n\nEARLIER CONVERSATION MEMORY (compressed transcript):\n${memoryCapsule}\nUse it to preserve continuity without repeating it verbatim.`
+    : '';
+
   const formattedMessages = [
-    { role: 'system', content: systemPrompt },
-    ...history.slice(-8).map((m) => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : m.replyText || m.text,
-    })),
+    { role: 'system', content: `${systemPrompt}${memoryPrompt}` },
+    ...recentMessages,
     { role: 'user', content: userMessage },
   ];
 

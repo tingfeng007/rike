@@ -11,6 +11,9 @@ import {
   Languages,
   Globe,
   Dices,
+  Highlighter,
+  NotebookPen,
+  Download,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
@@ -103,6 +106,12 @@ export default function SmartReader() {
   const [blendUserVocab, setBlendUserVocab] = useState(true);
   const [isGeneratingArticle, setIsGeneratingArticle] = useState(false);
 
+  // Reading highlights & personal notes
+  const [annotations, setAnnotations] = useState({});
+  const [editingAnnotation, setEditingAnnotation] = useState(null);
+  const [annotationDraft, setAnnotationDraft] = useState('');
+  const [showNotesModal, setShowNotesModal] = useState(false);
+
   // Reading scroll container & position persistence
   const scrollContainerRef = useRef(null);
 
@@ -115,6 +124,16 @@ export default function SmartReader() {
     });
     return map;
   }, [articles, selectedWord]);
+
+  // Load locally saved highlights and personal notes once
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('lingoflow_reading_annotations') || '{}');
+      setAnnotations(saved && typeof saved === 'object' ? saved : {});
+    } catch {
+      setAnnotations({});
+    }
+  }, []);
 
   // Restore scroll position when article changes
   useEffect(() => {
@@ -130,6 +149,72 @@ export default function SmartReader() {
   const handleScroll = (e) => {
     if (!currentArticle?.id) return;
     localStorage.setItem(`lingoflow_read_pos_${currentArticle.id}`, e.currentTarget.scrollTop);
+  };
+
+  const currentAnnotations = currentArticle?.id
+    ? annotations[String(currentArticle.id)] || []
+    : [];
+
+  const persistAnnotations = (next) => {
+    setAnnotations(next);
+    localStorage.setItem('lingoflow_reading_annotations', JSON.stringify(next));
+  };
+
+  const openAnnotationEditor = (sentence) => {
+    const cleanSentence = sentence.trim();
+    const existing = currentAnnotations.find((item) => item.sentence === cleanSentence);
+    setEditingAnnotation(existing || {
+      id: cleanSentence,
+      sentence: cleanSentence,
+      note: '',
+    });
+    setAnnotationDraft(existing?.note || '');
+  };
+
+  const saveAnnotation = () => {
+    if (!currentArticle?.id || !editingAnnotation) return;
+    const articleKey = String(currentArticle.id);
+    const articleNotes = annotations[articleKey] || [];
+    const exists = articleNotes.some((item) => item.id === editingAnnotation.id);
+    const savedNote = { ...editingAnnotation, note: annotationDraft.trim() };
+    const nextNotes = exists
+      ? articleNotes.map((item) => item.id === savedNote.id ? savedNote : item)
+      : [...articleNotes, savedNote];
+    persistAnnotations({ ...annotations, [articleKey]: nextNotes });
+    setEditingAnnotation(null);
+    setAnnotationDraft('');
+  };
+
+  const removeAnnotation = (annotationId) => {
+    if (!currentArticle?.id) return;
+    const articleKey = String(currentArticle.id);
+    const nextNotes = (annotations[articleKey] || []).filter((item) => item.id !== annotationId);
+    const next = { ...annotations, [articleKey]: nextNotes };
+    persistAnnotations(next);
+    if (editingAnnotation?.id === annotationId) setEditingAnnotation(null);
+  };
+
+  const exportReadingNotes = () => {
+    if (!currentArticle) return;
+    const vocabInArticle = Object.values(savedVocabMap).filter((item) =>
+      new RegExp(`\\b${item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(currentArticle.content)
+    );
+    const noteSections = currentAnnotations.length > 0
+      ? currentAnnotations.map((item, index) =>
+          `### ${index + 1}. 划线摘录\n\n> ${item.sentence}\n\n${item.note ? `**我的批注：** ${item.note}` : '_暂未添加批注_'}`
+        ).join('\n\n')
+      : '_本篇暂无划线批注。_';
+    const vocabSection = vocabInArticle.length > 0
+      ? vocabInArticle.map((item) => `- **${item.word}**：${item.translation || '暂无释义'}`).join('\n')
+      : '_本篇暂无已收录生词。_';
+    const markdown = `# ${currentArticle.title}\n\n> LingoFlow 精读笔记导出\n> 导出时间：${new Date().toLocaleString('zh-CN')}\n\n## 划线与批注\n\n${noteSections}\n\n## 本篇生词\n\n${vocabSection}\n`;
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${currentArticle.title.replace(/[\\/:*?"<>|]/g, '_')}-精读笔记.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   // 1. Randomly pick an existing article from library
@@ -428,13 +513,28 @@ export default function SmartReader() {
               </button>
             </div>
 
+            <button
+              onClick={() => setShowNotesModal(true)}
+              className="relative flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-900 px-2.5 py-1 rounded-xl text-xs font-semibold border border-amber-200/80 shadow-2xs transition-all active:scale-95"
+              title="查看本篇划线与读书笔记"
+            >
+              <NotebookPen className="w-3.5 h-3.5" />
+              <span>笔记</span>
+              {currentAnnotations.length > 0 && (
+                <span className="min-w-4 h-4 px-1 -mr-1 rounded-full bg-amber-600 text-white text-[9px] flex items-center justify-center">
+                  {currentAnnotations.length}
+                </span>
+              )}
+            </button>
+
             {/* Add article button */}
             <button
               onClick={() => setShowAddModal(true)}
               className="flex items-center gap-1 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white px-2.5 py-1 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-95"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>导入文章</span>
+              <span className="hidden sm:inline">导入文章</span>
+              <span className="sm:hidden">导入</span>
             </button>
           </div>
         </div>
@@ -495,7 +595,7 @@ export default function SmartReader() {
                 {currentArticle.title}
               </h1>
               <p className="text-xs text-slate-600 mt-1.5 flex items-center gap-2">
-                <span>💡 提示：点击文中任意单词即可查词释义与加生词本；点击右侧 🔬 拆解长难句</span>
+                <span>💡 点单词查词；点句末 ✨ 拆解语法；点 🖍️ 划线并写下心得</span>
               </p>
             </div>
 
@@ -515,10 +615,18 @@ export default function SmartReader() {
                       {sentences.map((sentence, sIdx) => {
                         const words = sentence.trim().split(/\s+/);
 
+                        const savedAnnotation = currentAnnotations.find(
+                          (item) => item.sentence === sentence.trim()
+                        );
+
                         return (
                           <span
                             key={sIdx}
-                            className={`inline leading-loose tracking-wide ${fontSize} text-slate-800 transition-colors rounded-sm group relative`}
+                            className={`inline leading-loose tracking-wide ${fontSize} text-slate-800 transition-colors rounded-sm group relative ${
+                              savedAnnotation
+                                ? 'bg-gradient-to-t from-yellow-200/90 from-45% to-transparent to-45% decoration-clone'
+                                : ''
+                            }`}
                           >
                             {words.map((word, wIdx) => {
                               const cleanWord = word.replace(/^[^\w]+|[^\w]+$/g, '').toLowerCase();
@@ -547,6 +655,17 @@ export default function SmartReader() {
                               className="inline-flex items-center text-slate-400 hover:text-sky-600 hover:bg-sky-50 p-1 rounded-md text-xs transition-colors align-middle ml-0.5"
                             >
                               <Sparkles className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => openAnnotationEditor(sentence)}
+                              title={savedAnnotation ? '编辑这句的划线批注' : '划线收藏并写下心得'}
+                              className={`inline-flex items-center p-1 rounded-md text-xs transition-colors align-middle ${
+                                savedAnnotation
+                                  ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                                  : 'text-slate-400 hover:text-amber-700 hover:bg-amber-50'
+                              }`}
+                            >
+                              <Highlighter className="w-3.5 h-3.5" />
                             </button>
                           </span>
                         );
@@ -987,7 +1106,162 @@ export default function SmartReader() {
         </div>
       )}
 
-      {/* 4. Modal: AI Daily Editorial Refresh & Switcher */}
+      {/* 4. Bottom Sheet: Sentence Highlight & Personal Note */}
+      {editingAnnotation && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-[#fffdf7] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-amber-100 max-h-[88vh] overflow-y-auto">
+            <div className="w-10 h-1 bg-amber-200 rounded-full mx-auto mb-4 sm:hidden" />
+            <div className="flex items-start justify-between pb-3 border-b border-amber-100">
+              <div className="flex items-center gap-2">
+                <span className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
+                  <Highlighter className="w-4 h-4 text-amber-700" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">荧光笔 · 精读批注</h3>
+                  <p className="text-[11px] text-slate-500">保存后，这句话会一直留在你的本篇笔记中</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingAnnotation(null)}
+                className="p-1.5 text-slate-400 hover:bg-amber-50 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <blockquote className="mt-4 px-4 py-3 border-l-4 border-amber-400 bg-gradient-to-r from-amber-50 to-transparent text-sm font-serif italic text-slate-800 leading-relaxed">
+              “{editingAnnotation.sentence}”
+            </blockquote>
+
+            <label className="block mt-4 text-xs font-bold text-slate-700 mb-1.5">
+              ✍️ 我的理解、联想或使用场景 <span className="font-normal text-slate-400">（可不填）</span>
+            </label>
+            <textarea
+              rows={4}
+              value={annotationDraft}
+              onChange={(e) => setAnnotationDraft(e.target.value)}
+              placeholder="例如：这句话适合在工作汇报中表达‘先做重要的事’……"
+              className="w-full p-3 text-sm leading-relaxed bg-white border border-amber-200 rounded-2xl outline-hidden focus:ring-2 focus:ring-amber-400/60 resize-none placeholder:text-slate-400"
+              autoFocus
+            />
+
+            <div className="flex gap-2 mt-4">
+              {currentAnnotations.some((item) => item.id === editingAnnotation.id) && (
+                <button
+                  onClick={() => removeAnnotation(editingAnnotation.id)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-100"
+                >
+                  取消划线
+                </button>
+              )}
+              <button
+                onClick={saveAnnotation}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-xs active:scale-[0.99] transition-all"
+              >
+                保存划线与批注
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Modal: Reading Notes Collection & Markdown Export */}
+      {showNotesModal && (
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-[#faf8f2] w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-stone-200 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex-none p-5 pb-3 border-b border-stone-200 bg-white/70">
+              <div className="flex items-start justify-between">
+                <div className="flex gap-2.5">
+                  <span className="w-10 h-10 rounded-2xl bg-stone-900 text-amber-300 flex items-center justify-center shadow-sm">
+                    <NotebookPen className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">本篇精读手记</h3>
+                    <p className="text-[11px] text-slate-500 max-w-[250px] truncate">{currentArticle?.title}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowNotesModal(false)}
+                  className="p-1.5 text-slate-400 hover:bg-stone-100 rounded-full"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <p className="text-xs text-stone-600">
+                  已珍藏 <strong className="text-amber-700">{currentAnnotations.length}</strong> 句划线摘录
+                </p>
+                <button
+                  onClick={exportReadingNotes}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-300" />
+                  导出 Markdown
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {currentAnnotations.length > 0 ? currentAnnotations.map((item, index) => (
+                <div key={item.id} className="bg-white rounded-2xl p-4 border border-stone-200/80 shadow-2xs">
+                  <div className="flex items-start gap-3">
+                    <span className="flex-none w-6 h-6 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center justify-center">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-serif text-slate-800 leading-relaxed bg-gradient-to-t from-yellow-200/80 from-45% to-transparent to-45% decoration-clone">
+                        {item.sentence}
+                      </p>
+                      {item.note ? (
+                        <p className="mt-2.5 pl-3 border-l-2 border-amber-300 text-xs text-slate-600 leading-relaxed">
+                          <span className="text-amber-700 font-bold">我的批注：</span>{item.note}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-[11px] text-slate-400">尚未填写个人心得</p>
+                      )}
+                      <div className="mt-3 flex gap-2 justify-end">
+                        <button
+                          onClick={() => {
+                            setShowNotesModal(false);
+                            openAnnotationEditor(item.sentence);
+                          }}
+                          className="text-[11px] text-sky-700 hover:bg-sky-50 px-2 py-1 rounded-lg"
+                        >
+                          编辑批注
+                        </button>
+                        <button
+                          onClick={() => removeAnnotation(item.id)}
+                          className="text-[11px] text-rose-500 hover:bg-rose-50 px-2 py-1 rounded-lg"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )) : (
+                <div className="py-14 px-6 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-3">
+                    <Highlighter className="w-6 h-6 text-amber-700" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-800">这页手记还是空白的</h4>
+                  <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
+                    阅读时点击每句话末尾的荧光笔图标，就能收藏金句并写下自己的理解。
+                  </p>
+                  <button
+                    onClick={() => setShowNotesModal(false)}
+                    className="mt-4 px-4 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold"
+                  >
+                    回到文章开始划线
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Modal: AI Daily Editorial Refresh & Switcher */}
       {showRefreshModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">

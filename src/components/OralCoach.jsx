@@ -44,6 +44,8 @@ export default function OralCoach({ onNavigateToVocab }) {
   const [hasApiKey, setHasApiKey] = useState(() => Boolean(StorageService.getSettings().apiKey?.trim()));
   const [showQuickKeyModal, setShowQuickKeyModal] = useState(false);
   const [quickKeyInput, setQuickKeyInput] = useState('');
+  const [showMicHelp, setShowMicHelp] = useState(false);
+  const [micHelpReason, setMicHelpReason] = useState('unsupported');
 
   // Randomly refresh wanted words
   const refreshWantedWords = () => {
@@ -249,7 +251,8 @@ export default function OralCoach({ onNavigateToVocab }) {
       setIsRecording(false);
     } else {
       if (!isSttSupported) {
-        alert('当前浏览器未开放原生麦克风识别，建议直接使用输入法键盘自带的语音输入键（按空格或话筒图标）。');
+        setMicHelpReason('unsupported');
+        setShowMicHelp(true);
         return;
       }
 
@@ -264,6 +267,15 @@ export default function OralCoach({ onNavigateToVocab }) {
         onError: (err) => {
           console.warn(err);
           setIsRecording(false);
+          const errorCode = err?.error || err?.name || '';
+          setMicHelpReason(
+            ['not-allowed', 'service-not-allowed', 'NotAllowedError'].includes(errorCode)
+              ? 'permission'
+              : errorCode === 'no-speech'
+                ? 'no-speech'
+                : 'unavailable'
+          );
+          setShowMicHelp(true);
         },
         onEnd: () => setIsRecording(false),
       });
@@ -719,6 +731,72 @@ export default function OralCoach({ onNavigateToVocab }) {
           </button>
         </div>
       </footer>
+
+      {/* Gentle Microphone Help Sheet */}
+      {showMicHelp && (
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100">
+            <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-4 sm:hidden" />
+            <div className="flex items-start justify-between">
+              <div className="flex gap-3">
+                <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-100 to-indigo-100 flex items-center justify-center shadow-inner">
+                  <Mic className="w-5 h-5 text-sky-700" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {micHelpReason === 'permission'
+                      ? '还差一步：允许使用麦克风'
+                      : micHelpReason === 'no-speech'
+                        ? '刚才没有听清，再试一次吧'
+                        : '这个浏览器暂未开放语音识别'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">不用担心，文字对练仍然可以正常使用</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMicHelp(false)}
+                className="p-1 text-slate-400 hover:bg-slate-100 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {micHelpReason === 'permission' ? (
+              <div className="mt-4 p-3.5 rounded-2xl bg-sky-50/80 border border-sky-100 space-y-2.5 text-xs text-slate-700">
+                <p className="font-bold text-sky-900">iPhone Safari 开启方法</p>
+                <p><strong>1.</strong> 点地址栏左侧的“大小”或页面菜单</p>
+                <p><strong>2.</strong> 进入“网站设置” → “麦克风”</p>
+                <p><strong>3.</strong> 选择“允许”，刷新页面后再点话筒</p>
+              </div>
+            ) : (
+              <div className="mt-4 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-100 text-xs text-slate-700 leading-relaxed">
+                <p className="font-bold text-amber-900 mb-1.5">最稳妥的替代方法</p>
+                <p>轻触下方文字输入框，再点手机键盘自带的 🎙️ 语音输入键。说完后，文字会自动出现在输入框里，然后点击发送即可。</p>
+              </div>
+            )}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setShowMicHelp(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+              >
+                改用键盘输入
+              </button>
+              {isSttSupported && (
+                <button
+                  onClick={() => {
+                    setShowMicHelp(false);
+                    setTimeout(() => toggleRecording(), 150);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 text-white text-xs font-bold shadow-xs active:scale-95"
+                >
+                  再试一次麦克风
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick API Key Modal */}
       {showQuickKeyModal && (
