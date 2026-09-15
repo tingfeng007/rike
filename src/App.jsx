@@ -3,16 +3,18 @@ import {
   MessageSquare,
   BookOpen,
   Layers,
+  GraduationCap,
   Settings as SettingsIcon,
 } from 'lucide-react';
 import OralCoach from './components/OralCoach';
 import SmartReader from './components/SmartReader';
 import VocabularySRS from './components/VocabularySRS';
 import Settings from './components/Settings';
+import NewConcept from './components/NewConcept';
 import { StorageService } from './services/storage';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('oral'); // 'oral' | 'reader' | 'vocab' | 'settings'
+  const [activeTab, setActiveTab] = useState('oral'); // 'oral' | 'reader' | 'nce' | 'vocab' | 'settings'
   const [dueVocabCount, setDueVocabCount] = useState(0);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
@@ -79,6 +81,7 @@ export default function App() {
           <OralCoach onNavigateToVocab={() => setActiveTab('vocab')} />
         )}
         {activeTab === 'reader' && <SmartReader />}
+        {activeTab === 'nce' && <NewConcept />}
         {activeTab === 'vocab' && <VocabularySRS />}
         {activeTab === 'settings' && <Settings />}
       </main>
@@ -88,7 +91,7 @@ export default function App() {
         className="flex-none glass-floating-bar border-t border-white/80 px-3 py-1.5 select-none z-30 transition-all"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
       >
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-5 gap-1">
           {/* Tab 1: Oral */}
           <button
             onClick={() => setActiveTab('oral')}
@@ -116,6 +119,19 @@ export default function App() {
           </button>
 
           {/* Tab 3: Vocabulary & SRS */}
+          <button
+            onClick={() => setActiveTab('nce')}
+            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
+              activeTab === 'nce'
+                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <GraduationCap className="w-4.5 h-4.5 mb-1" />
+            <span className="text-[10.5px] leading-none tracking-tight">新概念</span>
+          </button>
+
+          {/* Tab 4: Vocabulary & SRS */}
           <button
             onClick={() => {
               setActiveTab('vocab');
