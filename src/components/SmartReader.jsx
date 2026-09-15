@@ -276,6 +276,22 @@ export default function SmartReader() {
     }
   };
 
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (selectedWord) setSelectedWord(null);
+        else if (selectedSentence) setSelectedSentence(null);
+        else if (editingAnnotation) setEditingAnnotation(null);
+        else if (showNotesModal) setShowNotesModal(false);
+        else if (showRefreshModal) setShowRefreshModal(false);
+        else if (showAddModal) setShowAddModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedWord, selectedSentence, editingAnnotation, showNotesModal, showRefreshModal, showAddModal]);
+
   // Load articles
   useEffect(() => {
     const list = StorageService.getArticles();
@@ -744,8 +760,8 @@ export default function SmartReader() {
 
       {/* 1. Bottom Sheet / Modal: Word Detail & Add to Vocab */}
       {selectedWord && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto">
+        <div onClick={() => setSelectedWord(null)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white w-full sm:max-w-md cursor-default rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto">
             {/* iOS BottomSheet Grabber */}
             <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-3" />
 
@@ -902,8 +918,8 @@ export default function SmartReader() {
 
       {/* 2. Modal: Deep Sentence & Grammar Breakdown */}
       {selectedSentence && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl p-5 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto">
+        <div onClick={() => setSelectedSentence(null)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white w-full sm:max-w-lg cursor-default rounded-t-3xl sm:rounded-2xl p-5 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-start justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -1036,8 +1052,8 @@ export default function SmartReader() {
 
       {/* 3. Modal: Add New Custom Article */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl p-5 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+        <div onClick={() => setShowAddModal(false)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white w-full max-w-lg cursor-default rounded-2xl p-5 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-slate-850 text-base">导入自学英文材料</h3>
               <button
@@ -1165,8 +1181,8 @@ export default function SmartReader() {
 
       {/* 4. Bottom Sheet: Sentence Highlight & Personal Note */}
       {editingAnnotation && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-[#fffdf7] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-amber-100 max-h-[88vh] overflow-y-auto">
+        <div onClick={() => setEditingAnnotation(null)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#fffdf7] cursor-default w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-amber-100 max-h-[88vh] overflow-y-auto">
             <div className="w-10 h-1 bg-amber-200 rounded-full mx-auto mb-4 sm:hidden" />
             <div className="flex items-start justify-between pb-3 border-b border-amber-100">
               <div className="flex items-center gap-2">
@@ -1224,8 +1240,8 @@ export default function SmartReader() {
 
       {/* 5. Modal: Reading Notes Collection & Markdown Export */}
       {showNotesModal && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-[#faf8f2] w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-stone-200 max-h-[90vh] flex flex-col overflow-hidden">
+        <div onClick={() => setShowNotesModal(false)} className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#faf8f2] cursor-default w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-stone-200 max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex-none p-5 pb-3 border-b border-stone-200 bg-white/70">
               <div className="flex items-start justify-between">
                 <div className="flex gap-2.5">
@@ -1320,8 +1336,8 @@ export default function SmartReader() {
 
       {/* 6. Modal: AI Daily Editorial Refresh & Switcher */}
       {showRefreshModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div onClick={() => setShowRefreshModal(false)} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white w-full max-w-md cursor-default rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-2">

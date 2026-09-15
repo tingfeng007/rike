@@ -778,7 +778,7 @@ export default function OralCoach({ onNavigateToVocab }) {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing && !e.isComposing) {
                   e.preventDefault();
                   handleSendMessage();
                 }
@@ -806,8 +806,8 @@ export default function OralCoach({ onNavigateToVocab }) {
 
       {/* Gentle Microphone Help Sheet */}
       {showMicHelp && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100">
+        <div onClick={() => setShowMicHelp(false)} className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white cursor-default w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100">
             <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-4 sm:hidden" />
             <div className="flex items-start justify-between">
               <div className="flex gap-3">
@@ -872,8 +872,8 @@ export default function OralCoach({ onNavigateToVocab }) {
 
       {/* Quick API Key Modal */}
       {showQuickKeyModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+        <div onClick={() => setShowQuickKeyModal(false)} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white cursor-default w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Key className="w-4 h-4 text-sky-600" />

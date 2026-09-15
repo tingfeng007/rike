@@ -1316,8 +1316,8 @@ export default function VocabularySRS() {
 
       {/* Manual Add Word Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl border border-slate-200">
+        <div onClick={() => setShowAddModal(false)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white cursor-default w-full max-w-md rounded-2xl p-5 shadow-xl border border-slate-200">
             <h3 className="font-bold text-slate-850 text-base mb-3">
               添加生词到生词本
             </h3>
@@ -1371,8 +1371,8 @@ export default function VocabularySRS() {
 
       {/* Today's Study Stats Detail Modal */}
       {showStatsDetail && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+        <div onClick={() => setShowStatsDetail(false)} className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in cursor-pointer">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white cursor-default w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🔥</span>
