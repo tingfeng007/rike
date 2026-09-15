@@ -414,9 +414,18 @@ export default function VocabularySRS() {
             <Target className="w-3.5 h-3.5 text-sky-600" />
             <span>今日已复习 <strong className="text-sky-700 font-bold">{studyStats.todayReviewedCount || 0}</strong> 词</span>
           </div>
-          <div className="text-emerald-700 font-semibold">
-            <span>牢记 {vocabulary.filter((w) => w.status === 'mastered').length} 词</span>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setFilterStatus('mastered');
+              setActiveTab('list');
+            }}
+            className="flex items-center gap-1 text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200/80 font-bold transition-all active:scale-95 shadow-2xs cursor-pointer"
+            title="点击查看所有已牢记掌握的生词名册"
+          >
+            <span>👑 牢记 {vocabulary.filter((w) => w.status === 'mastered').length} 词</span>
+            <span className="text-[10px] text-emerald-600">→</span>
+          </button>
         </div>
 
         {/* Tab Switcher */}
@@ -692,33 +701,87 @@ export default function VocabularySRS() {
         {/* ================= TAB 2: VOCABULARY LIST ================= */}
         {activeTab === 'list' && (
           <div className="space-y-3 max-w-xl mx-auto">
-            {/* Search and Status Filter */}
-            <div className="flex gap-2">
-              <div className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2">
-                <Search className="w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="搜索生词或中文释义..."
-                  className="w-full text-xs text-slate-800 placeholder-slate-600 outline-hidden bg-transparent"
-                />
-              </div>
-
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-white border border-slate-200 text-xs rounded-xl px-2.5 py-1.5 text-slate-700 outline-hidden"
-              >
-                <option value="all">全部生词 ({vocabulary.length})</option>
-                <option value="learning">学习中</option>
-                <option value="review">复习巩固中</option>
-                <option value="mastered">已牢记掌握</option>
-              </select>
+            {/* Search Bar */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl px-3 py-2 flex items-center gap-2 shadow-2xs">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索生词、中文释义或专属笔记..."
+                className="w-full text-xs text-slate-800 placeholder-slate-400 outline-hidden bg-transparent"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="p-0.5 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            {/* Words list */}
-            {filteredWords.length > 0 ? (
+            {/* Status Segmented Filter Pills */}
+            <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar pb-0.5 text-xs">
+              {[
+                { id: 'all', label: '全部', count: vocabulary.length },
+                { id: 'learning', label: '学习中', count: vocabulary.filter((w) => w.status === 'learning').length },
+                { id: 'review', label: '复习中', count: vocabulary.filter((w) => w.status === 'review').length },
+                { id: 'mastered', label: '👑 已牢记', count: vocabulary.filter((w) => w.status === 'mastered').length },
+              ].map((f) => {
+                const isActive = filterStatus === f.id;
+                const isMastered = f.id === 'mastered';
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFilterStatus(f.id)}
+                    className={`flex-none px-3 py-1.5 rounded-xl border text-xs transition-all active:scale-95 flex items-center gap-1.5 ${
+                      isActive
+                        ? isMastered
+                          ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                          : 'bg-sky-600 text-white border-sky-600 font-bold shadow-xs'
+                        : 'bg-white/90 text-slate-600 border-slate-200/80 hover:bg-white'
+                    }`}
+                  >
+                    <span>{f.label}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                        isActive
+                          ? 'bg-white/20 text-white font-bold'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      {f.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Words list or Specialized Mastered Empty State */}
+            {filterStatus === 'mastered' && filteredWords.length === 0 ? (
+              <div className="text-center py-12 px-5 bg-white/80 rounded-3xl border border-emerald-100/90 space-y-3 shadow-2xs">
+                <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner">
+                  👑
+                </div>
+                <h4 className="font-bold text-slate-850 text-sm">暂无已牢记的生词</h4>
+                <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                  科学记忆机制：当一个生词在闪卡复习中连续选择【✅ 掌握】达到 3~5 次以上，系统就会自动将其晋升为“👑 已牢记掌握”！
+                </p>
+                <div className="pt-1">
+                  <button
+                    onClick={() => {
+                      setActiveTab('flashcard');
+                      reloadVocabulary(true);
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95"
+                  >
+                    去闪卡挑战温故
+                  </button>
+                </div>
+              </div>
+            ) : filteredWords.length > 0 ? (
               <div className="space-y-2">
                 {filteredWords.map((item) => (
                   <div
