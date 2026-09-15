@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   BookOpen,
   Plus,
@@ -89,6 +89,35 @@ export default function SmartReader() {
   const [importMode, setImportMode] = useState('text'); // 'text' | 'url'
   const [urlInput, setUrlInput] = useState('');
   const [isExtractingUrl, setIsExtractingUrl] = useState(false);
+
+  // Reading scroll container & position persistence
+  const scrollContainerRef = useRef(null);
+
+  // Map of saved vocabulary for instant in-article highlighting
+  const savedVocabMap = useMemo(() => {
+    const list = StorageService.getVocabulary();
+    const map = {};
+    list.forEach((w) => {
+      if (w.word) map[w.word.toLowerCase().trim()] = w;
+    });
+    return map;
+  }, [articles, selectedWord]);
+
+  // Restore scroll position when article changes
+  useEffect(() => {
+    if (!currentArticle?.id || !scrollContainerRef.current) return;
+    const savedTop = localStorage.getItem(`lingoflow_read_pos_${currentArticle.id}`);
+    if (savedTop) {
+      setTimeout(() => {
+        scrollContainerRef.current?.scrollTo({ top: Number(savedTop), behavior: 'smooth' });
+      }, 100);
+    }
+  }, [currentArticle?.id]);
+
+  const handleScroll = (e) => {
+    if (!currentArticle?.id) return;
+    localStorage.setItem(`lingoflow_read_pos_${currentArticle.id}`, e.currentTarget.scrollTop);
+  };
 
   // Load articles
   useEffect(() => {
@@ -369,8 +398,12 @@ export default function SmartReader() {
         </div>
       </header>
 
-      {/* Reading Body */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
+      {/* Reading Body with Scroll Tracking */}
+      <div 
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 md:p-6 pb-24"
+      >
         {currentArticle ? (
           <article className="max-w-2xl mx-auto bg-white rounded-2xl p-5 md:p-7 shadow-xs border border-slate-200/80">
             {/* Title & Meta */}
@@ -407,15 +440,25 @@ export default function SmartReader() {
                             key={sIdx}
                             className={`inline leading-loose tracking-wide ${fontSize} text-slate-800 transition-colors rounded-sm group relative`}
                           >
-                            {words.map((word, wIdx) => (
-                              <span
-                                key={wIdx}
-                                onClick={() => handleWordClick(word)}
-                                className="cursor-pointer hover:bg-amber-100 hover:text-amber-900 rounded px-0.5 py-0.5 transition-colors active:bg-sky-200"
-                              >
-                                {word}{' '}
-                              </span>
-                            ))}
+                            {words.map((word, wIdx) => {
+                              const cleanWord = word.replace(/^[^\w]+|[^\w]+$/g, '').toLowerCase();
+                              const vocabHit = cleanWord && savedVocabMap[cleanWord];
+
+                              return (
+                                <span
+                                  key={wIdx}
+                                  onClick={() => handleWordClick(word)}
+                                  className={`cursor-pointer rounded px-0.5 py-0.5 transition-all active:bg-sky-200 ${
+                                    vocabHit
+                                      ? 'bg-amber-100/90 text-amber-950 font-semibold border-b-2 border-amber-400 shadow-2xs hover:bg-amber-200'
+                                      : 'hover:bg-sky-100 hover:text-sky-900'
+                                  }`}
+                                  title={vocabHit ? `✨ 生词本已收录: ${vocabHit.translation || ''}` : '点击查词释义'}
+                                >
+                                  {word}{' '}
+                                </span>
+                              );
+                            })}
 
                             {/* Sentence action trigger icon */}
                             <button

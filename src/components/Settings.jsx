@@ -127,7 +127,7 @@ export default function Settings() {
       if (typeof content === 'string') {
         const res = StorageService.importAllData(content);
         if (res.success) {
-          alert(`导入成功！共恢复了 ${res.count} 个生词卡片及相关设置。页面即将刷新。`);
+          alert(`🎉 智能增量合并成功！新增了 ${res.addedWords} 个新词条，同步更新了 ${res.updatedWords} 个词条，当前生词库共 ${res.totalWords} 词！页面即将刷新。`);
           window.location.reload();
         } else {
           alert(`导入失败: ${res.error}`);

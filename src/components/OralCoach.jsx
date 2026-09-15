@@ -13,6 +13,9 @@ import {
   Flame,
   Target,
   Trophy,
+  Key,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SCENARIOS } from '../data/scenarios';
@@ -38,6 +41,9 @@ export default function OralCoach({ onNavigateToVocab }) {
   const [activatedWords, setActivatedWords] = useState({});
   const [missionToast, setMissionToast] = useState(null);
   const [wantedWordsList, setWantedWordsList] = useState([]);
+  const [hasApiKey, setHasApiKey] = useState(() => Boolean(StorageService.getSettings().apiKey?.trim()));
+  const [showQuickKeyModal, setShowQuickKeyModal] = useState(false);
+  const [quickKeyInput, setQuickKeyInput] = useState('');
 
   // Randomly refresh wanted words
   const refreshWantedWords = () => {
@@ -103,6 +109,13 @@ export default function OralCoach({ onNavigateToVocab }) {
   const handleSendMessage = async (textToSend) => {
     const text = (textToSend || inputText).trim();
     if (!text || isLoading) return;
+
+    // Intercept missing API Key to prevent scary red error!
+    const currentSettings = StorageService.getSettings();
+    if (!currentSettings.apiKey?.trim()) {
+      setShowQuickKeyModal(true);
+      return;
+    }
 
     setInputText('');
 
@@ -622,6 +635,25 @@ export default function OralCoach({ onNavigateToVocab }) {
 
       {/* Input Bar: Audio Button & Text Box */}
       <footer className="flex-none glass-floating-bar border-t border-white/80 p-3 pb-safe z-20">
+        {/* Newbie Onboarding Banner when no key is set */}
+        {!hasApiKey && (
+          <div className="mb-2.5 p-2.5 bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200/80 rounded-2xl flex items-center justify-between shadow-2xs animate-fade-in">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">👋</span>
+              <div>
+                <h4 className="font-bold text-slate-900 text-xs">欢迎来到 LingoFlow！开启你的专属外教</h4>
+                <p className="text-[10.5px] text-slate-500">仅需填入 API Key 即可畅聊，对话隐私 100% 留存本地</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowQuickKeyModal(true)}
+              className="px-2.5 py-1 bg-gradient-to-r from-sky-600 to-blue-600 text-white text-[11px] font-bold rounded-xl shadow-xs active:scale-95 flex-none"
+            >
+              一键开启
+            </button>
+          </div>
+        )}
+
         {isRecording && (
           <div className="mb-2 px-3.5 py-2 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200/80 rounded-2xl flex items-center justify-between text-xs text-rose-800 shadow-xs animate-pulse">
             <div className="flex items-center gap-2">
@@ -687,6 +719,84 @@ export default function OralCoach({ onNavigateToVocab }) {
           </button>
         </div>
       </footer>
+
+      {/* Quick API Key Modal */}
+      {showQuickKeyModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-sky-600" />
+                <h3 className="font-bold text-slate-900 text-sm">
+                  填入 AI 密钥开启外教伴读
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowQuickKeyModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              为了保障你的对话隐私与自由度，LingoFlow 绝不上报你的任何对话记录，直接连通你自己的大模型（推荐 DeepSeek，性价比极高，几分钱可聊数百句）。
+            </p>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                DeepSeek API Key (sk-...)
+              </label>
+              <input
+                type="password"
+                value={quickKeyInput}
+                onChange={(e) => setQuickKeyInput(e.target.value)}
+                placeholder="在此粘贴你的 sk- 开头密钥"
+                className="w-full text-xs font-mono px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+              />
+              <div className="flex justify-between items-center mt-1 text-[11px]">
+                <span className="text-slate-400">密钥仅保存在本地手机中</span>
+                <a
+                  href="https://platform.deepseek.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-600 hover:underline flex items-center gap-0.5 font-medium"
+                >
+                  <span>获取免费 Key</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setShowQuickKeyModal(false)}
+                className="flex-1 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                先逛逛
+              </button>
+              <button
+                onClick={() => {
+                  const key = quickKeyInput.trim();
+                  if (!key) {
+                    alert('请先输入有效的 API Key');
+                    return;
+                  }
+                  const settings = StorageService.getSettings();
+                  settings.apiKey = key;
+                  StorageService.saveSettings(settings);
+                  setHasApiKey(true);
+                  setShowQuickKeyModal(false);
+                  alert('🎉 配置成功！现在可以畅快与外教 Echo 对练啦！');
+                }}
+                className="flex-1 py-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+              >
+                保存并开始聊天
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

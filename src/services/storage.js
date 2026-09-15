@@ -204,6 +204,15 @@ export const StorageService = {
     return updated;
   },
 
+  updateWord(wordId, updatedFields) {
+    const words = this.getVocabulary();
+    const index = words.findIndex((w) => w.id === wordId);
+    if (index === -1) return null;
+    words[index] = { ...words[index], ...updatedFields };
+    this.saveVocabulary(words);
+    return words[index];
+  },
+
   // --- Study Habit & Streak Stats ---
   getStudyStats() {
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -337,10 +346,80 @@ export const StorageService = {
   importAllData(jsonString) {
     try {
       const data = JSON.parse(jsonString);
-      if (data.settings) this.saveSettings(data.settings);
-      if (Array.isArray(data.vocabulary)) this.saveVocabulary(data.vocabulary);
-      if (Array.isArray(data.articles)) this.saveArticles(data.articles);
-      return { success: true, count: data.vocabulary?.length || 0 };
+      if (data.settings) {
+        const currentSettings = this.getSettings();
+        // Keep current API Key if the imported one is empty
+        const mergedSettings = {
+          ...data.settings,
+          apiKey: data.settings.apiKey?.trim() || currentSettings.apiKey || '',
+        };
+        this.saveSettings(mergedSettings);
+      }
+
+      let addedWords = 0;
+      let updatedWords = 0;
+
+      if (Array.isArray(data.vocabulary)) {
+        const localWords = this.getVocabulary();
+        const mergedMap = new Map();
+
+        // Put local words in map first
+        localWords.forEach((w) => {
+          if (w.word) mergedMap.set(w.word.toLowerCase().trim(), w);
+        });
+
+        // Merge imported words without destroying local progress
+        data.vocabulary.forEach((imp) => {
+          if (!imp.word) return;
+          const key = imp.word.toLowerCase().trim();
+          if (mergedMap.has(key)) {
+            const existing = mergedMap.get(key);
+            const merged = {
+              ...existing,
+              ...imp,
+              userNote: imp.userNote || existing.userNote || '',
+              reviewCount: Math.max(existing.reviewCount || 0, imp.reviewCount || 0),
+              step: Math.max(existing.step || 0, imp.step || 0),
+              status:
+                existing.status === 'mastered' || imp.status === 'mastered'
+                  ? 'mastered'
+                  : imp.status,
+            };
+            mergedMap.set(key, merged);
+            updatedWords += 1;
+          } else {
+            mergedMap.set(key, imp);
+            addedWords += 1;
+          }
+        });
+
+        const finalMerged = Array.from(mergedMap.values());
+        this.saveVocabulary(finalMerged);
+      }
+
+      // Merge articles without losing custom local articles
+      if (Array.isArray(data.articles)) {
+        const localArticles = this.getArticles();
+        const artMap = new Map();
+        localArticles.forEach((a) => {
+          if (a.title) artMap.set(a.title.trim().toLowerCase(), a);
+        });
+        data.articles.forEach((a) => {
+          if (!a.title) return;
+          const k = a.title.trim().toLowerCase();
+          if (!artMap.has(k)) {
+            artMap.set(k, a);
+          }
+        });
+        this.saveArticles(Array.from(artMap.values()));
+      }
+
+      return {
+        success: true,
+        totalWords: this.getVocabulary().length,
+        addedWords,
+        updatedWords,
+      };
     } catch (e) {
       return { success: false, error: e.message };
     }
