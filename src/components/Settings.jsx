@@ -30,6 +30,7 @@ export default function Settings() {
   const [testStatus, setTestStatus] = useState({ state: 'idle', message: '' }); // 'idle' | 'testing' | 'success' | 'error'
   const [showPwaGuide, setShowPwaGuide] = useState(false);
   const [availableVoices, setAvailableVoices] = useState(() => tts.getAvailableFemaleVoices());
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Reload voices when speech system initializes
   useEffect(() => {
@@ -161,21 +162,21 @@ export default function Settings() {
   const currentPreset = PROVIDER_PRESETS[settings.provider] || PROVIDER_PRESETS.custom;
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 overflow-y-auto">
+    <div className="flex flex-col h-full bg-transparent overflow-y-auto">
       {/* Top Header */}
       <header 
-        className="flex-none bg-white border-b border-slate-200 px-4 py-2.5 shadow-xs flex items-center justify-between sticky top-0 z-10"
+        className="flex-none glass-panel border-b border-white/80 px-4 py-2.5 shadow-xs flex items-center justify-between sticky top-0 z-20"
         style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}
       >
         <div className="flex items-center space-x-2">
           <SettingsIcon className="w-5 h-5 text-sky-600" />
-          <h2 className="font-semibold text-slate-850 text-sm">
+          <h2 className="font-bold text-slate-900 text-sm">
             个人自用配置与服务
           </h2>
         </div>
 
         {savedSuccess && (
-          <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-md animate-fade-in">
+          <span className="flex items-center gap-1 text-xs text-emerald-700 font-semibold bg-emerald-100/80 px-2.5 py-0.5 rounded-full ring-1 ring-emerald-200 animate-fade-in">
             <CheckCircle2 className="w-3.5 h-3.5" />
             已自动保存
           </span>
@@ -183,36 +184,36 @@ export default function Settings() {
       </header>
 
       {/* Main Form Content */}
-      <div className="p-4 space-y-5 max-w-xl mx-auto pb-24 w-full">
+      <div className="p-4 space-y-4 max-w-md mx-auto pb-28 w-full">
         {/* PWA Mobile Install Banner */}
-        <div className="bg-gradient-to-r from-sky-500 to-blue-600 rounded-2xl p-4 text-white shadow-xs">
+        <div className="bg-gradient-to-br from-sky-600 via-blue-600 to-indigo-700 rounded-3xl p-4.5 text-white shadow-md border border-white/20">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-[11px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
-                移动端畅玩
+              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                极简随身体验
               </span>
-              <h3 className="text-base font-bold">添加到手机主屏幕 (PWA)</h3>
+              <h3 className="text-base font-bold tracking-tight">添加到手机主屏幕 (PWA)</h3>
               <p className="text-xs text-white/80 leading-relaxed">
-                无需通过应用商店，直接在 iPhone Safari 或安卓 Chrome 中添加到主屏幕，享受全屏原生体验！
+                无需通过应用商店，在 Safari 或 Chrome 中添加到主屏幕，享受全屏原生 App 极速体验！
               </p>
             </div>
-            <Smartphone className="w-8 h-8 text-white/80 flex-none ml-2" />
+            <Smartphone className="w-7 h-7 text-white/80 flex-none ml-2" />
           </div>
 
           <button
             onClick={() => setShowPwaGuide(true)}
-            className="mt-3 bg-white text-sky-700 hover:bg-sky-50 text-xs font-semibold px-3 py-1.5 rounded-xl shadow-xs transition-colors"
+            className="mt-3 bg-white text-sky-750 hover:bg-sky-50 text-xs font-bold px-3.5 py-1.5 rounded-xl shadow-xs transition-colors active:scale-95"
           >
             查看苹果/安卓添加教程
           </button>
         </div>
 
         {/* Section 1: AI Model Configuration */}
-        <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/80 space-y-3.5">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div className="glass-panel rounded-3xl p-5 shadow-xs border border-white/90 space-y-3.5">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Key className="w-4 h-4 text-sky-600" />
-              <h3 className="text-sm font-bold text-slate-850">
+              <h3 className="text-sm font-bold text-slate-900">
                 AI 核心配置 (大模型连接)
               </h3>
             </div>
@@ -221,7 +222,7 @@ export default function Settings() {
                 href={currentPreset.helpUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-sky-600 hover:underline flex items-center gap-1"
+                className="text-xs text-sky-600 font-medium hover:underline flex items-center gap-1"
               >
                 <span>获取 Key</span>
                 <ExternalLink className="w-3 h-3" />
@@ -231,13 +232,13 @@ export default function Settings() {
 
           {/* Provider Preset */}
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               选择 AI 服务商 (支持 OpenAI 兼容协议)
             </label>
             <select
               value={settings.provider}
               onChange={(e) => handleProviderChange(e.target.value)}
-              className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+              className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl bg-white/90 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
             >
               {Object.entries(PROVIDER_PRESETS).map(([key, p]) => (
                 <option key={key} value={key}>
@@ -249,7 +250,7 @@ export default function Settings() {
 
           {/* API Key */}
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               API Key (保存在手机本地浏览器中，绝不上报服务器) *
             </label>
             <div className="relative flex items-center">
@@ -258,45 +259,61 @@ export default function Settings() {
                 value={settings.apiKey}
                 onChange={(e) => updateSetting('apiKey', e.target.value)}
                 placeholder="sk-..."
-                className="w-full text-xs font-mono px-3 py-2 pr-10 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                className="w-full text-xs font-mono px-3 py-2 pr-10 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden bg-white/90"
               />
               <button
                 type="button"
                 onClick={() => setShowKey(!showKey)}
-                className="absolute right-2.5 text-slate-500 hover:text-slate-600 p-1"
+                className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1"
               >
                 {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
-          {/* Base URL */}
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
-              API 基础路径 (Base URL)
-            </label>
-            <input
-              type="text"
-              value={settings.baseUrl}
-              onChange={(e) => updateSetting('baseUrl', e.target.value)}
-              placeholder="https://api.deepseek.com"
-              className="w-full text-xs font-mono px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
-            />
+          {/* Advanced Collapse Toggle */}
+          <div className="pt-0.5">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-[11px] text-slate-500 hover:text-sky-600 flex items-center gap-1 font-medium transition-colors"
+            >
+              <span>{showAdvanced ? '收起高级极客参数 ▲' : '展开高级参数 (Base URL / 换模型) ▼'}</span>
+            </button>
           </div>
 
-          {/* Model */}
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
-              调用模型名称 (Model)
-            </label>
-            <input
-              type="text"
-              value={settings.model}
-              onChange={(e) => updateSetting('model', e.target.value)}
-              placeholder="deepseek-chat"
-              className="w-full text-xs font-mono px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
-            />
-          </div>
+          {/* Collapsible Advanced inputs */}
+          {showAdvanced && (
+            <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/60 space-y-3 animate-fade-in">
+              {/* Base URL */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  API 基础路径 (Base URL)
+                </label>
+                <input
+                  type="text"
+                  value={settings.baseUrl}
+                  onChange={(e) => updateSetting('baseUrl', e.target.value)}
+                  placeholder="https://api.deepseek.com"
+                  className="w-full text-xs font-mono px-3 py-2 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                />
+              </div>
+
+              {/* Model */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  调用模型名称 (Model)
+                </label>
+                <input
+                  type="text"
+                  value={settings.model}
+                  onChange={(e) => updateSetting('model', e.target.value)}
+                  placeholder="deepseek-chat"
+                  className="w-full text-xs font-mono px-3 py-2 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Test Button & Feedback */}
           <div className="pt-1">
@@ -331,7 +348,7 @@ export default function Settings() {
         </div>
 
         {/* Section 2: Speech & TTS Settings */}
-        <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/80 space-y-3.5">
+        <div className="glass-panel rounded-3xl p-5 shadow-xs border border-white/90 space-y-3.5">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Volume2 className="w-4 h-4 text-sky-600" />
@@ -430,7 +447,7 @@ export default function Settings() {
         </div>
 
         {/* Section 3: Data Management & Cross-device sync */}
-        <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/80 space-y-3">
+        <div className="glass-panel rounded-3xl p-5 shadow-xs border border-white/90 space-y-3">
           <div className="pb-2 border-b border-slate-100">
             <h3 className="text-sm font-bold text-slate-850">
               数据备份与跨设备同步 (自用无云端泄露)

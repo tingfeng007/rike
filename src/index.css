@@ -16,6 +16,7 @@
     padding: 0;
     overflow: hidden;
     position: fixed;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Segoe UI", Roboto, sans-serif;
   }
 
   #root {
@@ -26,7 +27,7 @@
   }
 
   body {
-    @apply bg-slate-100 text-slate-900 antialiased select-none;
+    @apply bg-slate-900 text-slate-800 antialiased select-none;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
@@ -44,6 +45,27 @@
     user-select: text;
     -webkit-user-select: text;
   }
+}
+
+/* Glassmorphism & High-craft UI Utilities */
+.glass-panel {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px -4px rgba(15, 23, 42, 0.05), 0 2px 8px -2px rgba(15, 23, 42, 0.03);
+}
+
+.glass-floating-bar {
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 40px -6px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04);
+}
+
+.editorial-serif {
+  font-family: "Charter", "Iowan Old Style", "Palatino", "Source Serif Pro", Georgia, serif;
 }
 
 /* 3D Flashcard flip animation */
@@ -66,11 +88,11 @@
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.3);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-track {

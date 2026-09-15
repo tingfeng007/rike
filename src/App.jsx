@@ -32,9 +32,16 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full max-w-lg mx-auto overflow-hidden bg-slate-100 font-sans shadow-2xl relative">
+    <div className="flex flex-col h-[100dvh] w-full max-w-md mx-auto overflow-hidden bg-slate-50 font-sans shadow-2xl relative">
+      {/* Background Subtle Gradient Atmosphere */}
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="absolute -top-24 -left-24 w-72 h-72 bg-sky-200/30 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 -right-24 w-80 h-80 bg-indigo-100/30 rounded-full blur-3xl" />
+        <div className="absolute -bottom-24 left-1/4 w-72 h-72 bg-amber-100/20 rounded-full blur-3xl" />
+      </div>
+
       {/* Main View Container */}
-      <main className="flex-1 overflow-hidden relative">
+      <main className="flex-1 overflow-hidden relative z-10">
         {activeTab === 'oral' && (
           <OralCoach onNavigateToVocab={() => setActiveTab('vocab')} />
         )}
@@ -43,36 +50,36 @@ export default function App() {
         {activeTab === 'settings' && <Settings />}
       </main>
 
-      {/* Bottom Navigation Bar (Mobile-first TabBar) */}
+      {/* Bottom Floating Frosted Glass TabBar */}
       <nav 
-        className="flex-none bg-white border-t border-slate-200/90 px-2 py-1 shadow-lg select-none z-20" 
+        className="flex-none glass-floating-bar border-t border-white/80 px-3 py-1.5 select-none z-30 transition-all"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
       >
-        <div className="max-w-md mx-auto grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-4 gap-1.5">
           {/* Tab 1: Oral */}
           <button
             onClick={() => setActiveTab('oral')}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-xl transition-all ${
+            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'oral'
-                ? 'text-sky-600 font-semibold scale-105'
-                : 'text-slate-600 hover:text-slate-800'
+                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <MessageSquare className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-none">口语对练</span>
+            <MessageSquare className="w-4.5 h-4.5 mb-1" />
+            <span className="text-[10.5px] leading-none tracking-tight">口语对练</span>
           </button>
 
           {/* Tab 2: Smart Reader */}
           <button
             onClick={() => setActiveTab('reader')}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-xl transition-all ${
+            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'reader'
-                ? 'text-sky-600 font-semibold scale-105'
-                : 'text-slate-600 hover:text-slate-800'
+                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <BookOpen className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-none">精读伴读</span>
+            <BookOpen className="w-4.5 h-4.5 mb-1" />
+            <span className="text-[10.5px] leading-none tracking-tight">精读伴读</span>
           </button>
 
           {/* Tab 3: Vocabulary & SRS */}
@@ -81,34 +88,34 @@ export default function App() {
               setActiveTab('vocab');
               updateDueCount();
             }}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-xl transition-all relative ${
+            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all relative ${
               activeTab === 'vocab'
-                ? 'text-sky-600 font-semibold scale-105'
-                : 'text-slate-600 hover:text-slate-800'
+                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             <div className="relative">
-              <Layers className="w-5 h-5 mb-0.5" />
+              <Layers className="w-4.5 h-4.5 mb-1" />
               {dueVocabCount > 0 && (
-                <span className="absolute -top-1 -right-2.5 bg-rose-500 text-white text-[9px] font-bold px-1 rounded-full min-w-[14px] h-[14px] flex items-center justify-center leading-none">
+                <span className="absolute -top-1 -right-2 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-[9px] font-bold px-1 rounded-full min-w-[14px] h-[14px] flex items-center justify-center leading-none shadow-xs animate-pulse">
                   {dueVocabCount}
                 </span>
               )}
             </div>
-            <span className="text-[11px] leading-none">生词闪卡</span>
+            <span className="text-[10.5px] leading-none tracking-tight">生词闪卡</span>
           </button>
 
           {/* Tab 4: Settings */}
           <button
             onClick={() => setActiveTab('settings')}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-xl transition-all ${
+            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'settings'
-                ? 'text-sky-600 font-semibold scale-105'
-                : 'text-slate-600 hover:text-slate-800'
+                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <SettingsIcon className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-none">设置</span>
+            <SettingsIcon className="w-4.5 h-4.5 mb-1" />
+            <span className="text-[10.5px] leading-none tracking-tight">设置</span>
           </button>
         </div>
       </nav>

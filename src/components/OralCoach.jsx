@@ -297,46 +297,46 @@ export default function OralCoach({ onNavigateToVocab }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div className="flex flex-col h-full bg-transparent">
       {/* Top Header: Scenario Selector & Actions */}
       <header 
-        className="flex-none bg-white border-b border-slate-200 px-4 py-2.5 shadow-xs"
+        className="flex-none glass-panel border-b border-white/80 px-4 py-2.5 shadow-xs z-10"
         style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}
       >
-        <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
-            <span className="text-2xl">{currentScenario.icon}</span>
+            <span className="text-2xl drop-shadow-xs">{currentScenario.icon}</span>
             <div>
-              <h2 className="font-semibold text-slate-800 text-sm leading-tight flex items-center gap-1.5">
+              <h2 className="font-bold text-slate-900 text-sm leading-tight flex items-center gap-1.5">
                 {currentScenario.name}
-                <span className="text-xs font-normal text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-full">
-                  Oral Coach
+                <span className="text-[10px] font-semibold text-sky-700 bg-sky-100/80 px-2 py-0.5 rounded-full ring-1 ring-sky-200/60">
+                  AI 外教 Echo
                 </span>
               </h2>
-              <p className="text-xs text-slate-600 truncate max-w-[200px]">
+              <p className="text-[11px] text-slate-500 truncate max-w-[210px] mt-0.5">
                 {currentScenario.desc}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-1.5">
             <button
               onClick={() => setPracticeWithVocab(!practiceWithVocab)}
               title="联动生词本：在对话中强化记忆今日生词"
               className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full transition-all border ${
                 practiceWithVocab
-                  ? 'bg-amber-50 text-amber-800 border-amber-300 font-medium'
-                  : 'bg-slate-50 text-slate-600 border-slate-200'
+                  ? 'bg-amber-100/80 text-amber-900 border-amber-300 font-semibold shadow-xs ring-1 ring-amber-200'
+                  : 'bg-white/80 text-slate-600 border-slate-200 hover:bg-white'
               }`}
             >
-              <Flame className={`w-3.5 h-3.5 ${practiceWithVocab ? 'text-amber-600 fill-amber-500' : 'text-slate-500'}`} />
+              <Flame className={`w-3.5 h-3.5 ${practiceWithVocab ? 'text-amber-600 fill-amber-500' : 'text-slate-400'}`} />
               <span>生词联动</span>
             </button>
 
             <button
               onClick={handleClearHistory}
               title="重置当前对话"
-              className="p-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-full transition-colors"
+              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-full transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -351,10 +351,10 @@ export default function OralCoach({ onNavigateToVocab }) {
               <button
                 key={sc.id}
                 onClick={() => handleSelectScenario(sc)}
-                className={`flex-none flex items-center space-x-1 px-3 py-1 rounded-full border transition-all ${
+                className={`flex-none flex items-center space-x-1.5 px-3 py-1 rounded-full border transition-all ${
                   isActive
-                    ? 'bg-sky-600 text-white border-sky-600 shadow-xs font-medium'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white border-transparent shadow-sm font-semibold'
+                    : 'bg-white/80 text-slate-600 border-slate-200/80 hover:bg-white'
                 }`}
               >
                 <span>{sc.icon}</span>
@@ -366,8 +366,8 @@ export default function OralCoach({ onNavigateToVocab }) {
 
         {/* Wanted Words Mission Banner */}
         {practiceWithVocab && StorageService.getVocabulary().slice(0, 3).length > 0 && (
-          <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-850 flex-none mr-2">
+          <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-900 flex-none mr-2">
               <Target className="w-3.5 h-3.5 text-amber-600" />
               <span>生词通缉令：</span>
             </div>
@@ -378,10 +378,10 @@ export default function OralCoach({ onNavigateToVocab }) {
                   <button
                     key={item.id}
                     onClick={() => tts.speak(item.word)}
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-medium border flex items-center gap-1 flex-none transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 flex-none transition-all active:scale-95 ${
                       isHit
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold shadow-xs scale-105'
-                        : 'bg-amber-50/80 text-amber-900 border-amber-200 hover:bg-amber-100'
+                        ? 'bg-emerald-500 text-white border-emerald-600 font-bold shadow-xs'
+                        : 'bg-amber-50/90 text-amber-900 border-amber-300/80 hover:bg-amber-100'
                     }`}
                     title={`点击听发音：${item.translation || ''}`}
                   >
@@ -416,12 +416,12 @@ export default function OralCoach({ onNavigateToVocab }) {
               className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
             >
               <div
-                className={`max-w-[86%] rounded-2xl p-3.5 shadow-xs relative transition-all ${
+                className={`max-w-[86%] rounded-3xl p-4 shadow-sm relative transition-all ${
                   isUser
-                    ? 'bg-sky-600 text-white rounded-br-xs'
+                    ? 'bg-gradient-to-br from-sky-600 to-blue-600 text-white rounded-br-xs shadow-[0_4px_16px_-2px_rgba(2,132,199,0.3)]'
                     : msg.isError
                     ? 'bg-rose-50 border border-rose-200 text-rose-800 rounded-bl-xs'
-                    : 'bg-white border border-slate-200/80 text-slate-800 rounded-bl-xs'
+                    : 'glass-panel text-slate-850 rounded-bl-xs shadow-[0_4px_20px_-4px_rgba(15,23,42,0.06)] border border-white/90'
                 }`}
               >
                 {/* Text Content */}
@@ -440,13 +440,13 @@ export default function OralCoach({ onNavigateToVocab }) {
 
                 {/* AI Auxiliary Controls (TTS & Translate) */}
                 {!isUser && !msg.isError && !msg.isStreaming && (
-                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                    <div className="flex items-center space-x-2">
+                  <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                    <div className="flex items-center space-x-1">
                       <button
                         onClick={() => playAudio(msg.id, msg.replyText)}
-                        className={`flex items-center space-x-1 px-2 py-0.5 rounded-md transition-colors ${
+                        className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg transition-colors ${
                           isSpeaking
-                            ? 'bg-sky-100 text-sky-700 font-medium animate-pulse'
+                            ? 'bg-sky-100 text-sky-700 font-semibold animate-pulse'
                             : 'hover:bg-slate-100 text-slate-600'
                         }`}
                       >
@@ -466,10 +466,10 @@ export default function OralCoach({ onNavigateToVocab }) {
                       {msg.replyTextCn && (
                         <button
                           onClick={() => toggleTranslation(msg.id)}
-                          className="flex items-center space-x-1 px-2 py-0.5 rounded-md hover:bg-slate-100 text-slate-600 transition-colors"
+                          className="flex items-center space-x-1 px-2.5 py-1 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
                         >
                           <Languages className="w-3.5 h-3.5" />
-                          <span>{showCn ? '隐藏中文' : '中文大意'}</span>
+                          <span>{showCn ? '收起中文' : '看中文'}</span>
                         </button>
                       )}
                     </div>
@@ -478,7 +478,7 @@ export default function OralCoach({ onNavigateToVocab }) {
 
                 {/* Collapsible Chinese Translation */}
                 {!isUser && showCn && msg.replyTextCn && (
-                  <div className="mt-2 p-2 bg-slate-50 rounded-lg text-xs text-slate-700 leading-relaxed border border-slate-100 select-text">
+                  <div className="mt-2.5 p-2.5 bg-slate-50/90 rounded-xl text-xs text-slate-700 leading-relaxed border border-slate-200/60 select-text">
                     {msg.replyTextCn}
                   </div>
                 )}
@@ -486,23 +486,23 @@ export default function OralCoach({ onNavigateToVocab }) {
 
               {/* Dual-Track Feedback: Grammar Correction & Idiomatic Alternative */}
               {!isUser && msg.feedback?.hasSlip && (
-                <div className="max-w-[86%] mt-2 bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200/80 rounded-xl p-3 shadow-xs text-xs text-amber-950">
-                  <div className="flex items-center justify-between font-medium text-amber-850 mb-1.5">
-                    <span className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-amber-700 font-semibold">
+                <div className="max-w-[86%] mt-2.5 bg-gradient-to-br from-amber-50/95 via-orange-50/80 to-amber-50/90 border border-amber-200/80 rounded-2xl p-3.5 shadow-sm text-xs text-amber-950">
+                  <div className="flex items-center justify-between font-bold text-amber-900 mb-2">
+                    <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-amber-800">
                       <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                      口语纠错与地道表达升级
+                      外教纠错与地道表达升级
                     </span>
                   </div>
 
                   {/* Original slip vs Corrected */}
                   {msg.feedback.userOriginal && (
-                    <div className="space-y-1 mb-2 bg-white/70 p-2 rounded-lg border border-amber-100">
-                      <div className="flex items-start gap-1 text-slate-600 line-through">
-                        <span className="text-[10px] bg-slate-200 text-slate-600 px-1 rounded">原句</span>
+                    <div className="space-y-1.5 mb-2.5 bg-white/80 p-2.5 rounded-xl border border-amber-100 shadow-2xs">
+                      <div className="flex items-start gap-1.5 text-slate-500 line-through">
+                        <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">原句</span>
                         <span className="select-text">{msg.feedback.userOriginal}</span>
                       </div>
-                      <div className="flex items-start gap-1 text-emerald-800 font-medium">
-                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1 rounded">更正</span>
+                      <div className="flex items-start gap-1.5 text-emerald-800 font-semibold">
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">更正</span>
                         <span className="select-text">{msg.feedback.corrected}</span>
                       </div>
                     </div>
@@ -510,17 +510,17 @@ export default function OralCoach({ onNavigateToVocab }) {
 
                   {/* Explanation in Chinese */}
                   {msg.feedback.explanationZh && (
-                    <p className="text-slate-700 leading-relaxed mb-2">
+                    <p className="text-slate-700 leading-relaxed mb-2.5 pl-0.5">
                       💡 {msg.feedback.explanationZh}
                     </p>
                   )}
 
                   {/* Native / Advanced alternative with 1-click Add to Vocab */}
                   {msg.feedback.betterAlternative && (
-                    <div className="flex items-center justify-between pt-1.5 border-t border-amber-200/60 mt-1">
+                    <div className="flex items-center justify-between pt-2 border-t border-amber-200/60 mt-1">
                       <div className="flex-1 pr-2">
-                        <span className="text-[10px] text-amber-700 block font-medium">✨ 外教级地道说法:</span>
-                        <span className="text-amber-900 font-medium select-text">
+                        <span className="text-[10px] text-amber-800 block font-semibold">✨ 外教级地道说法:</span>
+                        <span className="text-amber-950 font-bold select-text font-serif text-[13px]">
                           "{msg.feedback.betterAlternative}"
                         </span>
                       </div>
@@ -533,16 +533,16 @@ export default function OralCoach({ onNavigateToVocab }) {
                               msg.feedback.explanationZh
                             )
                           }
-                          className="flex items-center gap-1 bg-amber-200/70 hover:bg-amber-300 text-amber-900 px-2 py-1 rounded-md text-[11px] font-medium transition-colors"
+                          className="flex items-center gap-1 bg-amber-200/80 hover:bg-amber-300 text-amber-950 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition-colors shadow-2xs active:scale-95"
                         >
                           {addedWordFeedback[msg.feedback.betterAlternative] ? (
                             <>
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                               <span>已收藏</span>
                             </>
                           ) : (
                             <>
-                              <BookmarkPlus className="w-3 h-3" />
+                              <BookmarkPlus className="w-3.5 h-3.5 text-amber-800" />
                               <span>存入生词本</span>
                             </>
                           )}
@@ -550,7 +550,7 @@ export default function OralCoach({ onNavigateToVocab }) {
                         {addedWordFeedback[msg.feedback.betterAlternative] && onNavigateToVocab && (
                           <button
                             onClick={onNavigateToVocab}
-                            className="flex items-center gap-0.5 bg-sky-100 hover:bg-sky-200 text-sky-800 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors"
+                            className="flex items-center gap-0.5 bg-sky-100 hover:bg-sky-200 text-sky-800 px-2 py-1.5 rounded-xl text-[11px] font-bold transition-colors shadow-2xs"
                             title="前往生词本查看刚收藏的卡片"
                           >
                             <span>去生词本 →</span>
@@ -596,19 +596,19 @@ export default function OralCoach({ onNavigateToVocab }) {
       </div>
 
       {/* Input Bar: Audio Button & Text Box */}
-      <footer className="flex-none bg-white border-t border-slate-200 p-3 pb-safe">
+      <footer className="flex-none glass-floating-bar border-t border-white/80 p-3 pb-safe z-20">
         {isRecording && (
-          <div className="mb-2 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-between text-xs text-rose-700 animate-pulse">
+          <div className="mb-2 px-3.5 py-2 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200/80 rounded-2xl flex items-center justify-between text-xs text-rose-800 shadow-xs animate-pulse">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-              <span>正在聆听... 说完点右侧立即发送</span>
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+              <span className="font-medium">正在聆听... 说完点右侧立即发送</span>
             </div>
             <button
               onClick={() => {
                 toggleRecording();
                 setTimeout(() => handleSendMessage(), 200);
               }}
-              className="bg-emerald-600 text-white font-semibold px-2.5 py-1 rounded-md text-[11px] hover:bg-emerald-700 transition-colors shadow-xs"
+              className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] hover:from-emerald-700 hover:to-teal-700 transition-all shadow-xs active:scale-95"
             >
               🚀 说完，立即发送
             </button>
@@ -620,18 +620,18 @@ export default function OralCoach({ onNavigateToVocab }) {
           <button
             type="button"
             onClick={toggleRecording}
-            className={`p-3 rounded-full flex-none transition-all ${
+            className={`p-3 rounded-2xl flex-none transition-all active:scale-90 ${
               isRecording
-                ? 'bg-rose-500 text-white ring-4 ring-rose-200 shadow-md scale-105'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                ? 'bg-gradient-to-br from-rose-500 to-pink-600 text-white ring-4 ring-rose-200/70 shadow-md scale-105'
+                : 'bg-white/90 hover:bg-white text-slate-700 shadow-xs border border-slate-200/80'
             }`}
             title="点击开始/停止英语语音识别"
           >
-            {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5 text-sky-600" />}
           </button>
 
           {/* Text Input */}
-          <div className="flex-1 bg-slate-100 rounded-2xl flex items-center px-3.5 py-1.5 focus-within:ring-2 focus-within:ring-sky-500/40 focus-within:bg-white border border-transparent focus-within:border-sky-300 transition-all">
+          <div className="flex-1 bg-white/90 rounded-2xl flex items-center px-3.5 py-1.5 focus-within:ring-2 focus-within:ring-sky-500/30 focus-within:bg-white border border-slate-200/80 focus-within:border-sky-400 transition-all shadow-xs">
             <textarea
               rows={1}
               value={inputText}
@@ -643,7 +643,7 @@ export default function OralCoach({ onNavigateToVocab }) {
                 }
               }}
               placeholder="用英语回复或点麦克风说话..."
-              className="w-full bg-transparent resize-none outline-hidden text-sm text-slate-800 placeholder-slate-600 max-h-24 py-1.5"
+              className="w-full bg-transparent resize-none outline-hidden text-sm text-slate-800 placeholder-slate-400 max-h-24 py-1.5"
             />
           </div>
 
@@ -652,10 +652,10 @@ export default function OralCoach({ onNavigateToVocab }) {
             type="button"
             onClick={() => handleSendMessage()}
             disabled={!inputText.trim() || isLoading}
-            className={`p-3 rounded-full flex-none transition-all ${
+            className={`p-3 rounded-2xl flex-none transition-all active:scale-90 ${
               inputText.trim() && !isLoading
-                ? 'bg-sky-600 text-white shadow-xs hover:bg-sky-700'
-                : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                ? 'bg-gradient-to-br from-sky-600 to-blue-600 text-white shadow-md hover:from-sky-700 hover:to-blue-700'
+                : 'bg-slate-200/80 text-slate-400 cursor-not-allowed'
             }`}
           >
             <Send className="w-4 h-4" />

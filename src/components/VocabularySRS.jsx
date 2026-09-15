@@ -329,19 +329,19 @@ export default function VocabularySRS() {
   const currentCard = dueCards[currentIndex];
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div className="flex flex-col h-full bg-transparent">
       {/* Top Header */}
       <header 
-        className="flex-none bg-white border-b border-slate-200 px-4 py-2.5 shadow-xs"
+        className="flex-none glass-panel border-b border-white/80 px-4 py-2.5 shadow-xs z-10"
         style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}
       >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
             <Layers className="w-5 h-5 text-sky-600" />
-            <h2 className="font-semibold text-slate-850 text-sm">
+            <h2 className="font-bold text-slate-900 text-sm">
               艾宾浩斯生词本
             </h2>
-            <span className="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-medium">
+            <span className="text-[11px] bg-sky-50/90 text-sky-700 px-2 py-0.5 rounded-full font-semibold ring-1 ring-sky-200/60">
               共 {vocabulary.length} 词
             </span>
           </div>
@@ -349,7 +349,7 @@ export default function VocabularySRS() {
           <div className="flex items-center gap-1.5">
             <button
               onClick={handleOpenStoryStudio}
-              className="flex items-center gap-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-xs transition-all active:scale-95"
+              className="flex items-center gap-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-2.5 py-1 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-95"
               title="一键把难记生词写成悬疑微小说与有声广播剧"
             >
               <Film className="w-3.5 h-3.5 text-amber-100" />
@@ -358,7 +358,7 @@ export default function VocabularySRS() {
 
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1 bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+              className="flex items-center gap-1 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white px-2.5 py-1 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-95"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>添加生词</span>
@@ -367,16 +367,16 @@ export default function VocabularySRS() {
         </div>
 
         {/* Study Habit Stats Bar */}
-        <div className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5 mb-2 text-xs">
-          <div className="flex items-center gap-1 text-amber-700 font-semibold">
+        <div className="flex items-center justify-between bg-white/80 border border-slate-200/80 rounded-2xl px-3 py-1.5 mb-2 text-xs shadow-2xs">
+          <div className="flex items-center gap-1 text-amber-800 font-bold">
             <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
             <span>连续 {studyStats.streakDays || 1} 天打卡</span>
           </div>
           <div className="flex items-center gap-1 text-slate-600">
             <Target className="w-3.5 h-3.5 text-sky-600" />
-            <span>今日已复习 <strong className="text-sky-700">{studyStats.todayReviewedCount || 0}</strong> 词</span>
+            <span>今日已复习 <strong className="text-sky-700 font-bold">{studyStats.todayReviewedCount || 0}</strong> 词</span>
           </div>
-          <div className="text-emerald-700 font-medium">
+          <div className="text-emerald-700 font-semibold">
             <span>牢记 {vocabulary.filter((w) => w.status === 'mastered').length} 词</span>
           </div>
         </div>
@@ -444,9 +444,9 @@ export default function VocabularySRS() {
                 </div>
 
                 {/* Progress Track */}
-                <div className="w-full h-1.5 bg-slate-200 rounded-full mb-4 overflow-hidden">
+                <div className="w-full h-1.5 bg-slate-200/80 rounded-full mb-4 overflow-hidden">
                   <div
-                    className="h-full bg-sky-600 transition-all duration-300"
+                    className="h-full bg-gradient-to-r from-sky-500 to-blue-600 transition-all duration-300"
                     style={{
                       width: `${((currentIndex + 1) / dueCards.length) * 100}%`,
                     }}
@@ -464,9 +464,9 @@ export default function VocabularySRS() {
                     }`}
                   >
                     {/* --- FRONT SIDE --- */}
-                    <div className="absolute inset-0 backface-hidden bg-white border border-slate-200/90 rounded-3xl p-6 flex flex-col justify-between shadow-md hover:shadow-lg transition-shadow">
+                    <div className="absolute inset-0 backface-hidden bg-white/95 border border-white/90 rounded-3xl p-6 flex flex-col justify-between shadow-[0_8px_30px_-4px_rgba(15,23,42,0.08)] hover:shadow-xl transition-all">
                       <div className="flex justify-between items-start">
-                        <span className="text-[11px] font-semibold px-2 py-0.5 bg-sky-50 text-sky-700 rounded-md">
+                        <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-sky-50 text-sky-700 rounded-lg ring-1 ring-sky-200/60">
                           {currentCard.tags?.[0] || '生词闪卡'}
                         </span>
                         <button
@@ -474,7 +474,7 @@ export default function VocabularySRS() {
                             e.stopPropagation();
                             tts.speak(currentCard.word);
                           }}
-                          className="p-2 text-sky-600 hover:bg-sky-50 rounded-full transition-colors"
+                          className="p-2 text-sky-600 hover:bg-sky-50 rounded-full transition-colors active:scale-90"
                           title="发音朗读"
                         >
                           <Volume2 className="w-5 h-5" />
@@ -483,11 +483,11 @@ export default function VocabularySRS() {
 
                       {/* Main Word & Phonetic */}
                       <div className="text-center py-6">
-                        <h2 className="text-3xl font-bold text-slate-900 tracking-tight">
+                        <h2 className="text-3xl md:text-4xl font-bold font-serif text-slate-900 tracking-tight">
                           {currentCard.word}
                         </h2>
                         {currentCard.phonetic && (
-                          <p className="text-sm text-slate-600 font-mono mt-1">
+                          <p className="text-sm text-sky-700 font-mono mt-1.5 font-medium">
                             {currentCard.phonetic}
                           </p>
                         )}
@@ -495,8 +495,8 @@ export default function VocabularySRS() {
 
                       {/* Context Sentence (Crucial for Retention!) */}
                       {currentCard.contextSentence ? (
-                        <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs text-slate-700 leading-relaxed text-center">
-                          <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold mb-1">
+                        <div className="bg-slate-50/90 p-3.5 rounded-2xl border border-slate-200/60 text-xs text-slate-700 leading-relaxed text-center shadow-2xs font-serif">
+                          <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-sans font-bold mb-1">
                             语境例句
                           </span>
                           "{currentCard.contextSentence}"
@@ -505,21 +505,21 @@ export default function VocabularySRS() {
                         <div className="h-10"></div>
                       )}
 
-                      <div className="text-center text-xs text-slate-600 flex items-center justify-center gap-1">
-                        <RotateCw className="w-3.5 h-3.5" />
-                        <span>点击卡片任意位置查看释义与剖析</span>
+                      <div className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1">
+                        <RotateCw className="w-3 h-3" />
+                        <span>轻触卡片翻转查看释义</span>
                       </div>
                     </div>
 
                     {/* --- BACK SIDE --- */}
-                    <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white border border-sky-200 rounded-3xl p-6 flex flex-col justify-between shadow-md overflow-y-auto">
+                    <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white/95 border border-amber-200/80 rounded-3xl p-6 flex flex-col justify-between shadow-[0_8px_30px_-4px_rgba(15,23,42,0.08)] overflow-y-auto">
                       <div>
                         <div className="flex justify-between items-start pb-3 border-b border-slate-100">
                           <div>
-                            <span className="text-xs font-semibold px-2 py-0.5 bg-sky-100 text-sky-800 rounded-md mr-2">
+                            <span className="text-xs font-semibold px-2 py-0.5 bg-sky-100/80 text-sky-800 rounded-md mr-2">
                               {currentCard.pos || '释义'}
                             </span>
-                            <span className="text-lg font-bold text-slate-900">
+                            <span className="text-xl font-bold font-serif text-slate-900">
                               {currentCard.word}
                             </span>
                           </div>
@@ -528,19 +528,19 @@ export default function VocabularySRS() {
                               e.stopPropagation();
                               tts.speak(currentCard.word);
                             }}
-                            className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-full"
+                            className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-full active:scale-90"
                           >
                             <Volume2 className="w-4 h-4" />
                           </button>
                         </div>
 
                         {/* Translation */}
-                        <div className="mt-3">
-                          <p className="text-base font-semibold text-slate-850">
+                        <div className="mt-3.5">
+                          <p className="text-base font-bold text-slate-900 leading-snug">
                             {currentCard.translation || '暂无详细中文释义'}
                           </p>
                           {currentCard.definitionEn && (
-                            <p className="text-xs text-slate-600 mt-1 italic leading-relaxed">
+                            <p className="text-xs text-slate-500 mt-1 italic leading-relaxed">
                               {currentCard.definitionEn}
                             </p>
                           )}
@@ -548,12 +548,12 @@ export default function VocabularySRS() {
 
                         {/* Context Sentence Breakdown */}
                         {currentCard.contextSentence && (
-                          <div className="mt-3.5 bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs space-y-1">
-                            <p className="text-slate-800 font-medium">
+                          <div className="mt-4 bg-[#faf8f5] p-3.5 rounded-2xl border border-[#e8dfcf] text-xs space-y-1 shadow-2xs">
+                            <p className="text-slate-850 font-serif font-medium leading-relaxed">
                               "{currentCard.contextSentence}"
                             </p>
                             {currentCard.contextSentenceCn && (
-                              <p className="text-slate-600 pt-1 border-t border-slate-200/60">
+                              <p className="text-slate-500 pt-1.5 border-t border-slate-200/60 leading-relaxed">
                                 {currentCard.contextSentenceCn}
                               </p>
                             )}
@@ -561,8 +561,8 @@ export default function VocabularySRS() {
                         )}
                       </div>
 
-                      <div className="pt-2 text-center text-[11px] text-slate-600">
-                        当前复习次数: {currentCard.reviewCount || 0} 次 · 记忆权重: {currentCard.intervalDays || 1} 天
+                      <div className="pt-2 text-center text-[10.5px] text-slate-400 font-medium">
+                        已复习: {currentCard.reviewCount || 0} 次 · 遗忘难度系数: {currentCard.easeFactor || 2.5} · 下次间隔: {currentCard.intervalDays || 1} 天
                       </div>
                     </div>
                   </div>
