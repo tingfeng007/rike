@@ -31,6 +31,10 @@ export default function Settings() {
   const [showPwaGuide, setShowPwaGuide] = useState(false);
   const [availableVoices, setAvailableVoices] = useState(() => tts.getAvailableFemaleVoices());
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [includeApiKeyInExport, setIncludeApiKeyInExport] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [localSummary] = useState(() => StorageService.getLocalDataSummary());
 
   // Reload voices when speech system initializes
   useEffect(() => {
@@ -104,20 +108,21 @@ export default function Settings() {
     }
   };
 
-  // Export Data as JSON
+  // Export Data as JSON 2.0
   const handleExportData = () => {
-    const jsonStr = StorageService.exportAllData();
+    const jsonStr = StorageService.exportAllData({ includeApiKey: includeApiKeyInExport });
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `lingoflow_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    const keyTag = includeApiKeyInExport ? '_withKey' : '_safe';
+    a.download = `lingoflow_backup_${new Date().toISOString().slice(0, 10)}${keyTag}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  // Import Data from JSON
-  const handleImportData = (e) => {
+  // Select File & Parse Preview
+  const handleSelectImportFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -125,26 +130,45 @@ export default function Settings() {
     reader.onload = (event) => {
       const content = event.target?.result;
       if (typeof content === 'string') {
-        const res = StorageService.importAllData(content);
-        if (res.success) {
-          alert(`🎉 智能增量合并成功！新增了 ${res.addedWords} 个新词条，同步更新了 ${res.updatedWords} 个词条，当前生词库共 ${res.totalWords} 词！页面即将刷新。`);
-          window.location.reload();
+        const preview = StorageService.parseBackupPreview(content);
+        if (preview.valid) {
+          setImportPreview({ ...preview, rawContent: content });
         } else {
-          alert(`导入失败: ${res.error}`);
+          alert(`无法识别该备份文件: ${preview.error}`);
         }
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
-  // Reset to Sample Data
-  const handleResetData = () => {
-    if (confirm('确认恢复默认演示数据？现有的个人生词记录将被覆盖。建议先导出备份！')) {
-      StorageService.saveVocabulary(DEFAULT_SAMPLE_WORDS);
-      StorageService.saveArticles(DEFAULT_SAMPLE_ARTICLES);
-      alert('已重置为默认数据！');
+  // Confirm Import with Smart Merge
+  const handleConfirmImport = () => {
+    if (!importPreview?.rawContent) return;
+    const res = StorageService.importAllData(importPreview.rawContent);
+    if (res.success) {
+      alert(
+        `🎉 智能增量合并成功！\n` +
+        `• 新增生词: ${res.addedWords} 个，更新同步: ${res.updatedWords} 个\n` +
+        `• 新增文章: ${res.addedArticles || 0} 篇\n` +
+        `• 新增划线批注: ${res.addedAnnotations || 0} 处\n` +
+        `• 当前生词库总量: ${res.totalWords} 词\n` +
+        `页面即将自动刷新加载最新数据。`
+      );
+      setImportPreview(null);
       window.location.reload();
+    } else {
+      alert(`导入失败: ${res.error}`);
     }
+  };
+
+  // Reset to Sample Data with Safety Modal
+  const handleConfirmReset = () => {
+    StorageService.saveVocabulary(DEFAULT_SAMPLE_WORDS);
+    StorageService.saveArticles(DEFAULT_SAMPLE_ARTICLES);
+    setShowResetModal(false);
+    alert('已恢复为官方初始演示数据！');
+    window.location.reload();
   };
 
   // Test Voice Speech
@@ -446,49 +470,190 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Section 3: Data Management & Cross-device sync */}
-        <div className="glass-panel rounded-3xl p-5 shadow-xs border border-white/90 space-y-3">
-          <div className="pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-850">
-              数据备份与跨设备同步 (自用无云端泄露)
-            </h3>
-            <p className="text-xs text-slate-600 mt-0.5">
-              因为你同时使用苹果和安卓手机，随时点击导出即可生成备份文件，发到微信或网盘在另一台手机一键导入恢复！
-            </p>
+        {/* Section 3: Data Management & Cross-device sync 2.0 */}
+        <div className="glass-panel rounded-3xl p-5 shadow-xs border border-white/90 space-y-3.5">
+          <div className="pb-2 border-b border-slate-100 flex items-start justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <span>🛡️ 全量安全备份与跨端迁移 2.0</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                完整囊括生词库、外刊、划线批注、对话历史与打卡记录，本地离线自足
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-1">
+          {/* Local Data Landscape Summary */}
+          <div className="grid grid-cols-4 gap-1.5 bg-slate-50/80 p-2.5 rounded-2xl border border-slate-200/60 text-center text-xs">
+            <div className="p-1">
+              <span className="text-[10px] text-slate-500 block">生词总数</span>
+              <strong className="text-slate-800 text-sm font-mono">{localSummary.vocabCount}</strong>
+            </div>
+            <div className="p-1">
+              <span className="text-[10px] text-slate-500 block">精选文章</span>
+              <strong className="text-slate-800 text-sm font-mono">{localSummary.articleCount}</strong>
+            </div>
+            <div className="p-1">
+              <span className="text-[10px] text-slate-500 block">划线批注</span>
+              <strong className="text-amber-700 text-sm font-mono">{localSummary.annotationCount}</strong>
+            </div>
+            <div className="p-1">
+              <span className="text-[10px] text-slate-500 block">打卡天数</span>
+              <strong className="text-emerald-700 text-sm font-mono">{localSummary.streakDays}天</strong>
+            </div>
+          </div>
+
+          {/* API Key Security Toggle for Export */}
+          <div className="p-2.5 bg-sky-50/60 border border-sky-200/70 rounded-2xl flex items-center justify-between text-xs">
+            <div>
+              <span className="font-semibold text-sky-900 block text-xs">
+                {includeApiKeyInExport ? '⚠️ 导出时包含 API Key (高风险)' : '🔒 安全模式：默认排除 API Key'}
+              </span>
+              <span className="text-[10.5px] text-slate-500 block">
+                {includeApiKeyInExport
+                  ? '备份文件内包含密钥原文，切勿通过微信群或公开网盘传输！'
+                  : '导出文件不含密钥，可安全发送至微信或网盘'}
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={includeApiKeyInExport}
+              onChange={(e) => setIncludeApiKeyInExport(e.target.checked)}
+              className="w-4 h-4 accent-sky-600 rounded"
+            />
+          </div>
+
+          {/* Export & Import Buttons */}
+          <div className="grid grid-cols-2 gap-2 pt-0.5">
             <button
               onClick={handleExportData}
-              className="py-2.5 px-3 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+              className="py-2.5 px-3 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>导出备份 (JSON)</span>
+              <span>导出全量备份</span>
             </button>
 
-            <label className="py-2.5 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors">
-              <Upload className="w-3.5 h-3.5" />
-              <span>导入恢复 (JSON)</span>
+            <label className="py-2.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200/80 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-all active:scale-95">
+              <Upload className="w-3.5 h-3.5 text-sky-600" />
+              <span>导入恢复 (带预览)</span>
               <input
                 type="file"
                 accept=".json"
-                onChange={handleImportData}
+                onChange={handleSelectImportFile}
                 className="hidden"
               />
             </label>
           </div>
 
-          <div className="pt-2">
+          {/* Danger Zone */}
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[11px] text-slate-400">误操作急救</span>
             <button
-              onClick={handleResetData}
-              className="w-full py-2 text-slate-600 hover:text-rose-600 text-xs flex items-center justify-center gap-1 transition-colors"
+              onClick={() => setShowResetModal(true)}
+              className="text-slate-400 hover:text-rose-600 text-xs flex items-center gap-1 transition-colors"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>重置为初始演示数据</span>
+              <RotateCcw className="w-3 h-3" />
+              <span>恢复官方初始演示数据...</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* Import Preview Modal */}
+      {importPreview && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📦</span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">备份文件解析与合并预览</h3>
+                  <p className="text-[10.5px] text-slate-500">生成时间: {importPreview.exportedAt}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/70 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">备份生词量:</span>
+                <strong className="text-slate-800 font-mono">{importPreview.vocabCount} 词</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">备份文章量:</span>
+                <strong className="text-slate-800 font-mono">{importPreview.articleCount} 篇</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">划线与心得批注:</span>
+                <strong className="text-amber-700 font-mono">{importPreview.annotationCount} 处</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">对话场景历史:</span>
+                <strong className="text-slate-800 font-mono">{importPreview.chatCount} 个</strong>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200/60">
+                <span className="text-slate-500">包含 API Key:</span>
+                <span className={importPreview.hasApiKey ? 'text-amber-700 font-bold' : 'text-slate-500'}>
+                  {importPreview.hasApiKey ? '是 (将保留/更新)' : '否 (安全无密钥)'}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-xl border border-emerald-200/60 leading-relaxed">
+              ✨ <strong>智能增量合并保护</strong>：导入将保留你当前设备上已有的个人笔记与更高掌握阶段，绝不暴力抹除！
+            </p>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setImportPreview(null)}
+                className="flex-1 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                className="flex-1 py-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95"
+              >
+                确认增量合并导入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Reset Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-rose-100 space-y-3.5">
+            <div className="flex items-center gap-2 pb-2 border-b border-rose-100 text-rose-700 font-bold text-sm">
+              <AlertCircle className="w-5 h-5 text-rose-600" />
+              <span>重置确认（危险操作）</span>
+            </div>
+
+            <p className="text-xs text-slate-700 leading-relaxed">
+              此操作将恢复官方初始的 <strong>30 个演示生词</strong> 与 <strong>8 篇经典外刊</strong>。你后来添加的个人词条与笔记将被重置。
+            </p>
+
+            <p className="text-[11px] text-amber-900 bg-amber-50 p-2 rounded-xl border border-amber-200/80 leading-tight">
+              💡 强烈建议在重置前，先点击上方“<strong>导出全量备份</strong>”保存一份 JSON 文件防身！
+            </p>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="flex-1 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                放弃重置
+              </button>
+              <button
+                onClick={handleConfirmReset}
+                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+              >
+                确认重置为初始数据
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PWA Mobile Add to Screen Guide Modal */}
       {showPwaGuide && (

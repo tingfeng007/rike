@@ -16,12 +16,40 @@ import {
   Key,
   X,
   ExternalLink,
+  AlertCircle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SCENARIOS } from '../data/scenarios';
 import { StorageService } from '../services/storage';
 import { getOralCoachResponseStream } from '../services/ai';
 import { tts, stt } from '../services/speech';
+
+// Diagnostic helper for friendly error categorization
+function diagnoseErrorMessage(errMsg) {
+  const lower = (errMsg || '').toLowerCase();
+  if (lower.includes('api key') || lower.includes('401') || lower.includes('unauthorized')) {
+    return {
+      title: 'API Key 无效或未正确配置',
+      tip: '请在“设置”中检查 API Key 是否准确无误、是否误带空格或密钥已被吊销。',
+    };
+  }
+  if (lower.includes('429') || lower.includes('quota') || lower.includes('rate limit') || lower.includes('insufficient')) {
+    return {
+      title: '请求额度受限或余额不足',
+      tip: 'AI 服务商提示请求频次超限或账户额度已耗尽，建议稍候片刻再试或充值。',
+    };
+  }
+  if (lower.includes('network') || lower.includes('failed to fetch') || lower.includes('timeout') || lower.includes('abort')) {
+    return {
+      title: '网络连接出现微弱波动',
+      tip: '未能顺畅连通 AI 服务器，请检查手机网络或 Wi-Fi 连接状态。',
+    };
+  }
+  return {
+    title: '对话遇到了一点小状况',
+    tip: errMsg || '服务响应超时，您的输入已妥善留存，点击下方按钮即可一键重新发送。',
+  };
+}
 
 export default function OralCoach({ onNavigateToVocab }) {
   const [scenarios] = useState(SCENARIOS);
@@ -219,6 +247,7 @@ export default function OralCoach({ onNavigateToVocab }) {
       const finalMessages = [...messagesWithUser, finalAssistantMsg];
       setMessages(finalMessages);
       StorageService.saveChatMessages(currentScenario.id, finalMessages);
+      StorageService.recordStudyActivity({ type: 'oral', count: 1 });
 
       // Auto play audio if enabled
       const settings = StorageService.getSettings();
@@ -227,11 +256,14 @@ export default function OralCoach({ onNavigateToVocab }) {
       }
     } catch (err) {
       console.error(err);
+      const diag = diagnoseErrorMessage(err.message);
       const errorMsg = {
         id: tempAiId,
         role: 'assistant',
         replyText: `Oops! ${err.message}`,
-        replyTextCn: '请求出现错误，请检查设置中的 API Key 或网络状况。',
+        errorTitle: diag.title,
+        replyTextCn: diag.tip,
+        failedUserText: text,
         isError: true,
         isStreaming: false,
         timestamp: Date.now(),
@@ -242,6 +274,14 @@ export default function OralCoach({ onNavigateToVocab }) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Retry sending message after error
+  const handleRetrySendMessage = (failedText, errorMsgId) => {
+    if (!failedText || isLoading) return;
+    // Remove the error assistant bubble
+    setMessages((prev) => prev.filter((m) => m.id !== errorMsgId));
+    handleSendMessage(failedText);
   };
 
   // Voice Recording Toggle
@@ -487,6 +527,38 @@ export default function OralCoach({ onNavigateToVocab }) {
                     </>
                   )}
                 </p>
+
+                {/* AI Error Recovery Box */}
+                {!isUser && msg.isError && (
+                  <div className="mt-2.5 p-3 bg-rose-50/90 rounded-2xl border border-rose-200/80 text-xs text-rose-900 space-y-2">
+                    <div className="flex items-center gap-1.5 font-bold text-rose-800">
+                      <AlertCircle className="w-4 h-4 text-rose-600 flex-none" />
+                      <span>{msg.errorTitle || '对话未能送达'}</span>
+                    </div>
+                    <p className="text-[11px] text-rose-700 leading-relaxed">
+                      {msg.replyTextCn || '可能是网络暂时波动，您的输入已妥善留存。'}
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      {msg.failedUserText && (
+                        <button
+                          onClick={() => handleRetrySendMessage(msg.failedUserText, msg.id)}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>一键重试此句</span>
+                        </button>
+                      )}
+                      {msg.failedUserText && (
+                        <button
+                          onClick={() => setInputText(msg.failedUserText)}
+                          className="px-2.5 py-1.5 bg-white hover:bg-rose-100/60 text-rose-700 rounded-xl text-xs font-medium border border-rose-200 shadow-2xs"
+                        >
+                          填回输入框
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* AI Auxiliary Controls (TTS & Translate) */}
                 {!isUser && !msg.isError && !msg.isStreaming && (

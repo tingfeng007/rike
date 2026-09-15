@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   CHAT_MESSAGES: 'lingoflow_chat_messages',
   ARTICLES: 'lingoflow_articles',
   STUDY_STATS: 'lingoflow_study_stats',
+  READING_ANNOTATIONS: 'lingoflow_reading_annotations',
 };
 
 // Preset providers
@@ -213,13 +214,16 @@ export const StorageService = {
     return words[index];
   },
 
-  // --- Study Habit & Streak Stats ---
+  // --- Study Habit & Streak Stats 2.0 (Multi-module activity tracker) ---
   getStudyStats() {
     const todayStr = new Date().toISOString().slice(0, 10);
     const defaultStats = {
-      streakDays: 1,
+      streakDays: 0,
       lastActiveDate: '',
       todayReviewedCount: 0,
+      todayOralCount: 0,
+      todayAnnotationCount: 0,
+      todayTotalActions: 0,
       totalReviewedCount: 0,
     };
 
@@ -229,11 +233,14 @@ export const StorageService = {
 
       const stats = { ...defaultStats, ...JSON.parse(data) };
 
-      // If opening on a new day, reset today's counter
+      // If opening on a new day, reset today's counters
       if (stats.lastActiveDate !== todayStr) {
         return {
           ...stats,
           todayReviewedCount: 0,
+          todayOralCount: 0,
+          todayAnnotationCount: 0,
+          todayTotalActions: 0,
         };
       }
       return stats;
@@ -246,33 +253,52 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.STUDY_STATS, JSON.stringify(stats));
   },
 
-  recordReviewActivity(count = 1) {
+  recordStudyActivity({ type = 'review', count = 1 } = {}) {
     const todayStr = new Date().toISOString().slice(0, 10);
     const current = this.getStudyStats();
 
-    let newStreak = current.streakDays || 1;
+    let newStreak = current.streakDays || 0;
 
-    if (current.lastActiveDate && current.lastActiveDate !== todayStr) {
-      const lastDate = new Date(current.lastActiveDate);
-      const todayDate = new Date(todayStr);
-      const diffDays = Math.round((todayDate - lastDate) / (24 * 60 * 60 * 1000));
-
-      if (diffDays === 1) {
-        newStreak += 1;
-      } else if (diffDays > 1) {
+    if (current.lastActiveDate !== todayStr) {
+      if (!current.lastActiveDate) {
         newStreak = 1;
+      } else {
+        const lastDate = new Date(current.lastActiveDate);
+        const todayDate = new Date(todayStr);
+        const diffDays = Math.round((todayDate - lastDate) / (24 * 60 * 60 * 1000));
+
+        if (diffDays === 1) {
+          newStreak += 1;
+        } else if (diffDays > 1) {
+          newStreak = 1;
+        }
       }
+    } else if (newStreak === 0) {
+      newStreak = 1;
     }
 
+    const todayReviewed = type === 'review' ? (current.todayReviewedCount || 0) + count : (current.todayReviewedCount || 0);
+    const todayOral = type === 'oral' ? (current.todayOralCount || 0) + count : (current.todayOralCount || 0);
+    const todayAnnotation = type === 'annotation' ? (current.todayAnnotationCount || 0) + count : (current.todayAnnotationCount || 0);
+    const todayTotal = (current.todayTotalActions || 0) + count;
+
     const updated = {
+      ...current,
       streakDays: newStreak,
       lastActiveDate: todayStr,
-      todayReviewedCount: (current.todayReviewedCount || 0) + count,
-      totalReviewedCount: (current.totalReviewedCount || 0) + count,
+      todayReviewedCount: todayReviewed,
+      todayOralCount: todayOral,
+      todayAnnotationCount: todayAnnotation,
+      todayTotalActions: todayTotal,
+      totalReviewedCount: (current.totalReviewedCount || 0) + (type === 'review' ? count : 0),
     };
 
     this.saveStudyStats(updated);
     return updated;
+  },
+
+  recordReviewActivity(count = 1) {
+    return this.recordStudyActivity({ type: 'review', count });
   },
 
   deleteWord(wordId) {
@@ -335,28 +361,203 @@ export const StorageService = {
   deleteArticle(id) {
     const list = this.getArticles().filter((a) => a.id !== id);
     this.saveArticles(list);
+
+    // Synchronously purge orphaned annotations and reading scroll position
+    try {
+      const annotations = this.getReadingAnnotations();
+      if (annotations[String(id)]) {
+        delete annotations[String(id)];
+        this.saveReadingAnnotations(annotations);
+      }
+      localStorage.removeItem(`lingoflow_read_pos_${id}`);
+    } catch {
+      // ignore
+    }
+
     return list;
   },
 
-  // --- Full Backup & Restore ---
-  exportAllData() {
+  // --- Reading Annotations ---
+  getReadingAnnotations() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.READING_ANNOTATIONS);
+      return data ? JSON.parse(data) : {};
+    } catch {
+      return {};
+    }
+  },
+
+  saveReadingAnnotations(annotations) {
+    localStorage.setItem(STORAGE_KEYS.READING_ANNOTATIONS, JSON.stringify(annotations));
+  },
+
+  // --- Reading Scroll Positions ---
+  getAllReadingPositions() {
+    const positions = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('lingoflow_read_pos_')) {
+          positions[key] = localStorage.getItem(key);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return positions;
+  },
+
+  saveAllReadingPositions(positions) {
+    if (!positions || typeof positions !== 'object') return;
+    try {
+      Object.entries(positions).forEach(([key, val]) => {
+        if (key.startsWith('lingoflow_read_pos_') && val != null) {
+          localStorage.setItem(key, String(val));
+        }
+      });
+    } catch {
+      // ignore
+    }
+  },
+
+  // --- All Scenarios Chat Messages ---
+  getAllChatMessages() {
+    const chats = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(`${STORAGE_KEYS.CHAT_MESSAGES}_`)) {
+          const scenarioId = key.replace(`${STORAGE_KEYS.CHAT_MESSAGES}_`, '');
+          try {
+            chats[scenarioId] = JSON.parse(localStorage.getItem(key));
+          } catch {
+            chats[scenarioId] = [];
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return chats;
+  },
+
+  saveAllChatMessages(chatMap) {
+    if (!chatMap || typeof chatMap !== 'object') return;
+    try {
+      Object.entries(chatMap).forEach(([scenarioId, msgs]) => {
+        if (Array.isArray(msgs)) {
+          this.saveChatMessages(scenarioId, msgs);
+        }
+      });
+    } catch {
+      // ignore
+    }
+  },
+
+  // --- Local Data Overview ---
+  getLocalDataSummary() {
+    const vocab = this.getVocabulary();
+    const articles = this.getArticles();
+    const annotations = this.getReadingAnnotations();
+    let totalAnnotations = 0;
+    Object.values(annotations).forEach((arr) => {
+      if (Array.isArray(arr)) totalAnnotations += arr.length;
+    });
+    const chats = this.getAllChatMessages();
+    const scenarioCount = Object.keys(chats).length;
+    const stats = this.getStudyStats();
+
+    return {
+      vocabCount: vocab.length,
+      masteredCount: vocab.filter((w) => w.status === 'mastered').length,
+      articleCount: articles.length,
+      annotationCount: totalAnnotations,
+      scenarioCount,
+      streakDays: stats.streakDays || 0,
+      todayReviewedCount: stats.todayReviewedCount || 0,
+    };
+  },
+
+  // --- Full Backup & Restore 2.0 (With API Key Sanitization) ---
+  exportAllData({ includeApiKey = false } = {}) {
+    const settings = { ...this.getSettings() };
+    const hadKey = Boolean(settings.apiKey?.trim());
+
+    if (!includeApiKey) {
+      settings.apiKey = '';
+    }
+
     const backup = {
-      version: 1,
+      app: 'LingoFlow',
+      version: 2,
       exportedAt: new Date().toISOString(),
-      settings: this.getSettings(),
+      meta: {
+        includeApiKey,
+        hadKeyBeforeExport: hadKey,
+      },
+      settings,
       vocabulary: this.getVocabulary(),
       articles: this.getArticles(),
+      readingAnnotations: this.getReadingAnnotations(),
+      readingPositions: this.getAllReadingPositions(),
+      chatMessages: this.getAllChatMessages(),
+      studyStats: this.getStudyStats(),
     };
     return JSON.stringify(backup, null, 2);
+  },
+
+  parseBackupPreview(jsonString) {
+    try {
+      const data = JSON.parse(jsonString);
+      if (!data || typeof data !== 'object') {
+        return { valid: false, error: '备份文件格式不正确，不是有效的 JSON 数据' };
+      }
+
+      const vocabCount = Array.isArray(data.vocabulary) ? data.vocabulary.length : 0;
+      const articleCount = Array.isArray(data.articles) ? data.articles.length : 0;
+      let annotationCount = 0;
+      if (data.readingAnnotations && typeof data.readingAnnotations === 'object') {
+        Object.values(data.readingAnnotations).forEach((arr) => {
+          if (Array.isArray(arr)) annotationCount += arr.length;
+        });
+      }
+      const chatCount =
+        data.chatMessages && typeof data.chatMessages === 'object'
+          ? Object.keys(data.chatMessages).length
+          : 0;
+
+      const hasApiKey = Boolean(data.settings?.apiKey?.trim());
+      const exportedAt = data.exportedAt
+        ? new Date(data.exportedAt).toLocaleString('zh-CN')
+        : '未知时间';
+
+      return {
+        valid: true,
+        version: data.version || 1,
+        exportedAt,
+        vocabCount,
+        articleCount,
+        annotationCount,
+        chatCount,
+        hasApiKey,
+      };
+    } catch (err) {
+      return { valid: false, error: `解析失败: ${err.message}` };
+    }
   },
 
   importAllData(jsonString) {
     try {
       const data = JSON.parse(jsonString);
+      if (!data || typeof data !== 'object') {
+        throw new Error('备份文件格式不正确');
+      }
+
+      // 1. Settings Merge: keep existing API Key if imported is empty
       if (data.settings) {
         const currentSettings = this.getSettings();
-        // Keep current API Key if the imported one is empty
         const mergedSettings = {
+          ...currentSettings,
           ...data.settings,
           apiKey: data.settings.apiKey?.trim() || currentSettings.apiKey || '',
         };
@@ -366,16 +567,15 @@ export const StorageService = {
       let addedWords = 0;
       let updatedWords = 0;
 
+      // 2. Vocabulary Merge: smart merge progress, notes and status
       if (Array.isArray(data.vocabulary)) {
         const localWords = this.getVocabulary();
         const mergedMap = new Map();
 
-        // Put local words in map first
         localWords.forEach((w) => {
           if (w.word) mergedMap.set(w.word.toLowerCase().trim(), w);
         });
 
-        // Merge imported words without destroying local progress
         data.vocabulary.forEach((imp) => {
           if (!imp.word) return;
           const key = imp.word.toLowerCase().trim();
@@ -404,7 +604,8 @@ export const StorageService = {
         this.saveVocabulary(finalMerged);
       }
 
-      // Merge articles without losing custom local articles
+      // 3. Articles Merge
+      let addedArticles = 0;
       if (Array.isArray(data.articles)) {
         const localArticles = this.getArticles();
         const artMap = new Map();
@@ -416,9 +617,78 @@ export const StorageService = {
           const k = a.title.trim().toLowerCase();
           if (!artMap.has(k)) {
             artMap.set(k, a);
+            addedArticles += 1;
           }
         });
         this.saveArticles(Array.from(artMap.values()));
+      }
+
+      // 4. Reading Annotations Merge
+      let addedAnnotations = 0;
+      if (data.readingAnnotations && typeof data.readingAnnotations === 'object') {
+        const localAnnotations = this.getReadingAnnotations();
+        const mergedAnnotations = { ...localAnnotations };
+
+        Object.entries(data.readingAnnotations).forEach(([artId, incomingList]) => {
+          if (!Array.isArray(incomingList)) return;
+          const currentList = mergedAnnotations[artId] || [];
+          const sentenceMap = new Map();
+          currentList.forEach((item) => {
+            if (item.sentence) sentenceMap.set(item.sentence.trim(), item);
+          });
+
+          incomingList.forEach((incomingItem) => {
+            if (!incomingItem.sentence) return;
+            const sKey = incomingItem.sentence.trim();
+            if (sentenceMap.has(sKey)) {
+              // merge note
+              const ex = sentenceMap.get(sKey);
+              if (!ex.note && incomingItem.note) {
+                ex.note = incomingItem.note;
+              }
+            } else {
+              sentenceMap.set(sKey, incomingItem);
+              addedAnnotations += 1;
+            }
+          });
+          mergedAnnotations[artId] = Array.from(sentenceMap.values());
+        });
+        this.saveReadingAnnotations(mergedAnnotations);
+      }
+
+      // 5. Chat Messages Merge
+      if (data.chatMessages && typeof data.chatMessages === 'object') {
+        const localChats = this.getAllChatMessages();
+        Object.entries(data.chatMessages).forEach(([scenarioId, msgs]) => {
+          if (!Array.isArray(msgs) || msgs.length === 0) return;
+          // If local has no chat messages or only initial, restore incoming
+          if (!localChats[scenarioId] || localChats[scenarioId].length <= 1) {
+            this.saveChatMessages(scenarioId, msgs);
+          }
+        });
+      }
+
+      // 6. Reading Positions
+      if (data.readingPositions && typeof data.readingPositions === 'object') {
+        this.saveAllReadingPositions(data.readingPositions);
+      }
+
+      // 7. Study Stats Merge: take max streak and combined total count
+      if (data.studyStats && typeof data.studyStats === 'object') {
+        const currentStats = this.getStudyStats();
+        const mergedStats = {
+          streakDays: Math.max(currentStats.streakDays || 1, data.studyStats.streakDays || 1),
+          lastActiveDate: currentStats.lastActiveDate || data.studyStats.lastActiveDate || '',
+          todayReviewedCount: Math.max(
+            currentStats.todayReviewedCount || 0,
+            data.studyStats.todayReviewedCount || 0
+          ),
+          totalReviewedCount: Math.max(
+            currentStats.totalReviewedCount || 0,
+            data.studyStats.totalReviewedCount || 0
+          ),
+        };
+        this.saveStudyStats(mergedStats);
       }
 
       return {
@@ -426,6 +696,8 @@ export const StorageService = {
         totalWords: this.getVocabulary().length,
         addedWords,
         updatedWords,
+        addedArticles,
+        addedAnnotations,
       };
     } catch (e) {
       return { success: false, error: e.message };

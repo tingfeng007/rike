@@ -14,6 +14,27 @@ import { StorageService } from './services/storage';
 export default function App() {
   const [activeTab, setActiveTab] = useState('oral'); // 'oral' | 'reader' | 'vocab' | 'settings'
   const [dueVocabCount, setDueVocabCount] = useState(0);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
+  const [showOnlineToast, setShowOnlineToast] = useState(false);
+
+  // Online / Offline Detection
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      setShowOnlineToast(true);
+      setTimeout(() => setShowOnlineToast(false), 3000);
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Check how many cards are due today for review
   const updateDueCount = () => {
@@ -39,6 +60,18 @@ export default function App() {
         <div className="absolute top-1/3 -right-24 w-80 h-80 bg-indigo-100/30 rounded-full blur-3xl" />
         <div className="absolute -bottom-24 left-1/4 w-72 h-72 bg-amber-100/20 rounded-full blur-3xl" />
       </div>
+
+      {/* Offline / Online Status Toast Bar */}
+      {isOffline && (
+        <div className="flex-none bg-amber-500/95 text-white text-[11px] font-medium py-1 px-3 flex items-center justify-center gap-1.5 shadow-xs z-50 animate-fade-in select-none">
+          <span>✈️ 离线模式：本地文章、闪卡与笔记完整可用</span>
+        </div>
+      )}
+      {showOnlineToast && !isOffline && (
+        <div className="flex-none bg-emerald-600 text-white text-[11px] font-medium py-1 px-3 flex items-center justify-center gap-1.5 shadow-xs z-50 animate-fade-in select-none">
+          <span>🌐 网络已恢复连接，AI 能力已就绪</span>
+        </div>
+      )}
 
       {/* Main View Container */}
       <main className="flex-1 overflow-hidden relative z-10">

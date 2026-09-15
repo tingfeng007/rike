@@ -79,6 +79,7 @@ export default function VocabularySRS() {
   const [editTranslation, setEditTranslation] = useState('');
   const [editContextSentence, setEditContextSentence] = useState('');
   const [editUserNote, setEditUserNote] = useState('');
+  const [showStatsDetail, setShowStatsDetail] = useState(false);
 
   const handleOpenEdit = (item, e) => {
     e.stopPropagation();
@@ -406,10 +407,16 @@ export default function VocabularySRS() {
 
         {/* Study Habit Stats Bar */}
         <div className="flex items-center justify-between bg-white/80 border border-slate-200/80 rounded-2xl px-3 py-1.5 mb-2 text-xs shadow-2xs">
-          <div className="flex items-center gap-1 text-amber-800 font-bold">
-            <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-            <span>连续 {studyStats.streakDays || 1} 天打卡</span>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowStatsDetail(true)}
+            className="flex items-center gap-1 text-amber-900 bg-amber-50/90 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200/80 font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
+            title="点击查看今日打卡明细与动作"
+          >
+            <Flame className={`w-3.5 h-3.5 ${studyStats.todayTotalActions > 0 ? 'text-amber-500 fill-amber-500' : 'text-amber-400'}`} />
+            <span>连续 {studyStats.streakDays || 0} 天打卡</span>
+            <span className="text-[10px] text-amber-600">ℹ️</span>
+          </button>
           <div className="flex items-center gap-1 text-slate-600">
             <Target className="w-3.5 h-3.5 text-sky-600" />
             <span>今日已复习 <strong className="text-sky-700 font-bold">{studyStats.todayReviewedCount || 0}</strong> 词</span>
@@ -1358,6 +1365,77 @@ export default function VocabularySRS() {
                 {isAddingWord ? 'AI 分析中...' : '智能添加'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Today's Study Stats Detail Modal */}
+      {showStatsDetail && (
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🔥</span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">今日学习与打卡明细</h3>
+                  <p className="text-[10.5px] text-slate-500">
+                    {studyStats.todayTotalActions > 0
+                      ? '✨ 今日学习指标已点亮！连续打卡中'
+                      : '🎯 今日尚未打卡，完成任一学习即可点亮'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStatsDetail(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/70 space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-600">连续坚持天数:</span>
+                <strong className="text-amber-600 font-mono text-sm font-bold">
+                  {studyStats.streakDays || 0} 天
+                </strong>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-600">今日复习生词:</span>
+                <strong className="text-sky-700 font-mono">
+                  {studyStats.todayReviewedCount || 0} 词
+                </strong>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-600">今日口语对练:</span>
+                <strong className="text-indigo-700 font-mono">
+                  {studyStats.todayOralCount || 0} 轮
+                </strong>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-600">今日精读批注:</span>
+                <strong className="text-teal-700 font-mono">
+                  {studyStats.todayAnnotationCount || 0} 处
+                </strong>
+              </div>
+              <div className="flex justify-between items-center pt-1.5 border-t border-slate-200/60">
+                <span className="text-slate-500 font-medium">今日总学习动作:</span>
+                <strong className="text-slate-900 font-bold font-mono">
+                  {studyStats.todayTotalActions || 0} 次
+                </strong>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-500 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/50 leading-relaxed">
+              💡 <strong>真实可信打卡规则</strong>：无论是跟外教聊 1 句英语、在文章中划 1 个金句批注、还是复习 1 个生词，都会自动算作今日有效学习并保持连击！
+            </p>
+
+            <button
+              onClick={() => setShowStatsDetail(false)}
+              className="w-full py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95"
+            >
+              我知道了，继续学习
+            </button>
           </div>
         </div>
       )}

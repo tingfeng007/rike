@@ -14,6 +14,7 @@ import {
   Highlighter,
   NotebookPen,
   Download,
+  RotateCcw,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
@@ -181,6 +182,7 @@ export default function SmartReader() {
       ? articleNotes.map((item) => item.id === savedNote.id ? savedNote : item)
       : [...articleNotes, savedNote];
     persistAnnotations({ ...annotations, [articleKey]: nextNotes });
+    StorageService.recordStudyActivity({ type: 'annotation', count: 1 });
     setEditingAnnotation(null);
     setAnnotationDraft('');
   };
@@ -382,9 +384,11 @@ export default function SmartReader() {
       alert('请至少保留一篇文章');
       return;
     }
-    if (confirm('确认删除这篇文章吗？')) {
+    if (confirm('确认删除这篇文章吗？（该篇的阅读位置记忆与划线批注手记将一并安全清理）')) {
       const updated = StorageService.deleteArticle(id);
       setArticles(updated);
+      // Also sync local annotations state
+      setAnnotations(StorageService.getReadingAnnotations());
       if (currentArticle?.id === id) {
         setCurrentArticle(updated[0]);
       }
@@ -423,8 +427,30 @@ export default function SmartReader() {
         word: clean,
         phonetic: '',
         pos: '',
-        translation: '请在“设置”中配置正确的 API Key 获取深度中文释义与搭配',
+        isError: true,
+        translation: '释义解析未成功（可能是网络波动或未配置 API Key）',
         contextSentence: sentence,
+      });
+    } finally {
+      setIsAnalyzingWord(false);
+    }
+  };
+
+  // Retry word analysis
+  const handleRetryWordAnalysis = async () => {
+    if (!selectedWord?.word) return;
+    setIsAnalyzingWord(true);
+    try {
+      const analysis = await analyzeWordWithAI(selectedWord.word, selectedWord.sentence || '');
+      setWordAnalysis(analysis);
+    } catch (err) {
+      setWordAnalysis({
+        word: selectedWord.word,
+        phonetic: '',
+        pos: '',
+        isError: true,
+        translation: '再次尝试未成功，请检查设置中的 API Key 或网络',
+        contextSentence: selectedWord.sentence || '',
       });
     } finally {
       setIsAnalyzingWord(false);
@@ -465,7 +491,8 @@ export default function SmartReader() {
       setSentenceAnalysis(result);
     } catch (err) {
       setSentenceAnalysis({
-        translation: '解析失败，请检查 API Key 配置与网络连接。',
+        isError: true,
+        translation: '长难句剖析未成功，请检查 API Key 配置或网络状况。',
         structureSummary: err.message,
         clauses: [],
         grammarPoints: [],
@@ -767,10 +794,23 @@ export default function SmartReader() {
                           {wordAnalysis.pos}
                         </span>
                       )}
-                      <p className="text-sm font-semibold text-slate-800">
+                      <p className={`text-sm font-semibold ${wordAnalysis?.isError ? 'text-rose-700' : 'text-slate-800'}`}>
                         {wordAnalysis?.translation || '暂无释义'}
                       </p>
                     </div>
+
+                    {wordAnalysis?.isError && (
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={handleRetryWordAnalysis}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>重新解析词义</span>
+                        </button>
+                      </div>
+                    )}
 
                     {wordAnalysis?.definitionEn && (
                       <p className="text-xs text-slate-600 mt-1 italic">
@@ -911,10 +951,27 @@ export default function SmartReader() {
                     <span className="text-xs font-semibold text-slate-600">
                       🇨🇳 纯正地道译文:
                     </span>
-                    <p className="text-sm text-slate-800 bg-sky-50/50 p-2.5 rounded-lg border border-sky-100/60 leading-relaxed font-medium">
+                    <p className={`text-sm p-2.5 rounded-lg border leading-relaxed font-medium ${
+                      sentenceAnalysis.isError
+                        ? 'bg-rose-50 text-rose-800 border-rose-200'
+                        : 'bg-sky-50/50 text-slate-800 border-sky-100/60'
+                    }`}>
                       {sentenceAnalysis.translation}
                     </p>
                   </div>
+
+                  {sentenceAnalysis.isError && (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleSentenceClick(selectedSentence)}
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>重新剖析语法主干</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Structure Summary */}
                   {sentenceAnalysis.structureSummary && (
