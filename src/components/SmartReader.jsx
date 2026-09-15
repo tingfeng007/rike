@@ -10,9 +10,16 @@ import {
   X,
   Languages,
   Globe,
+  Dices,
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
-import { analyzeWordWithAI, analyzeSentenceWithAI, translateParagraphWithAI } from '../services/ai';
+import {
+  analyzeWordWithAI,
+  analyzeSentenceWithAI,
+  translateParagraphWithAI,
+  generateDailyArticleWithAI,
+} from '../services/ai';
 import { tts } from '../services/speech';
 
 // Robust sentence splitter with abbreviation protection & Intl fallback
@@ -90,6 +97,12 @@ export default function SmartReader() {
   const [urlInput, setUrlInput] = useState('');
   const [isExtractingUrl, setIsExtractingUrl] = useState(false);
 
+  // Daily Refresh & New Article Generator states
+  const [showRefreshModal, setShowRefreshModal] = useState(false);
+  const [refreshTopic, setRefreshTopic] = useState('random');
+  const [blendUserVocab, setBlendUserVocab] = useState(true);
+  const [isGeneratingArticle, setIsGeneratingArticle] = useState(false);
+
   // Reading scroll container & position persistence
   const scrollContainerRef = useRef(null);
 
@@ -117,6 +130,63 @@ export default function SmartReader() {
   const handleScroll = (e) => {
     if (!currentArticle?.id) return;
     localStorage.setItem(`lingoflow_read_pos_${currentArticle.id}`, e.currentTarget.scrollTop);
+  };
+
+  // 1. Randomly pick an existing article from library
+  const handleRandomPickExisting = () => {
+    if (articles.length <= 1) {
+      alert('文库中目前只有一篇文章，点击下方“生成全新 AI 外刊”立即创作新短文吧！');
+      return;
+    }
+    const otherArticles = articles.filter((a) => a.id !== currentArticle?.id);
+    const chosen = otherArticles[Math.floor(Math.random() * otherArticles.length)];
+    setCurrentArticle(chosen);
+    setShowRefreshModal(false);
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // 2. Generate a brand-new AI article tailored to user
+  const handleGenerateNewArticle = async () => {
+    setIsGeneratingArticle(true);
+    try {
+      // Pick 2~3 unmastered words from vocabulary if blendUserVocab is on
+      let wordsToBlend = [];
+      if (blendUserVocab) {
+        const vocab = StorageService.getVocabulary();
+        const unmastered = vocab.filter((w) => w.status !== 'mastered');
+        const pool = unmastered.length >= 2 ? unmastered : vocab;
+        const shuffled = [...pool].sort(() => 0.5 - Math.random());
+        wordsToBlend = shuffled.slice(0, 3).map((w) => w.word);
+      }
+
+      const generated = await generateDailyArticleWithAI({
+        topic: refreshTopic,
+        targetWords: wordsToBlend,
+      });
+
+      const newArt = {
+        title: `${generated.title} (${generated.titleCn || '精选外刊'})`,
+        level: generated.level || '中级精选 (Intermediate)',
+        content: generated.content,
+        tags: generated.tags || ['AI 每日精选', '智能生成'],
+      };
+
+      const updated = StorageService.saveArticle(newArt);
+      setArticles(updated);
+      setCurrentArticle(updated[0]);
+      setShowRefreshModal(false);
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+
+      confetti({
+        particleCount: 70,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    } catch (err) {
+      alert(`生成失败: ${err.message}。请检查设置中的 API Key 或网络状况。`);
+    } finally {
+      setIsGeneratingArticle(false);
+    }
   };
 
   // Load articles
@@ -371,6 +441,16 @@ export default function SmartReader() {
 
         {/* Article Selector Carousel */}
         <div className="flex space-x-2 overflow-x-auto pb-1 no-scrollbar text-xs">
+          {/* Quick AI Refresh & Randomize Button */}
+          <button
+            onClick={() => setShowRefreshModal(true)}
+            className="flex-none flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-white font-bold shadow-xs transition-all active:scale-95"
+            title="生成或换一篇全新的 AI 精选外刊短文"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-100" />
+            <span>🎲 换篇新外刊</span>
+          </button>
+
           {articles.map((art) => {
             const isActive = art.id === currentArticle?.id;
             return (
@@ -901,6 +981,123 @@ export default function SmartReader() {
                 className="flex-1 py-2 text-xs font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-xs transition-colors"
               >
                 保存并开始精读
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Modal: AI Daily Editorial Refresh & Switcher */}
+      {showRefreshModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    换一篇新外刊 · AI 每日精选
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    一键刷新今日精选短文，巧妙融入你的生词本
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRefreshModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Action: Pick from existing library */}
+            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-800 block">
+                  文库已有 {articles.length} 篇经典外刊
+                </span>
+                <span className="text-[10.5px] text-slate-500">
+                  不想调用 AI？直接在文库中随机抽取一篇阅读
+                </span>
+              </div>
+              <button
+                onClick={handleRandomPickExisting}
+                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 shadow-2xs transition-all active:scale-95 flex items-center gap-1"
+              >
+                <Dices className="w-3.5 h-3.5 text-sky-600" />
+                <span>文库随机挑</span>
+              </button>
+            </div>
+
+            {/* AI Generator Section */}
+            <div className="space-y-3 pt-1">
+              <label className="block text-xs font-bold text-slate-800">
+                或由 AI 特约专栏作家为你现场撰写一篇：
+              </label>
+
+              {/* Topic Select Grid */}
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'random', icon: '🎲', label: '随心惊喜', desc: '不设限的精彩短文' },
+                  { id: 'lifestyle', icon: '☕', label: '生活与心智', desc: '纽约客风散文哲学' },
+                  { id: 'tech', icon: '🚀', label: '前沿科技', desc: 'AI、硅谷与商业浪潮' },
+                  { id: 'culture', icon: '🌍', label: '人文漫游', desc: '国家地理风土人情' },
+                ].map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => setRefreshTopic(t.id)}
+                    className={`p-2.5 rounded-2xl border cursor-pointer transition-all ${
+                      refreshTopic === t.id
+                        ? 'bg-amber-50/90 border-amber-400 text-amber-950 font-bold ring-1 ring-amber-300 shadow-2xs'
+                        : 'bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-bold">
+                      <span>{t.icon}</span>
+                      <span>{t.label}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{t.desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Blend User Vocabulary Toggle */}
+              <div className="flex items-center justify-between p-3 bg-amber-50/60 border border-amber-200/70 rounded-2xl">
+                <div>
+                  <span className="text-xs font-bold text-amber-900 block">
+                    巧妙融入我的生词本单词
+                  </span>
+                  <span className="text-[10.5px] text-slate-500">
+                    在文章中偶遇刚背的生词，并在正文中自动标黄
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={blendUserVocab}
+                  onChange={(e) => setBlendUserVocab(e.target.checked)}
+                  className="w-4 h-4 accent-amber-600 rounded"
+                />
+              </div>
+
+              {/* Generate Action Button */}
+              <button
+                onClick={handleGenerateNewArticle}
+                disabled={isGeneratingArticle}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                {isGeneratingArticle ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>AI 专栏作家正在起草外刊精读...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-100" />
+                    <span>✨ 立即创作新外刊并开启精读</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

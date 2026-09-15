@@ -529,3 +529,50 @@ export async function generateVocabStoryWithAI({
   const raw = await callAICompletion({ messages, temperature: 0.7, responseFormatJson: true });
   return extractJson(raw);
 }
+
+/**
+ * 7. AI Daily Editorial Article Generator
+ */
+export async function generateDailyArticleWithAI({
+  topic = 'random',
+  targetWords = [],
+}) {
+  const topicMap = {
+    random: '随心惊喜 (Curated Surprise)',
+    lifestyle: '生活方式与心智散文 (The New Yorker / Lifestyle Essay)',
+    tech: '前沿科技与未来商业 (Wired / Tech & Business)',
+    culture: '人文地理与城市漫游 (National Geographic / Cultural Travelogue)',
+    psychology: '心智认知与习惯成长 (Cognitive Psychology & Habits)',
+  };
+
+  const topicLabel = topicMap[topic] || topicMap.random;
+  const targetWordsPrompt =
+    targetWords.length > 0
+      ? `特别要求：请在文章中巧妙、自然地融入学习者的重点生词: [${targetWords.join(', ')}]，让读者在真实上下文情境中自然偶遇它们！`
+      : '';
+
+  const prompt = `你是一位享誉全球的国际双语特约撰稿人与专栏作家。
+请为英语自学进阶者撰写一篇短小精悍、文笔优雅生动、极具深度的现代英文外刊短文（约 180~250 英文词，2~3 个自然段）。
+题材定位: 【${topicLabel}】。
+${targetWordsPrompt}
+
+写作要求：
+1. 语言纯正自然，富有行文节奏美，适合自学者精读与长难句剖析。
+2. 请以严格的 JSON 格式输出，格式如下：
+{
+  "title": "A Compelling Editorial Headline",
+  "titleCn": "生动优雅的中文译名",
+  "level": "中级精选 (Intermediate)",
+  "content": "Paragraph 1 (approx 70 words)...\\n\\nParagraph 2 (approx 80 words)...\\n\\nParagraph 3 (approx 70 words)...",
+  "tags": ["AI 每日精读", "${topicLabel.split(' ')[0]}"],
+  "summaryCn": "一句话中文导读推荐语"
+}`;
+
+  const messages = [
+    { role: 'system', content: 'You are an award-winning bilingual essayist and journalist. Output strictly valid JSON.' },
+    { role: 'user', content: prompt },
+  ];
+
+  const raw = await callAICompletion({ messages, temperature: 0.7, responseFormatJson: true });
+  return extractJson(raw);
+}

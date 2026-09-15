@@ -303,7 +303,14 @@ export const StorageService = {
   getArticles() {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ARTICLES);
-      return data ? JSON.parse(data) : DEFAULT_SAMPLE_ARTICLES;
+      if (!data) return DEFAULT_SAMPLE_ARTICLES;
+      const parsed = JSON.parse(data);
+      // Auto upgrade if user only had the 2 legacy sample articles
+      if (Array.isArray(parsed) && parsed.length <= 2 && parsed.some((a) => a.id === 'art_1')) {
+        this.saveArticles(DEFAULT_SAMPLE_ARTICLES);
+        return DEFAULT_SAMPLE_ARTICLES;
+      }
+      return parsed;
     } catch {
       return DEFAULT_SAMPLE_ARTICLES;
     }
@@ -910,13 +917,13 @@ export const DEFAULT_SAMPLE_WORDS = [
   },
 ];
 
-// Default sample articles for reading
+// Default sample articles for reading (8 enriched editorial pieces across topics)
 export const DEFAULT_SAMPLE_ARTICLES = [
   {
     id: 'art_1',
     title: 'The Art of Coffee & Conversation',
     level: 'Intermediate (中级)',
-    content: `In modern urban life, the coffee shop is far more than a place to grab a quick dose of caffeine. It serves as a third place—a transitional sanctuary between the hectic workplace and the intimate quiet of home. 
+    content: `In modern urban life, the coffee shop is far more than a place to grab a quick dose of caffeine. It serves as a third place—a transitional sanctuary between the hectic workplace and the intimate quiet of home.
 
 When you sit with a warm ceramic mug between your palms, the aroma of roasted beans creates an instant atmosphere of relaxed contemplation. Psychologists suggest that the gentle ambient hum of café chatter actually enhances creative thinking and fosters genuine serendipity.
 
@@ -929,9 +936,75 @@ Next time you visit your favorite barista, take a breath. Don't rush out with a 
     level: 'Beginner-Intermediate (入门进阶)',
     content: `Most people believe that mastering a foreign language requires innate linguistic talent. However, cognitive science reveals a much more empowering truth: consistency invariably beats raw intensity.
 
-Spending fifteen focused minutes every single day with English does far more for your neurological wiring than cramming for five exhausting hours on a Sunday afternoon. Small, daily habits accumulate like compound interest. 
+Spending fifteen focused minutes every single day with English does far more for your neurological wiring than cramming for five exhausting hours on a Sunday afternoon. Small, daily habits accumulate like compound interest.
 
 When you embrace the journey with curiosity rather than anxiety, the fear of making mistakes gradually dissolves. Speak fearlessly, read with wonder, and let momentum do the heavy lifting.`,
-    tags: ['学习方法', '励志精读'],
+    tags: ['学习方法', '心智思维'],
+  },
+  {
+    id: 'art_3',
+    title: 'The Quiet Power of Deep Work',
+    level: 'Intermediate-Advanced (中高进阶)',
+    content: `In an era defined by incessant notifications and algorithmic distractions, the ability to concentrate deeply has become as scarce as it is valuable. Deep work is the superpower of the twenty-first century knowledge economy.
+
+When you deliberately disconnect from Slack channels and social feeds to lose yourself in demanding cognitive tasks, your brain enters a profound state of flow. Superficial busywork feels intoxicatingly productive, but it leaves behind no enduring legacy.
+
+Cultivating uninterrupted stretches of focused solitude requires ruthless intentionality. Protect your mental bandwidth fiercely; the world remembers what you built with deep dedication, not how rapidly you responded to trivial emails.`,
+    tags: ['职场专注', '极简心智'],
+  },
+  {
+    id: 'art_4',
+    title: 'Artificial Intelligence: Mirror to Human Potential',
+    level: 'Advanced (前沿进阶)',
+    content: `The rapid rise of artificial intelligence has sparked widespread anxiety about human obsolescence. Yet, when viewed through a broader historical lens, machine intelligence is not our rival, but an unprecedented cognitive mirror.
+
+By automating repetitive synthesis, computational algorithms force us to confront what makes humanity truly irreplaceable: our empathy, moral discernment, and radical creative courage. Technology magnifies our reach, but our values must steer its trajectory.
+
+The future will not belong to machines, nor to humans who resist them, but to visionary minds who master the delicate synergy between algorithmic calculation and poetic intuition.`,
+    tags: ['科技前沿', '哲学思考'],
+  },
+  {
+    id: 'art_5',
+    title: 'Embracing Discomfort: The True Fuel of Growth',
+    level: 'Intermediate (中级)',
+    content: `Comfort is a deceptive oasis. While it offers temporary safety, staying within familiar borders slowly atrophies our adaptability and shrinks our horizons.
+
+Every meaningful breakthrough—whether speaking a foreign tongue without stammering or pitching an audacious project—demands a willing encounter with vulnerability. Discomfort is not an obstacle on the path; discomfort is the very signpost confirming that genuine learning is taking place.
+
+When you welcome awkward beginnings with grace, the dread of imperfection vanishes. Lean directly into the tension, for courage is built one trembling step at a time.`,
+    tags: ['心智成长', '心理韧性'],
+  },
+  {
+    id: 'art_6',
+    title: 'The Poetics of Midnight Cities',
+    level: 'Intermediate (中级)',
+    content: `There is a peculiar magic that descends upon a bustling metropolis after midnight. The frantic corporate tempo recedes, leaving empty avenues bathed in the golden glow of incandescent streetlamps.
+
+In these quiet hours, the city reveals its true texture. Solitary cyclists glide past shuttered bistros, while steam drifts mysteriously from underground grates into the crisp night air. It is a sanctuary for nocturnal dreamers, poets, and restless coders seeking solace beneath towering silhouettes of glass and steel.
+
+To wander through a sleeping city is to experience urban poetry in its purest, unchoreographed form.`,
+    tags: ['纽约客风', '散文美篇'],
+  },
+  {
+    id: 'art_7',
+    title: 'The Architecture of Atomic Habits',
+    level: 'Beginner-Intermediate (入门进阶)',
+    content: `We rarely rise to the level of our grandest goals; instead, we fall to the level of our daily systems. Extraordinary accomplishments are merely the compound interest of ordinary, repeated choices.
+
+Reading three pages before bed, journaling two reflections at sunrise, or reviewing ten flashcards over morning tea might seem negligible in isolation. Yet, sustained over a calendar year, these micro-commitments fundamentally reshape your identity.
+
+Stop obsessing over overnight transformations. Fall in love with the unglamorous ritual of daily craftsmanship, and let cumulative progress take care of the outcome.`,
+    tags: ['习惯养成', '自我管理'],
+  },
+  {
+    id: 'art_8',
+    title: 'Simplicity in an Overcomplicated World',
+    level: 'Intermediate-Advanced (中高进阶)',
+    content: `Our modern culture equates more with better: more possessions, more commitments, more data. Yet true sophistication invariably lies in the courage to subtract.
+
+Voluntary simplicity is not about ascetic deprivation; it is the deliberate pruning of non-essentials to nourish what genuinely matters. When you declutter your schedule and eliminate noisy obligations, mental clarity naturally rushes in to fill the void.
+
+To live lightly is to live deliberately. Possess only what speaks to your spirit, cherish unhurried afternoons, and discover the profound abundance hidden within stillness.`,
+    tags: ['极简主义', '心灵栖居'],
   },
 ];
