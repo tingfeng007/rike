@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, Languages, Play, RotateCcw, Sparkles, Volume2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, Languages, Play, RotateCcw, Sparkles, Volume2, BookmarkPlus, Check, Search } from 'lucide-react';
 import { tts } from '../services/speech';
+import { StorageService } from '../services/storage';
 
 const NCE1_BASE = 'https://nce.mleo.site/NCE1';
 const PROGRESS_KEY = 'lingoflow_nce1_progress';
@@ -39,6 +40,22 @@ function buildExercises(lines) {
   });
 }
 
+function extractWords(lines) {
+  const stopWords = new Set(['a', 'an', 'the', 'am', 'is', 'are', 'was', 'were', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'this', 'that', 'to', 'of', 'in', 'on', 'at', 'and', 'or', 'but', 'for', 'my', 'your', 'his', 'her', 'me', 'please', 'yes', 'no']);
+  const map = new Map();
+  lines.forEach((line) => {
+    const words = line.en.match(/[A-Za-z][A-Za-z'-]*/g) || [];
+    words.forEach((raw) => {
+      const word = raw.toLowerCase();
+      if (word.length < 3 || stopWords.has(word)) return;
+      const item = map.get(word) || { word, count: 0, sentence: line.en, sentenceCn: line.zh || '' };
+      item.count += 1;
+      map.set(word, item);
+    });
+  });
+  return Array.from(map.values()).sort((a, b) => b.count - a.count || a.word.localeCompare(b.word));
+}
+
 function loadProgress() {
   try { return JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}'); } catch { return {}; }
 }
@@ -56,6 +73,8 @@ export default function NewConcept() {
   const [exerciseAnswer, setExerciseAnswer] = useState('');
   const [exerciseResult, setExerciseResult] = useState(null);
   const [progress, setProgress] = useState(() => loadProgress());
+  const [wordFilter, setWordFilter] = useState('');
+  const [savedWordTick, setSavedWordTick] = useState(0);
   const audioRef = useRef(null);
 
   useEffect(() => {
@@ -67,6 +86,9 @@ export default function NewConcept() {
   }, []);
 
   const exercises = useMemo(() => buildExercises(lines), [lines]);
+  const lessonWords = useMemo(() => extractWords(lines), [lines]);
+  const savedWords = useMemo(() => new Map(StorageService.getVocabulary().map((item) => [item.word.toLowerCase(), item])), [savedWordTick]);
+  const filteredWords = useMemo(() => lessonWords.filter((item) => item.word.includes(wordFilter.trim().toLowerCase())), [lessonWords, wordFilter]);
   const currentExercise = exercises[exerciseIndex];
   const completedCount = units.filter((unit) => progress[unit.filename]?.status === 'completed').length;
 
@@ -128,6 +150,17 @@ export default function NewConcept() {
     saveProgress(selectedUnit.filename, { status: 'completed', completedCount: (progress[selectedUnit.filename]?.completedCount || 0) + 1 });
   };
 
+  const saveWord = (item) => {
+    StorageService.addWord({
+      word: item.word,
+      translation: '点击 AI 查词补充释义',
+      contextSentence: item.sentence,
+      contextSentenceCn: item.sentenceCn,
+      tags: ['新概念英语', '第一册', selectedUnit?.title || '当前课文'],
+    });
+    setSavedWordTick((value) => value + 1);
+  };
+
   if (view === 'lessons') {
     return (
       <section className="h-full overflow-y-auto p-4 pb-28">
@@ -165,8 +198,8 @@ export default function NewConcept() {
       <div className="flex items-start justify-between gap-3 mb-3"><div><p className="text-xs text-sky-600 font-semibold">{selectedUnit?.title}</p><h1 className="text-xl font-bold text-slate-900 mt-1">{selectedUnit?.title.replace(/^\d+&\d+\./, '')}</h1></div><button onClick={() => setShowChinese((value) => !value)} className="p-2 rounded-xl bg-slate-100 text-slate-600" title="切换中英"><Languages className="w-5 h-5" /></button></div>
       {error && <div className="rounded-xl bg-amber-50 text-amber-700 text-xs p-3 mb-3">{error}</div>}
       <audio ref={audioRef} src={audioUrl} controls className="w-full mb-3" onTimeUpdate={(event) => { const time = event.currentTarget.currentTime; const index = lines.findIndex((line, i) => time >= line.time && (i === lines.length - 1 || time < lines[i + 1].time)); if (index >= 0) setActiveLine(index); }} onEnded={() => selectedUnit && saveProgress(selectedUnit.filename, { audioPosition: 0 })} />
-      <div className="flex gap-2 mb-3"><button onClick={() => setView('lesson')} className={`flex-1 py-2 rounded-xl text-sm font-semibold ${view === 'lesson' ? 'bg-sky-600 text-white' : 'bg-white text-slate-600 border'}`}>课文精读</button><button onClick={() => setView('exercise')} className={`flex-1 py-2 rounded-xl text-sm font-semibold ${view === 'exercise' ? 'bg-sky-600 text-white' : 'bg-white text-slate-600 border'}`}>练习题 {exercises.length ? `(${exercises.length})` : ''}</button></div>
-      {view === 'lesson' ? <div className="space-y-2">{lines.length === 0 && !error && <div className="text-sm text-slate-400 text-center py-8">正在加载课文字幕…</div>}{lines.map((line, index) => <button key={line.id} onClick={() => playLine(line, index)} className={`w-full text-left rounded-2xl p-3 transition-colors ${activeLine === index ? 'bg-sky-50 ring-1 ring-sky-200' : 'bg-white border border-slate-200'}`}><span className="flex gap-2"><Volume2 className={`w-4 h-4 mt-1 shrink-0 ${activeLine === index ? 'text-sky-600' : 'text-slate-300'}`} /><span><span className="block text-[15px] leading-6 text-slate-800">{line.en}</span>{showChinese && line.zh && <span className="block text-xs leading-5 text-slate-500 mt-1">{line.zh}</span>}</span></span></button>)}</div> : <div className="rounded-2xl bg-white border border-slate-200 p-4">{currentExercise ? <><div className="flex items-center justify-between mb-3"><span className="text-xs text-slate-400">练习 {exerciseIndex + 1}/{exercises.length}</span><Sparkles className="w-4 h-4 text-amber-500" /></div><h2 className="font-semibold text-slate-800 mb-3">{currentExercise.prompt}</h2><p className="rounded-xl bg-slate-50 p-3 text-lg leading-8 mb-2">{currentExercise.sentence}</p><p className="text-xs text-slate-500 mb-4">{currentExercise.zh}</p>{currentExercise.type === 'choice' ? <div className="grid grid-cols-2 gap-2">{currentExercise.options.map((option) => <button key={option} onClick={() => answerExercise(option)} disabled={Boolean(exerciseResult)} className={`p-2 rounded-xl border text-sm ${exerciseResult && option.toLowerCase() === currentExercise.answer ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 hover:border-sky-300'}`}>{option}</button>)}</div> : <div className="flex gap-2"><input value={exerciseAnswer} onChange={(event) => setExerciseAnswer(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && answerExercise(exerciseAnswer)} placeholder="输入缺少的单词" className="flex-1 border border-slate-200 rounded-xl px-3 text-sm" /><button onClick={() => answerExercise(exerciseAnswer)} className="px-4 rounded-xl bg-sky-600 text-white text-sm">检查</button></div>}{exerciseResult && <div className={`mt-4 rounded-xl p-3 text-sm ${exerciseResult === 'correct' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{exerciseResult === 'correct' ? '答对了，可以继续。' : `再想想。答案是：${currentExercise.answer}`}<button onClick={nextExercise} className="block mt-2 font-semibold underline">{exerciseIndex + 1 >= exercises.length ? '完成练习' : '下一题'}</button></div>}</> : <div className="text-center py-8 text-sm text-slate-500">课文加载后会自动生成句子练习。</div>}</div>}
+      <div className="flex gap-2 mb-3"><button onClick={() => setView('lesson')} className={`flex-1 py-2 rounded-xl text-sm font-semibold ${view === 'lesson' ? 'bg-sky-600 text-white' : 'bg-white text-slate-600 border'}`}>课文精读</button><button onClick={() => setView('vocab')} className={`flex-1 py-2 rounded-xl text-sm font-semibold ${view === 'vocab' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border'}`}>本课单词 {lessonWords.length ? `(${lessonWords.length})` : ''}</button><button onClick={() => setView('exercise')} className={`flex-1 py-2 rounded-xl text-sm font-semibold ${view === 'exercise' ? 'bg-sky-600 text-white' : 'bg-white text-slate-600 border'}`}>练习题 {exercises.length ? `(${exercises.length})` : ''}</button></div>
+      {view === 'lesson' ? <div className="space-y-2">{lines.length === 0 && !error && <div className="text-sm text-slate-400 text-center py-8">正在加载课文字幕…</div>}{lines.map((line, index) => <button key={line.id} onClick={() => playLine(line, index)} className={`w-full text-left rounded-2xl p-3 transition-colors ${activeLine === index ? 'bg-sky-50 ring-1 ring-sky-200' : 'bg-white border border-slate-200'}`}><span className="flex gap-2"><Volume2 className={`w-4 h-4 mt-1 shrink-0 ${activeLine === index ? 'text-sky-600' : 'text-slate-300'}`} /><span><span className="block text-[15px] leading-6 text-slate-800">{line.en}</span>{showChinese && line.zh && <span className="block text-xs leading-5 text-slate-500 mt-1">{line.zh}</span>}</span></span></button>)}</div> : view === 'vocab' ? <div className="rounded-2xl bg-white border border-slate-200 p-4"><div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 mb-3"><Search className="w-4 h-4 text-slate-400" /><input value={wordFilter} onChange={(event) => setWordFilter(event.target.value)} placeholder="筛选本课单词" className="bg-transparent outline-none text-sm flex-1" /></div>{selectedUnit && lessonWords.length === 0 ? <div className="text-center py-8 text-sm text-slate-500">课文加载后会生成本课重点词。</div> : <div className="space-y-2">{filteredWords.map((item) => { const saved = savedWords.has(item.word); return <div key={item.word} className="border border-slate-100 rounded-xl p-3"><div className="flex items-center gap-2"><button onClick={() => tts.speak(item.word)} className="text-sky-600"><Volume2 className="w-4 h-4" /></button><span className="font-semibold text-slate-800">{item.word}</span><span className="text-xs text-slate-400">出现 {item.count} 次</span><button onClick={() => saved ? null : saveWord(item)} className={`ml-auto text-xs px-2 py-1 rounded-lg ${saved ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600'}`}>{saved ? <span className="flex items-center gap-1"><Check className="w-3 h-3" />已收录</span> : <span className="flex items-center gap-1"><BookmarkPlus className="w-3 h-3" />加入生词本</span>}</button></div><p className="text-xs text-slate-500 mt-2">{item.sentence}</p>{item.sentenceCn && <p className="text-xs text-slate-400 mt-1">{item.sentenceCn}</p>}</div>; })}</div>}</div> : <div className="rounded-2xl bg-white border border-slate-200 p-4">{currentExercise ? <><div className="flex items-center justify-between mb-3"><span className="text-xs text-slate-400">练习 {exerciseIndex + 1}/{exercises.length}</span><Sparkles className="w-4 h-4 text-amber-500" /></div><h2 className="font-semibold text-slate-800 mb-3">{currentExercise.prompt}</h2><p className="rounded-xl bg-slate-50 p-3 text-lg leading-8 mb-2">{currentExercise.sentence}</p><p className="text-xs text-slate-500 mb-4">{currentExercise.zh}</p>{currentExercise.type === 'choice' ? <div className="grid grid-cols-2 gap-2">{currentExercise.options.map((option) => <button key={option} onClick={() => answerExercise(option)} disabled={Boolean(exerciseResult)} className={`p-2 rounded-xl border text-sm ${exerciseResult && option.toLowerCase() === currentExercise.answer ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 hover:border-sky-300'}`}>{option}</button>)}</div> : <div className="flex gap-2"><input value={exerciseAnswer} onChange={(event) => setExerciseAnswer(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && answerExercise(exerciseAnswer)} placeholder="输入缺少的单词" className="flex-1 border border-slate-200 rounded-xl px-3 text-sm" /><button onClick={() => answerExercise(exerciseAnswer)} className="px-4 rounded-xl bg-sky-600 text-white text-sm">检查</button></div>}{exerciseResult && <div className={`mt-4 rounded-xl p-3 text-sm ${exerciseResult === 'correct' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{exerciseResult === 'correct' ? '答对了，可以继续。' : `再想想。答案是：${currentExercise.answer}`}<button onClick={nextExercise} className="block mt-2 font-semibold underline">{exerciseIndex + 1 >= exercises.length ? '完成练习' : '下一题'}</button></div>}</> : <div className="text-center py-8 text-sm text-slate-500">课文加载后会自动生成句子练习。</div>}</div>}
       <div className="flex gap-2 mt-4"><button onClick={() => { if (lines[activeLine]) playLine(lines[activeLine], activeLine); }} className="flex-1 py-2 rounded-xl bg-slate-900 text-white text-sm flex items-center justify-center gap-1"><Play className="w-4 h-4" />朗读当前句</button><button onClick={markComplete} className="flex-1 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-sm flex items-center justify-center gap-1"><CheckCircle2 className="w-4 h-4" />标记完成</button></div>
       <button onClick={() => { setExerciseIndex(0); setExerciseResult(null); setExerciseAnswer(''); }} className="w-full mt-2 py-2 text-xs text-slate-400 flex items-center justify-center gap-1"><RotateCcw className="w-3 h-3" />重置本课练习</button>
     </section>
