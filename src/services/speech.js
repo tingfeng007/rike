@@ -134,6 +134,26 @@ class TTSService {
     }
   }
 
+  pause() {
+    if (this.synth && this.synth.speaking) {
+      this.synth.pause();
+    }
+  }
+
+  resume() {
+    if (this.synth && this.synth.paused) {
+      this.synth.resume();
+    }
+  }
+
+  isSupported() {
+    return Boolean(
+      this.synth &&
+      typeof window !== 'undefined' &&
+      typeof window.SpeechSynthesisUtterance !== 'undefined'
+    );
+  }
+
   isSpeaking() {
     return this.synth ? this.synth.speaking : false;
   }

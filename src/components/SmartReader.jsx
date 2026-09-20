@@ -15,6 +15,9 @@ import {
   NotebookPen,
   Download,
   RotateCcw,
+  Play,
+  Pause,
+  Square,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
@@ -116,6 +119,13 @@ export default function SmartReader() {
   // Reading scroll container & position persistence
   const scrollContainerRef = useRef(null);
 
+  // Whole-article speech state. The browser speech engine reads one sentence
+  // at a time so pause/resume stays responsive even for long articles.
+  const articleSpeechRunRef = useRef(0);
+  const [isArticleSpeaking, setIsArticleSpeaking] = useState(false);
+  const [isArticlePaused, setIsArticlePaused] = useState(false);
+  const [articleSpeechIndex, setArticleSpeechIndex] = useState(0);
+
   // Map of saved vocabulary for instant in-article highlighting
   const savedVocabMap = useMemo(() => {
     const list = StorageService.getVocabulary();
@@ -155,6 +165,78 @@ export default function SmartReader() {
   const currentAnnotations = currentArticle?.id
     ? annotations[String(currentArticle.id)] || []
     : [];
+
+  const articleSpeechSentences = useMemo(() => {
+    if (!currentArticle?.content) return [];
+    return currentArticle.content
+      .split(/\n\n+/)
+      .flatMap((paragraph) => splitIntoSentences(paragraph))
+      .map((sentence) => sentence.trim())
+      .filter(Boolean);
+  }, [currentArticle]);
+
+  const stopArticleSpeech = (resetProgress = true) => {
+    articleSpeechRunRef.current += 1;
+    tts.stop();
+    setIsArticleSpeaking(false);
+    setIsArticlePaused(false);
+    if (resetProgress) setArticleSpeechIndex(0);
+  };
+
+  const startArticleSpeech = async (startIndex = 0) => {
+    if (articleSpeechSentences.length === 0) return;
+    if (!tts.isSupported()) {
+      alert('当前浏览器不支持系统语音朗读，请换用新版 Chrome、Edge 或 Safari。');
+      return;
+    }
+
+    const runId = articleSpeechRunRef.current + 1;
+    articleSpeechRunRef.current = runId;
+    setIsArticleSpeaking(true);
+    setIsArticlePaused(false);
+
+    for (let index = startIndex; index < articleSpeechSentences.length; index += 1) {
+      if (articleSpeechRunRef.current !== runId) return;
+      setArticleSpeechIndex(index);
+      await tts.speak(articleSpeechSentences[index]);
+    }
+
+    if (articleSpeechRunRef.current === runId) {
+      setArticleSpeechIndex(articleSpeechSentences.length);
+      setIsArticleSpeaking(false);
+      setIsArticlePaused(false);
+    }
+  };
+
+  const toggleArticleSpeech = () => {
+    if (isArticleSpeaking) {
+      if (isArticlePaused) {
+        tts.resume();
+        setIsArticlePaused(false);
+      } else {
+        tts.pause();
+        setIsArticlePaused(true);
+      }
+      return;
+    }
+
+    const nextIndex = articleSpeechIndex >= articleSpeechSentences.length ? 0 : articleSpeechIndex;
+    startArticleSpeech(nextIndex);
+  };
+
+  useEffect(() => () => {
+    articleSpeechRunRef.current += 1;
+    tts.stop();
+  }, []);
+
+  useEffect(() => {
+    // A new article should always start its voice track from the beginning.
+    articleSpeechRunRef.current += 1;
+    tts.stop();
+    setIsArticleSpeaking(false);
+    setIsArticlePaused(false);
+    setArticleSpeechIndex(0);
+  }, [currentArticle?.id]);
 
   const persistAnnotations = (next) => {
     setAnnotations(next);
@@ -426,6 +508,8 @@ export default function SmartReader() {
     const clean = rawWord.replace(/^[^\w]+|[^\w]+$/g, '');
     if (!clean || clean.length < 2) return;
 
+    stopArticleSpeech();
+
     const sentence = findEnclosingSentence(currentArticle.content, clean);
     setSelectedWord({ word: clean, sentence });
     setWordAnalysis(null);
@@ -497,6 +581,8 @@ export default function SmartReader() {
   const handleSentenceClick = async (sentence) => {
     const cleanSentence = sentence.trim();
     if (!cleanSentence) return;
+
+    stopArticleSpeech();
 
     setSelectedSentence(cleanSentence);
     setSentenceAnalysis(null);
@@ -637,10 +723,53 @@ export default function SmartReader() {
               <h1 className="text-xl md:text-2xl font-bold text-slate-900 mt-2 tracking-tight">
                 {currentArticle.title}
               </h1>
-              <p className="text-xs text-slate-600 mt-1.5 flex items-center gap-2">
-                <span>💡 点单词查词；点句末 ✨ 拆解语法；点 🖍️ 划线并写下心得</span>
-              </p>
-            </div>
+               <p className="text-xs text-slate-600 mt-1.5 flex items-center gap-2">
+                 <span>💡 点单词查词；点句末 ✨ 拆解语法；点 🖍️ 划线并写下心得</span>
+               </p>
+               <div className="mt-3 flex flex-wrap items-center gap-2">
+                 <button
+                   type="button"
+                   onClick={toggleArticleSpeech}
+                   disabled={articleSpeechSentences.length === 0 || !tts.isSupported()}
+                   className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold shadow-xs transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
+                     isArticleSpeaking
+                       ? 'bg-sky-600 text-white hover:bg-sky-700'
+                       : 'bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100'
+                   }`}
+                   title={tts.isSupported() ? '按句连续朗读整篇文章，可暂停和继续' : '当前浏览器不支持系统语音朗读'}
+                 >
+                   {isArticleSpeaking ? (
+                     isArticlePaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />
+                   ) : <Volume2 className="w-3.5 h-3.5" />}
+                   <span>{isArticleSpeaking ? (isArticlePaused ? '继续朗读' : '暂停朗读') : '整篇朗读'}</span>
+                 </button>
+                 {(isArticleSpeaking || articleSpeechIndex > 0) && (
+                   <button
+                     type="button"
+                     onClick={() => stopArticleSpeech()}
+                     className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 border border-slate-200 bg-white hover:bg-slate-50 transition-all active:scale-95"
+                   >
+                     <Square className="w-3 h-3 fill-current" />
+                     <span>停止</span>
+                   </button>
+                 )}
+                 {articleSpeechSentences.length > 0 && (
+                   <span className="text-[11px] text-slate-500">
+                     {articleSpeechIndex >= articleSpeechSentences.length
+                       ? '全文已读完'
+                       : `共 ${articleSpeechSentences.length} 句${isArticleSpeaking ? ` · 第 ${articleSpeechIndex + 1} 句` : ''}`}
+                   </span>
+                 )}
+               </div>
+               {(isArticleSpeaking || articleSpeechIndex > 0) && articleSpeechSentences.length > 0 && (
+                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100" aria-label="整篇朗读进度">
+                   <div
+                     className="h-full rounded-full bg-sky-500 transition-all duration-300"
+                     style={{ width: `${Math.min(100, (articleSpeechIndex / articleSpeechSentences.length) * 100)}%` }}
+                   />
+                 </div>
+               )}
+             </div>
 
             {/* Paragraphs with interactive words & sentence breakdown button */}
             <div className="space-y-5">
@@ -777,7 +906,7 @@ export default function SmartReader() {
                   </span>
                 )}
                 <button
-                  onClick={() => tts.speak(selectedWord.word)}
+                   onClick={() => { stopArticleSpeech(); tts.speak(selectedWord.word); }}
                   className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-full transition-colors"
                   title="播放发音"
                 >
@@ -841,7 +970,7 @@ export default function SmartReader() {
                       <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
                         <span>📖 原文出处语境:</span>
                         <button
-                          onClick={() => tts.speak(selectedWord.sentence)}
+                          onClick={() => { stopArticleSpeech(); tts.speak(selectedWord.sentence); }}
                           className="hover:text-sky-600 flex items-center gap-1"
                         >
                           <Volume2 className="w-3 h-3" />
@@ -941,7 +1070,7 @@ export default function SmartReader() {
               <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
                 <span>目标句子</span>
                 <button
-                  onClick={() => tts.speak(selectedSentence)}
+                  onClick={() => { stopArticleSpeech(); tts.speak(selectedSentence); }}
                   className="text-sky-600 hover:underline flex items-center gap-1 font-medium"
                 >
                   <Volume2 className="w-3.5 h-3.5" />
