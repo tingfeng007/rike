@@ -1,9 +1,9 @@
 /*!
  * LingoFlow Offline Resilience Service Worker (Network-First Strategy)
- * Cache version: lingoflow-offline-v3
+ * Cache version: lingoflow-offline-v4
  */
 
-const CACHE_NAME = 'lingoflow-offline-v3';
+const CACHE_NAME = 'lingoflow-offline-v4';
 
 self.addEventListener('install', (_event) => {
   self.skipWaiting();
