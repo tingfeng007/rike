@@ -726,7 +726,7 @@ export default function OralCoach({ onNavigateToVocab }) {
               <span className="text-lg">👋</span>
               <div>
                 <h4 className="font-bold text-slate-900 text-xs">欢迎来到 LingoFlow！开启你的专属外教</h4>
-                <p className="text-[10.5px] text-slate-500">仅需填入 API Key 即可畅聊，对话隐私 100% 留存本地</p>
+                <p className="text-[10.5px] text-slate-500">API Key 与历史记录保存在本机；消息由你选择的 AI 服务商处理</p>
               </div>
             </div>
             <button
@@ -890,7 +890,7 @@ export default function OralCoach({ onNavigateToVocab }) {
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              为了保障你的对话隐私与自由度，LingoFlow 绝不上报你的任何对话记录，直接连通你自己的大模型（推荐 DeepSeek，性价比极高，几分钱可聊数百句）。
+              LingoFlow 不自建服务器保存对话；聊天内容会直接发送给你选择的 AI 服务商处理。建议不要输入密码、证件号等敏感信息。
             </p>
 
             <div>

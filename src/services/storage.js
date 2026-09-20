@@ -6,7 +6,31 @@ const STORAGE_KEYS = {
   ARTICLES: 'lingoflow_articles',
   STUDY_STATS: 'lingoflow_study_stats',
   READING_ANNOTATIONS: 'lingoflow_reading_annotations',
+  NCE_PROGRESS: 'lingoflow_nce1_progress',
+  NCE_CACHE: 'lingoflow_nce1_cache_v1',
+  APP_STATE: 'lingoflow_app_state',
 };
+
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dateKeyToDayNumber(key) {
+  const [year, month, day] = String(key).split('-').map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / (24 * 60 * 60 * 1000));
+}
 
 // Preset providers
 export const PROVIDER_PRESETS = {
@@ -69,6 +93,19 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const StorageService = {
+  // --- App navigation state ---
+  getAppState() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.APP_STATE) || '{}');
+    } catch {
+      return {};
+    }
+  },
+
+  saveAppState(state) {
+    return safeSetItem(STORAGE_KEYS.APP_STATE, JSON.stringify(state || {}));
+  },
+
   // --- Settings ---
   getSettings() {
     try {
@@ -80,7 +117,7 @@ export const StorageService = {
   },
 
   saveSettings(settings) {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    return safeSetItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
   },
 
   // --- Vocabulary ---
@@ -101,7 +138,7 @@ export const StorageService = {
   },
 
   saveVocabulary(words) {
-    localStorage.setItem(STORAGE_KEYS.VOCABULARY, JSON.stringify(words));
+    return safeSetItem(STORAGE_KEYS.VOCABULARY, JSON.stringify(words));
   },
 
   addWord(wordObj) {
@@ -131,14 +168,25 @@ export const StorageService = {
     };
 
     if (existingIndex >= 0) {
-      // Update existing
-      words[existingIndex] = { ...words[existingIndex], ...newEntry, id: words[existingIndex].id };
+      const existing = words[existingIndex];
+      const mergedTags = Array.from(new Set([...(existing.tags || []), ...(wordObj.tags || [])]));
+      words[existingIndex] = {
+        ...existing,
+        phonetic: existing.phonetic || newEntry.phonetic,
+        pos: existing.pos || newEntry.pos,
+        translation: existing.translation || newEntry.translation,
+        definitionEn: existing.definitionEn || newEntry.definitionEn,
+        contextSentence: existing.contextSentence || newEntry.contextSentence,
+        contextSentenceCn: existing.contextSentenceCn || newEntry.contextSentenceCn,
+        tags: mergedTags.length ? mergedTags : ['自学收集'],
+        lastEncounteredAt: now,
+      };
     } else {
       words.unshift(newEntry);
     }
 
-    this.saveVocabulary(words);
-    return newEntry;
+    const saved = this.saveVocabulary(words);
+    return saved ? (existingIndex >= 0 ? words[existingIndex] : newEntry) : null;
   },
 
   updateWordSRS(wordId, quality) {
@@ -216,13 +264,15 @@ export const StorageService = {
 
   // --- Study Habit & Streak Stats 2.0 (Multi-module activity tracker) ---
   getStudyStats() {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getLocalDateKey();
     const defaultStats = {
       streakDays: 0,
       lastActiveDate: '',
       todayReviewedCount: 0,
       todayOralCount: 0,
       todayAnnotationCount: 0,
+      todayCourseCount: 0,
+      todayVocabCount: 0,
       todayTotalActions: 0,
       totalReviewedCount: 0,
     };
@@ -240,6 +290,8 @@ export const StorageService = {
           todayReviewedCount: 0,
           todayOralCount: 0,
           todayAnnotationCount: 0,
+          todayCourseCount: 0,
+          todayVocabCount: 0,
           todayTotalActions: 0,
         };
       }
@@ -250,11 +302,11 @@ export const StorageService = {
   },
 
   saveStudyStats(stats) {
-    localStorage.setItem(STORAGE_KEYS.STUDY_STATS, JSON.stringify(stats));
+    return safeSetItem(STORAGE_KEYS.STUDY_STATS, JSON.stringify(stats));
   },
 
   recordStudyActivity({ type = 'review', count = 1 } = {}) {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getLocalDateKey();
     const current = this.getStudyStats();
 
     let newStreak = current.streakDays || 0;
@@ -263,9 +315,7 @@ export const StorageService = {
       if (!current.lastActiveDate) {
         newStreak = 1;
       } else {
-        const lastDate = new Date(current.lastActiveDate);
-        const todayDate = new Date(todayStr);
-        const diffDays = Math.round((todayDate - lastDate) / (24 * 60 * 60 * 1000));
+        const diffDays = dateKeyToDayNumber(todayStr) - dateKeyToDayNumber(current.lastActiveDate);
 
         if (diffDays === 1) {
           newStreak += 1;
@@ -280,6 +330,8 @@ export const StorageService = {
     const todayReviewed = type === 'review' ? (current.todayReviewedCount || 0) + count : (current.todayReviewedCount || 0);
     const todayOral = type === 'oral' ? (current.todayOralCount || 0) + count : (current.todayOralCount || 0);
     const todayAnnotation = type === 'annotation' ? (current.todayAnnotationCount || 0) + count : (current.todayAnnotationCount || 0);
+    const todayCourse = type === 'course' ? (current.todayCourseCount || 0) + count : (current.todayCourseCount || 0);
+    const todayVocab = type === 'vocab' ? (current.todayVocabCount || 0) + count : (current.todayVocabCount || 0);
     const todayTotal = (current.todayTotalActions || 0) + count;
 
     const updated = {
@@ -289,6 +341,8 @@ export const StorageService = {
       todayReviewedCount: todayReviewed,
       todayOralCount: todayOral,
       todayAnnotationCount: todayAnnotation,
+      todayCourseCount: todayCourse,
+      todayVocabCount: todayVocab,
       todayTotalActions: todayTotal,
       totalReviewedCount: (current.totalReviewedCount || 0) + (type === 'review' ? count : 0),
     };
@@ -318,7 +372,7 @@ export const StorageService = {
   },
 
   saveChatMessages(scenarioId, messages) {
-    localStorage.setItem(`${STORAGE_KEYS.CHAT_MESSAGES}_${scenarioId}`, JSON.stringify(messages));
+    return safeSetItem(`${STORAGE_KEYS.CHAT_MESSAGES}_${scenarioId}`, JSON.stringify(messages));
   },
 
   clearChatMessages(scenarioId) {
@@ -343,7 +397,7 @@ export const StorageService = {
   },
 
   saveArticles(articles) {
-    localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(articles));
+    return safeSetItem(STORAGE_KEYS.ARTICLES, JSON.stringify(articles));
   },
 
   saveArticle(article) {
@@ -388,7 +442,7 @@ export const StorageService = {
   },
 
   saveReadingAnnotations(annotations) {
-    localStorage.setItem(STORAGE_KEYS.READING_ANNOTATIONS, JSON.stringify(annotations));
+    return safeSetItem(STORAGE_KEYS.READING_ANNOTATIONS, JSON.stringify(annotations));
   },
 
   // --- Reading Scroll Positions ---
@@ -412,7 +466,7 @@ export const StorageService = {
     try {
       Object.entries(positions).forEach(([key, val]) => {
         if (key.startsWith('lingoflow_read_pos_') && val != null) {
-          localStorage.setItem(key, String(val));
+          safeSetItem(key, String(val));
         }
       });
     } catch {
@@ -454,6 +508,31 @@ export const StorageService = {
     }
   },
 
+  // --- New Concept English Book 1 ---
+  getNceProgress() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.NCE_PROGRESS) || '{}');
+    } catch {
+      return {};
+    }
+  },
+
+  saveNceProgress(progress) {
+    return safeSetItem(STORAGE_KEYS.NCE_PROGRESS, JSON.stringify(progress || {}));
+  },
+
+  getNceCache() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.NCE_CACHE) || '{}');
+    } catch {
+      return {};
+    }
+  },
+
+  saveNceCache(cache) {
+    return safeSetItem(STORAGE_KEYS.NCE_CACHE, JSON.stringify(cache || {}));
+  },
+
   // --- Local Data Overview ---
   getLocalDataSummary() {
     const vocab = this.getVocabulary();
@@ -466,6 +545,8 @@ export const StorageService = {
     const chats = this.getAllChatMessages();
     const scenarioCount = Object.keys(chats).length;
     const stats = this.getStudyStats();
+    const nceProgress = this.getNceProgress();
+    const nceEntries = Object.values(nceProgress).filter((item) => item && typeof item === 'object');
 
     return {
       vocabCount: vocab.length,
@@ -475,6 +556,8 @@ export const StorageService = {
       scenarioCount,
       streakDays: stats.streakDays || 0,
       todayReviewedCount: stats.todayReviewedCount || 0,
+      nceStartedCount: nceEntries.length,
+      nceCompletedCount: nceEntries.filter((item) => item.status === 'completed').length,
     };
   },
 
@@ -502,6 +585,8 @@ export const StorageService = {
       readingPositions: this.getAllReadingPositions(),
       chatMessages: this.getAllChatMessages(),
       studyStats: this.getStudyStats(),
+      nceProgress: this.getNceProgress(),
+      appState: this.getAppState(),
     };
     return JSON.stringify(backup, null, 2);
   },
@@ -527,6 +612,9 @@ export const StorageService = {
           : 0;
 
       const hasApiKey = Boolean(data.settings?.apiKey?.trim());
+      const nceProgressCount = data.nceProgress && typeof data.nceProgress === 'object'
+        ? Object.keys(data.nceProgress).length
+        : 0;
       const exportedAt = data.exportedAt
         ? new Date(data.exportedAt).toLocaleString('zh-CN')
         : '未知时间';
@@ -539,6 +627,7 @@ export const StorageService = {
         articleCount,
         annotationCount,
         chatCount,
+        nceProgressCount,
         hasApiKey,
       };
     } catch (err) {
@@ -683,12 +772,35 @@ export const StorageService = {
             currentStats.todayReviewedCount || 0,
             data.studyStats.todayReviewedCount || 0
           ),
+          todayOralCount: Math.max(currentStats.todayOralCount || 0, data.studyStats.todayOralCount || 0),
+          todayAnnotationCount: Math.max(currentStats.todayAnnotationCount || 0, data.studyStats.todayAnnotationCount || 0),
+          todayCourseCount: Math.max(currentStats.todayCourseCount || 0, data.studyStats.todayCourseCount || 0),
+          todayVocabCount: Math.max(currentStats.todayVocabCount || 0, data.studyStats.todayVocabCount || 0),
+          todayTotalActions: Math.max(currentStats.todayTotalActions || 0, data.studyStats.todayTotalActions || 0),
           totalReviewedCount: Math.max(
             currentStats.totalReviewedCount || 0,
             data.studyStats.totalReviewedCount || 0
           ),
         };
         this.saveStudyStats(mergedStats);
+      }
+
+      // 8. NCE course progress: keep the most recently studied record per lesson
+      if (data.nceProgress && typeof data.nceProgress === 'object') {
+        const localProgress = this.getNceProgress();
+        const mergedProgress = { ...localProgress };
+        Object.entries(data.nceProgress).forEach(([lessonId, incoming]) => {
+          if (!incoming || typeof incoming !== 'object') return;
+          const current = mergedProgress[lessonId];
+          if (!current || (incoming.lastStudiedAt || 0) >= (current.lastStudiedAt || 0)) {
+            mergedProgress[lessonId] = incoming;
+          }
+        });
+        this.saveNceProgress(mergedProgress);
+      }
+
+      if (data.appState && typeof data.appState === 'object') {
+        this.saveAppState({ ...this.getAppState(), ...data.appState });
       }
 
       return {

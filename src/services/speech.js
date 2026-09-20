@@ -236,7 +236,7 @@ class STTService {
     if (this.recognition && this.isListening) {
       try {
         this.recognition.stop();
-      } catch (err) {
+      } catch {
         // ignore
       }
       this.isListening = false;

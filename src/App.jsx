@@ -1,21 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import {
+  Home,
   MessageSquare,
   BookOpen,
   Layers,
   GraduationCap,
-  Settings as SettingsIcon,
 } from 'lucide-react';
-import OralCoach from './components/OralCoach';
-import SmartReader from './components/SmartReader';
-import VocabularySRS from './components/VocabularySRS';
-import Settings from './components/Settings';
-import NewConcept from './components/NewConcept';
+import HomeDashboard from './components/HomeDashboard';
+import ErrorBoundary from './components/ErrorBoundary';
 import { StorageService } from './services/storage';
 
+const OralCoach = lazy(() => import('./components/OralCoach'));
+const SmartReader = lazy(() => import('./components/SmartReader'));
+const VocabularySRS = lazy(() => import('./components/VocabularySRS'));
+const Settings = lazy(() => import('./components/Settings'));
+const NewConcept = lazy(() => import('./components/NewConcept'));
+
+const VALID_TABS = new Set(['home', 'oral', 'reader', 'nce', 'vocab', 'settings']);
+
+function PageFallback() {
+  return (
+    <div className="h-full flex items-center justify-center text-sm text-slate-400">
+      <span className="w-5 h-5 mr-2 rounded-full border-2 border-slate-200 border-t-sky-500 animate-spin" />
+      正在打开学习空间…
+    </div>
+  );
+}
+
+function countDueWords() {
+  const now = Date.now();
+  return StorageService.getVocabulary().filter(
+    (word) => !word.nextReviewDate || word.nextReviewDate <= now + 60 * 60 * 1000
+  ).length;
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('oral'); // 'oral' | 'reader' | 'nce' | 'vocab' | 'settings'
-  const [dueVocabCount, setDueVocabCount] = useState(0);
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = StorageService.getAppState().activeTab;
+    return VALID_TABS.has(saved) ? saved : 'home';
+  });
+  const [dueVocabCount, setDueVocabCount] = useState(() => countDueWords());
+  const [nceResumeLesson, setNceResumeLesson] = useState('');
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
 
@@ -38,18 +63,21 @@ export default function App() {
     };
   }, []);
 
+  const navigate = (tab, options = {}) => {
+    if (!VALID_TABS.has(tab)) return;
+    if (tab === 'nce') {
+      setNceResumeLesson(options.resume ? (StorageService.getAppState().lastNceLesson || '') : '');
+    }
+    setActiveTab(tab);
+    StorageService.saveAppState({ ...StorageService.getAppState(), activeTab: tab });
+  };
+
   // Check how many cards are due today for review
   const updateDueCount = () => {
-    const words = StorageService.getVocabulary();
-    const now = Date.now();
-    const due = words.filter(
-      (w) => !w.nextReviewDate || w.nextReviewDate <= now + 60 * 60 * 1000
-    );
-    setDueVocabCount(due.length);
+    setDueVocabCount(countDueWords());
   };
 
   useEffect(() => {
-    updateDueCount();
     const interval = setInterval(updateDueCount, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -77,13 +105,18 @@ export default function App() {
 
       {/* Main View Container */}
       <main className="flex-1 overflow-hidden relative z-10">
-        {activeTab === 'oral' && (
-          <OralCoach onNavigateToVocab={() => setActiveTab('vocab')} />
-        )}
-        {activeTab === 'reader' && <SmartReader />}
-        {activeTab === 'nce' && <NewConcept />}
-        {activeTab === 'vocab' && <VocabularySRS />}
-        {activeTab === 'settings' && <Settings />}
+        <ErrorBoundary key={activeTab}>
+        <Suspense fallback={<PageFallback />}>
+          {activeTab === 'home' && <HomeDashboard onNavigate={navigate} />}
+          {activeTab === 'oral' && (
+            <OralCoach onNavigateToVocab={() => navigate('vocab')} />
+          )}
+          {activeTab === 'reader' && <SmartReader />}
+          {activeTab === 'nce' && <NewConcept resumeLesson={nceResumeLesson} />}
+          {activeTab === 'vocab' && <VocabularySRS />}
+          {activeTab === 'settings' && <Settings />}
+        </Suspense>
+        </ErrorBoundary>
       </main>
 
       {/* Bottom Floating Frosted Glass TabBar */}
@@ -92,9 +125,20 @@ export default function App() {
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
       >
         <div className="grid grid-cols-5 gap-1">
-          {/* Tab 1: Oral */}
           <button
-            onClick={() => setActiveTab('oral')}
+            onClick={() => navigate('home')}
+            className={`flex flex-col items-center py-1.5 px-0.5 rounded-2xl transition-all ${
+              activeTab === 'home'
+                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Home className="w-4.5 h-4.5 mb-1" />
+            <span className="text-[10px] leading-none tracking-tight">今日</span>
+          </button>
+
+          <button
+            onClick={() => navigate('oral')}
             className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'oral'
                 ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
@@ -102,12 +146,12 @@ export default function App() {
             }`}
           >
             <MessageSquare className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10.5px] leading-none tracking-tight">口语对练</span>
+            <span className="text-[10px] leading-none tracking-tight">口语</span>
           </button>
 
           {/* Tab 2: Smart Reader */}
           <button
-            onClick={() => setActiveTab('reader')}
+            onClick={() => navigate('reader')}
             className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'reader'
                 ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
@@ -115,12 +159,12 @@ export default function App() {
             }`}
           >
             <BookOpen className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10.5px] leading-none tracking-tight">精读伴读</span>
+            <span className="text-[10px] leading-none tracking-tight">精读</span>
           </button>
 
           {/* Tab 3: Vocabulary & SRS */}
           <button
-            onClick={() => setActiveTab('nce')}
+            onClick={() => navigate('nce')}
             className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'nce'
                 ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
@@ -128,13 +172,13 @@ export default function App() {
             }`}
           >
             <GraduationCap className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10.5px] leading-none tracking-tight">新概念</span>
+            <span className="text-[10px] leading-none tracking-tight">新概念</span>
           </button>
 
           {/* Tab 4: Vocabulary & SRS */}
           <button
             onClick={() => {
-              setActiveTab('vocab');
+              navigate('vocab');
               updateDueCount();
             }}
             className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all relative ${
@@ -151,21 +195,9 @@ export default function App() {
                 </span>
               )}
             </div>
-            <span className="text-[10.5px] leading-none tracking-tight">生词闪卡</span>
+            <span className="text-[10px] leading-none tracking-tight">生词</span>
           </button>
 
-          {/* Tab 4: Settings */}
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
-              activeTab === 'settings'
-                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <SettingsIcon className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10.5px] leading-none tracking-tight">设置</span>
-          </button>
         </div>
       </nav>
     </div>

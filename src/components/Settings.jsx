@@ -275,7 +275,7 @@ export default function Settings() {
           {/* API Key */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              API Key (保存在手机本地浏览器中，绝不上报服务器) *
+              API Key（保存在当前浏览器，并直接用于连接所选 AI 服务商）*
             </label>
             <div className="relative flex items-center">
               <input
@@ -478,13 +478,17 @@ export default function Settings() {
                 <span>🛡️ 全量安全备份与跨端迁移 2.0</span>
               </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                完整囊括生词库、外刊、划线批注、对话历史与打卡记录，本地离线自足
+                完整囊括生词库、外刊、划线批注、课程进度、对话历史与打卡记录
               </p>
             </div>
           </div>
 
           {/* Local Data Landscape Summary */}
-          <div className="grid grid-cols-4 gap-1.5 bg-slate-50/80 p-2.5 rounded-2xl border border-slate-200/60 text-center text-xs">
+          <div className="grid grid-cols-5 gap-1 bg-slate-50/80 p-2.5 rounded-2xl border border-slate-200/60 text-center text-xs">
+            <div className="p-1">
+              <span className="text-[10px] text-slate-500 block">课程进度</span>
+              <strong className="text-sky-700 text-sm font-mono">{localSummary.nceCompletedCount}/{localSummary.nceStartedCount}</strong>
+            </div>
             <div className="p-1">
               <span className="text-[10px] text-slate-500 block">生词总数</span>
               <strong className="text-slate-800 text-sm font-mono">{localSummary.vocabCount}</strong>
@@ -589,6 +593,10 @@ export default function Settings() {
               <div className="flex justify-between">
                 <span className="text-slate-500">对话场景历史:</span>
                 <strong className="text-slate-800 font-mono">{importPreview.chatCount} 个</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">新概念课程进度:</span>
+                <strong className="text-sky-700 font-mono">{importPreview.nceProgressCount || 0} 课</strong>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-200/60">
                 <span className="text-slate-500">包含 API Key:</span>

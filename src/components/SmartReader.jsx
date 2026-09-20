@@ -269,7 +269,7 @@ export default function SmartReader() {
         spread: 70,
         origin: { y: 0.6 },
       });
-    } catch (err) {
+    } catch {
       alert(`生成失败: ${err.message}。请检查设置中的 API Key 或网络状况。`);
     } finally {
       setIsGeneratingArticle(false);
@@ -319,7 +319,7 @@ export default function SmartReader() {
         ...prev,
         [key]: { text: translation, visible: true },
       }));
-    } catch (err) {
+    } catch {
       alert(`段落翻译失败: ${err.message}`);
     } finally {
       setTranslatingParaIndex(null);
@@ -366,7 +366,7 @@ export default function SmartReader() {
       setNewTitle(extractedTitle);
       setNewContent(cleanContent);
       setImportMode('text');
-    } catch (err) {
+    } catch {
       alert(`提取失败: ${err.message}。建议直接在浏览器中全选英文正文复制后粘贴到“直接粘贴”标签。`);
     } finally {
       setIsExtractingUrl(false);
@@ -438,7 +438,7 @@ export default function SmartReader() {
     try {
       const analysis = await analyzeWordWithAI(clean, sentence);
       setWordAnalysis(analysis);
-    } catch (err) {
+    } catch {
       setWordAnalysis({
         word: clean,
         phonetic: '',
@@ -459,7 +459,7 @@ export default function SmartReader() {
     try {
       const analysis = await analyzeWordWithAI(selectedWord.word, selectedWord.sentence || '');
       setWordAnalysis(analysis);
-    } catch (err) {
+    } catch {
       setWordAnalysis({
         word: selectedWord.word,
         phonetic: '',
