@@ -68,6 +68,35 @@
   font-family: "Charter", "Iowan Old Style", "Palatino", "Source Serif Pro", Georgia, serif;
 }
 
+.nce-grid-texture {
+  background-image:
+    radial-gradient(circle at 82% 14%, rgba(125, 211, 252, 0.2), transparent 28%),
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: auto, 24px 24px, 24px 24px;
+}
+
+@keyframes nce-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nce-reveal {
+  animation: nce-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nce-reveal {
+    animation: none;
+  }
+}
+
 /* 3D Flashcard flip animation */
 .perspective-1000 {
   perspective: 1000px;

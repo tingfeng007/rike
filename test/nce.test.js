@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildExercises, extractWords, parseLrc, safeAssetName } from '../src/services/nce.js';
+import {
+  buildDictationItems,
+  buildExercises,
+  extractWords,
+  parseLrc,
+  safeAssetName,
+  scoreDictation,
+} from '../src/services/nce.js';
 
 const SAMPLE_LRC = `[00:01.50]Excuse me! | 打扰一下！
 [00:03.00]Is this your handbag? | 这是你的手提包吗？
@@ -36,4 +43,24 @@ test('extractWords removes common function words and keeps context', () => {
 
 test('safeAssetName encodes filenames for remote assets', () => {
   assert.equal(safeAssetName('001&002.Excuse Me'), '001%26002.Excuse%20Me');
+});
+
+test('scoreDictation ignores case and punctuation while exposing missing words', () => {
+  const perfect = scoreDictation('Is this your handbag?', 'is this your handbag');
+  assert.equal(perfect.score, 100);
+  assert.equal(perfect.isPerfect, true);
+
+  const partial = scoreDictation('Thank you very much.', 'thank you much');
+  assert.equal(partial.score, 75);
+  assert.deepEqual(partial.missingWords, ['very']);
+});
+
+test('buildDictationItems excludes course metadata and keeps source line indexes', () => {
+  const lines = parseLrc(`[00:00.00]Lesson 1 | 第1课
+[00:01.00]Listen to the tape then answer this question. | 听录音，然后回答问题。
+${SAMPLE_LRC}`);
+  const items = buildDictationItems(lines);
+  assert.equal(items.length, 3);
+  assert.equal(items[0].text, 'Excuse me!');
+  assert.equal(items[0].lineIndex, 2);
 });

@@ -33,6 +33,75 @@ function isCourseMetadata(line) {
   return /^Lesson\s+\d+/i.test(line.en) || /^Listen to the tape/i.test(line.en);
 }
 
+function normalizeLearningWords(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/[^a-z0-9'\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function wordDistance(targetWords, attemptWords) {
+  const previous = Array.from({ length: attemptWords.length + 1 }, (_, index) => index);
+  targetWords.forEach((targetWord, targetIndex) => {
+    const current = [targetIndex + 1];
+    attemptWords.forEach((attemptWord, attemptIndex) => {
+      const replaceCost = targetWord === attemptWord ? 0 : 1;
+      current.push(Math.min(
+        current[attemptIndex] + 1,
+        previous[attemptIndex + 1] + 1,
+        previous[attemptIndex] + replaceCost,
+      ));
+    });
+    previous.splice(0, previous.length, ...current);
+  });
+  return previous.at(-1) || 0;
+}
+
+function subtractWordCounts(sourceWords, comparisonWords) {
+  const counts = new Map();
+  comparisonWords.forEach((word) => counts.set(word, (counts.get(word) || 0) + 1));
+  return sourceWords.filter((word) => {
+    const count = counts.get(word) || 0;
+    if (count === 0) return true;
+    counts.set(word, count - 1);
+    return false;
+  });
+}
+
+export function scoreDictation(target, attempt) {
+  const targetWords = normalizeLearningWords(target);
+  const attemptWords = normalizeLearningWords(attempt);
+  const longestLength = Math.max(targetWords.length, attemptWords.length, 1);
+  const distance = wordDistance(targetWords, attemptWords);
+  const score = Math.max(0, Math.round((1 - distance / longestLength) * 100));
+
+  return {
+    score,
+    isPerfect: score === 100,
+    targetWords,
+    attemptWords,
+    missingWords: subtractWordCounts(targetWords, attemptWords),
+    extraWords: subtractWordCounts(attemptWords, targetWords),
+  };
+}
+
+export function buildDictationItems(lines, limit = 8) {
+  return lines
+    .map((line, lineIndex) => ({ ...line, lineIndex }))
+    .filter((line) => !isCourseMetadata(line) && normalizeLearningWords(line.en).length >= 2)
+    .slice(0, limit)
+    .map((line) => ({
+      id: `${line.id}-dictation`,
+      lineId: line.id,
+      lineIndex: line.lineIndex,
+      time: line.time,
+      text: line.en,
+      zh: line.zh || '',
+    }));
+}
+
 export function buildExercises(lines, limit = 5) {
   const usable = lines
     .filter((line) => !isCourseMetadata(line) && line.en.split(/\s+/).length >= 4)
