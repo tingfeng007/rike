@@ -55,3 +55,17 @@ test('backup includes and restores NCE progress', () => {
   assert.equal(result.success, true);
   assert.equal(StorageService.getNceProgress().lesson_1.status, 'completed');
 });
+
+test('backup restores NCE exam history and an unfinished answer sheet', () => {
+  StorageService.saveNceExams({
+    attempts: [{ id: 'attempt-1', unitId: 'unit-1', results: [], submittedAt: 100 }],
+    draft: { unitId: 'unit-2', questions: [{ id: 'q-1' }], answers: { 'q-1': 'handbag' }, startedAt: 200, deadline: 500 },
+  });
+  const backup = StorageService.exportAllData();
+  localStorage.clear();
+  assert.equal(StorageService.importAllData(backup).success, true);
+  assert.equal(StorageService.getNceExams().attempts.length, 1);
+  assert.equal(StorageService.getNceExams().draft.answers['q-1'], 'handbag');
+  assert.equal(StorageService.importAllData(backup).success, true);
+  assert.equal(StorageService.getNceExams().attempts.length, 1);
+});

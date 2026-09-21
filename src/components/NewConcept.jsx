@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  FileText,
   Languages,
   NotebookPen,
   Play,
@@ -19,6 +20,7 @@ import {
   BookmarkPlus,
 } from 'lucide-react';
 import NceDictation from './NceDictation';
+import NceExam from './NceExam';
 import { tts } from '../services/speech';
 import { StorageService } from '../services/storage';
 import { buildDictationItems, buildExercises, extractWords, parseLrc, safeAssetName } from '../services/nce';
@@ -47,6 +49,12 @@ function progressLabel(item) {
   if (item?.status === 'completed') return '已完成';
   if (item) return '学习中';
   return '未开始';
+}
+
+function pendingReviewCount(item) {
+  return (item?.exerciseMistakes?.length || 0)
+    + (item?.dictationMistakes?.length || 0)
+    + (item?.examMistakes?.length || 0);
 }
 
 export default function NewConcept({ resumeLesson = '' }) {
@@ -81,6 +89,7 @@ export default function NewConcept({ resumeLesson = '' }) {
   const [noteDraft, setNoteDraft] = useState('');
   const [noteSaved, setNoteSaved] = useState(false);
   const [repeatRemaining, setRepeatRemaining] = useState(0);
+  const [examUnitFilename, setExamUnitFilename] = useState('');
   const [usingOfflineCopy, setUsingOfflineCopy] = useState(false);
   const audioRef = useRef(null);
   const lineRefs = useRef({});
@@ -156,10 +165,8 @@ export default function NewConcept({ resumeLesson = '' }) {
   const learningCount = units.filter((unit) => progress[unit.filename] && progress[unit.filename]?.status !== 'completed').length;
   const exerciseCount = units.filter((unit) => progress[unit.filename]?.exercisesCompleted).length;
   const dictationCount = units.filter((unit) => progress[unit.filename]?.dictationCompleted).length;
-  const reviewCount = units.filter((unit) => {
-    const item = progress[unit.filename];
-    return (item?.exerciseMistakes?.length || 0) + (item?.dictationMistakes?.length || 0) > 0;
-  }).length;
+  const examCount = units.reduce((total, unit) => total + (progress[unit.filename]?.examAttempts || 0), 0);
+  const reviewCount = units.filter((unit) => pendingReviewCount(progress[unit.filename]) > 0).length;
   const courseWordCount = [...savedWords.values()].filter((item) => item.tags?.includes('新概念英语')).length;
   const courseProgressPercent = units.length ? Math.round((completedCount / units.length) * 100) : 0;
 
@@ -177,7 +184,7 @@ export default function NewConcept({ resumeLesson = '' }) {
   const currentProgress = selectedUnit ? progress[selectedUnit.filename] || {} : {};
   const unsavedWordCount = lessonWords.filter((item) => !savedWords.has(item.word)).length;
   const bookmarkedLineIds = new Set(currentProgress.bookmarkedLineIds || []);
-  const currentReviewCount = (currentProgress.exerciseMistakes?.length || 0) + (currentProgress.dictationMistakes?.length || 0);
+  const currentReviewCount = pendingReviewCount(currentProgress);
   const masterySteps = [
     Boolean(currentProgress.listenCompleted),
     Boolean(currentProgress.dictationCompleted),
@@ -195,9 +202,7 @@ export default function NewConcept({ resumeLesson = '' }) {
         || (courseFilter === 'completed' && itemProgress?.status === 'completed')
         || (courseFilter === 'learning' && itemProgress && itemProgress.status !== 'completed')
         || (courseFilter === 'pending' && !itemProgress)
-        || (courseFilter === 'review' && (
-          (itemProgress?.exerciseMistakes?.length || 0) + (itemProgress?.dictationMistakes?.length || 0) > 0
-        ));
+        || (courseFilter === 'review' && pendingReviewCount(itemProgress) > 0);
       return matchesQuery && matchesFilter;
     });
   }, [courseFilter, courseSearch, progress, units]);
@@ -313,6 +318,36 @@ export default function NewConcept({ resumeLesson = '' }) {
     setSelectedUnit(null);
     setLines([]);
     setError('');
+  };
+
+  const openExam = (unit = null) => {
+    requestSeqRef.current += 1;
+    requestAbortRef.current?.abort();
+    audioRef.current?.pause();
+    sentenceLoopRef.current = { lineIndex: -1, remaining: 0 };
+    ttsLoopRef.current += 1;
+    tts.stop();
+    setRepeatRemaining(0);
+    setSelectedUnit(null);
+    setLines([]);
+    setError('');
+    setExamUnitFilename(unit?.filename || continueUnit?.filename || '');
+    setView('exam');
+  };
+
+  const handleExamComplete = (attempt) => {
+    const previous = progressRef.current[attempt.unitId] || {};
+    saveProgress(attempt.unitId, {
+      examAttempts: (previous.examAttempts || 0) + 1,
+      examScore: attempt.score,
+      examBest: Math.max(previous.examBest || 0, attempt.score),
+      examMistakes: attempt.results.filter((result) => !result.isCorrect).map((result) => ({
+        id: result.id,
+        question: result.question,
+        answer: result.answer,
+        submitted: result.submitted,
+      })),
+    });
   };
 
   const audioUrl = selectedUnit ? `${NCE1_BASE}/${safeAssetName(selectedUnit.filename)}.mp3` : '';
@@ -633,7 +668,7 @@ export default function NewConcept({ resumeLesson = '' }) {
             </div>
             <div className="mt-4 flex items-center justify-between text-xs text-sky-100"><span>第一册完成度</span><span>{courseProgressPercent}% · {completedCount}/{units.length || 72} 单元</span></div>
             <div className="h-2 bg-white/15 rounded-full overflow-hidden mt-2"><div className="h-full bg-sky-300 rounded-full transition-all" style={{ width: `${courseProgressPercent}%` }} /></div>
-            <p className="text-[10px] text-slate-400 mt-2">已完成 {dictationCount} 次听写 · {exerciseCount} 个单元练习</p>
+            <p className="text-[10px] text-slate-400 mt-2">已完成 {dictationCount} 次听写 · {exerciseCount} 个单元练习 · {examCount} 份试题</p>
           </div>
         </div>
 
@@ -645,10 +680,17 @@ export default function NewConcept({ resumeLesson = '' }) {
           </button>
         )}
 
+        <button type="button" onClick={() => openExam()} className="w-full mt-3 relative overflow-hidden rounded-[24px] bg-[#f3e7ce] border border-amber-200 p-4 flex items-center gap-3 text-left shadow-sm hover:border-amber-400 transition-colors nce-reveal">
+          <span className="absolute -right-3 -top-8 text-8xl font-black text-amber-950/5 pointer-events-none">A+</span>
+          <span className="relative w-12 h-12 rounded-2xl bg-[#102a43] text-amber-300 flex items-center justify-center shrink-0"><FileText className="w-6 h-6" /></span>
+          <span className="relative flex-1 min-w-0"><span className="block text-[10px] tracking-[0.16em] font-bold text-amber-900/70">EXAM · 第一册</span><span className="block text-lg font-bold text-[#102a43] mt-0.5 editorial-serif">试题中心</span><span className="block text-xs text-amber-900/70 mt-1">限时测验 · 交卷评分 · 错题回看</span></span>
+          <ChevronRight className="relative w-5 h-5 text-amber-900/50 shrink-0" />
+        </button>
+
         {reviewCount > 0 && (
           <button type="button" onClick={() => setCourseFilter('review')} className="w-full mt-2 rounded-2xl bg-amber-50 border border-amber-100 p-3 flex items-center gap-3 text-left hover:border-amber-300 transition-colors">
             <span className="w-9 h-9 rounded-xl bg-white text-amber-600 flex items-center justify-center"><RotateCcw className="w-4 h-4" /></span>
-            <span className="flex-1"><span className="block text-sm font-semibold text-amber-900">复习薄弱单元</span><span className="block text-xs text-amber-700/70 mt-0.5">{reviewCount} 个单元还有听写或练习错题</span></span>
+            <span className="flex-1"><span className="block text-sm font-semibold text-amber-900">复习薄弱单元</span><span className="block text-xs text-amber-700/70 mt-0.5">{reviewCount} 个单元还有听写、练习或试题错题</span></span>
             <ChevronRight className="w-4 h-4 text-amber-400" />
           </button>
         )}
@@ -678,11 +720,11 @@ export default function NewConcept({ resumeLesson = '' }) {
             const originalIndex = units.findIndex((item) => item.filename === unit.filename);
             const itemProgress = progress[unit.filename];
             const completed = itemProgress?.status === 'completed';
-            const itemReviewCount = (itemProgress?.exerciseMistakes?.length || 0) + (itemProgress?.dictationMistakes?.length || 0);
+            const itemReviewCount = pendingReviewCount(itemProgress);
             return (
               <button key={unit.filename} onClick={() => openUnit(unit)} className={`w-full text-left bg-white border rounded-2xl p-3 flex items-center gap-3 transition-colors ${completed ? 'border-emerald-100 hover:border-emerald-300' : 'border-slate-200 hover:border-sky-300'}`}>
                 <span className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${completed ? 'bg-emerald-50 text-emerald-600' : itemProgress ? 'bg-amber-50 text-amber-600' : 'bg-sky-50 text-sky-600'}`}>{String(originalIndex * 2 + 1).padStart(3, '0')}</span>
-                <span className="flex-1 min-w-0"><span className="block font-semibold text-slate-800 truncate editorial-serif">{displayUnitTitle(unit)}</span><span className="block text-xs text-slate-400 mt-1">{lessonRange(unit)} · {progressLabel(itemProgress)}{itemProgress?.dictationCompleted ? ' · 听写完成' : ''}{itemProgress?.exercisesCompleted ? ' · 练习完成' : ''}{itemReviewCount ? ` · ${itemReviewCount} 项待复习` : ''}</span></span>
+                <span className="flex-1 min-w-0"><span className="block font-semibold text-slate-800 truncate editorial-serif">{displayUnitTitle(unit)}</span><span className="block text-xs text-slate-400 mt-1">{lessonRange(unit)} · {progressLabel(itemProgress)}{itemProgress?.dictationCompleted ? ' · 听写完成' : ''}{itemProgress?.exercisesCompleted ? ' · 练习完成' : ''}{itemProgress?.examAttempts ? ` · 测验最佳 ${itemProgress.examBest} 分` : ''}{itemReviewCount ? ` · ${itemReviewCount} 项待复习` : ''}</span></span>
                 {completed ? <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /> : <ChevronRight className="w-5 h-5 text-slate-300 shrink-0" />}
               </button>
             );
@@ -690,6 +732,10 @@ export default function NewConcept({ resumeLesson = '' }) {
         </div>
       </section>
     );
+  }
+
+  if (view === 'exam') {
+    return <NceExam key={examUnitFilename} units={units} baseUrl={NCE1_BASE} initialUnitFilename={examUnitFilename} onBack={backToLessons} onOpenLesson={(unit) => unit && openUnit(unit)} onComplete={handleExamComplete} />;
   }
 
   const exerciseScore = Math.min(exercises.length, exerciseCorrectCount);
@@ -772,6 +818,7 @@ export default function NewConcept({ resumeLesson = '' }) {
 
       <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-700">本课掌握度</span><span className="text-xs font-bold text-sky-700">{masteryCount}/4</span></div><div className="grid grid-cols-4 gap-1.5 mt-2">{[['听读', masterySteps[0]], ['听写', masterySteps[1]], ['单词', masterySteps[2]], ['练习', masterySteps[3]]].map(([label, done]) => <div key={label} className="text-center"><div className={`h-1.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-slate-100'}`} /><span className={`text-[9px] mt-1 block ${done ? 'text-emerald-600' : 'text-slate-400'}`}>{label}</span></div>)}</div>{currentReviewCount > 0 && <p className="text-[11px] text-amber-700 mt-2">还有 {currentReviewCount} 项薄弱内容，改对后会自动移出复习列表。</p>}</div>
       <div className="flex gap-2 mt-3"><button onClick={playCurrentLine} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-sm flex items-center justify-center gap-1"><Play className="w-4 h-4" />{activeLine >= 0 ? '朗读当前句' : '从第一句开始'}</button><button onClick={markComplete} className={`flex-1 py-2.5 rounded-xl text-sm flex items-center justify-center gap-1 ${currentProgress.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 className="w-4 h-4" />{currentProgress.status === 'completed' ? '已完成本课' : masteryCount === 4 ? '完成本课' : '标记完成'}</button></div>
+      <button type="button" onClick={() => openExam(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-semibold text-amber-900"><FileText className="w-4 h-4" />做本课试题</button>
       <div className="flex items-center justify-between gap-2 mt-3"><button type="button" onClick={() => goToAdjacentUnit(previousUnit)} disabled={!previousUnit} className="flex items-center gap-1 text-xs text-slate-500 disabled:opacity-30"><ChevronLeft className="w-4 h-4" />上一课</button><span className="text-[11px] text-slate-400">{selectedUnitIndex + 1}/{units.length || 72} 单元</span><button type="button" onClick={() => goToAdjacentUnit(nextUnit)} disabled={!nextUnit} className="flex items-center gap-1 text-xs text-slate-500 disabled:opacity-30">下一课<ChevronRight className="w-4 h-4" /></button></div>
       {view === 'exercise' && <button onClick={resetExercise} className="w-full mt-2 py-2 text-xs text-slate-400 flex items-center justify-center gap-1"><RotateCcw className="w-3 h-3" />重置本课练习</button>}
     </section>

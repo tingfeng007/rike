@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   READING_ANNOTATIONS: 'lingoflow_reading_annotations',
   NCE_PROGRESS: 'lingoflow_nce1_progress',
   NCE_CACHE: 'lingoflow_nce1_cache_v1',
+  NCE_EXAMS: 'lingoflow_nce1_exams_v1',
   APP_STATE: 'lingoflow_app_state',
 };
 
@@ -533,6 +534,22 @@ export const StorageService = {
     return safeSetItem(STORAGE_KEYS.NCE_CACHE, JSON.stringify(cache || {}));
   },
 
+  getNceExams() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.NCE_EXAMS) || '{}');
+      return {
+        attempts: Array.isArray(saved?.attempts) ? saved.attempts : [],
+        draft: saved?.draft && typeof saved.draft === 'object' ? saved.draft : null,
+      };
+    } catch {
+      return { attempts: [], draft: null };
+    }
+  },
+
+  saveNceExams(exams) {
+    return safeSetItem(STORAGE_KEYS.NCE_EXAMS, JSON.stringify(exams));
+  },
+
   // --- Local Data Overview ---
   getLocalDataSummary() {
     const vocab = this.getVocabulary();
@@ -586,6 +603,7 @@ export const StorageService = {
       chatMessages: this.getAllChatMessages(),
       studyStats: this.getStudyStats(),
       nceProgress: this.getNceProgress(),
+      nceExams: this.getNceExams(),
       appState: this.getAppState(),
     };
     return JSON.stringify(backup, null, 2);
@@ -797,6 +815,22 @@ export const StorageService = {
           }
         });
         this.saveNceProgress(mergedProgress);
+      }
+
+      if (data.nceExams && typeof data.nceExams === 'object') {
+        const current = this.getNceExams();
+        const attempts = new Map(current.attempts.map((attempt) => [attempt.id, attempt]));
+        (Array.isArray(data.nceExams.attempts) ? data.nceExams.attempts : [])
+          .filter((attempt) => attempt?.id && Array.isArray(attempt.results))
+          .forEach((attempt) => attempts.set(attempt.id, attempt));
+        const incomingDraft = data.nceExams.draft;
+        const draft = incomingDraft?.unitId && Array.isArray(incomingDraft.questions)
+          && (incomingDraft.startedAt || 0) > (current.draft?.startedAt || 0)
+          ? incomingDraft : current.draft;
+        this.saveNceExams({
+          attempts: [...attempts.values()].sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0)).slice(0, 30),
+          draft,
+        });
       }
 
       if (data.appState && typeof data.appState === 'object') {
