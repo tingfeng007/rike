@@ -575,6 +575,7 @@ export const StorageService = {
       todayReviewedCount: stats.todayReviewedCount || 0,
       nceStartedCount: nceEntries.length,
       nceCompletedCount: nceEntries.filter((item) => item.status === 'completed').length,
+      nceExamCount: this.getNceExams().attempts.length,
     };
   },
 
@@ -633,6 +634,8 @@ export const StorageService = {
       const nceProgressCount = data.nceProgress && typeof data.nceProgress === 'object'
         ? Object.keys(data.nceProgress).length
         : 0;
+      const nceExamCount = Array.isArray(data.nceExams?.attempts) ? data.nceExams.attempts.length : 0;
+      const hasNceDraft = Boolean(data.nceExams?.draft);
       const exportedAt = data.exportedAt
         ? new Date(data.exportedAt).toLocaleString('zh-CN')
         : '未知时间';
@@ -646,6 +649,8 @@ export const StorageService = {
         annotationCount,
         chatCount,
         nceProgressCount,
+        nceExamCount,
+        hasNceDraft,
         hasApiKey,
       };
     } catch (err) {

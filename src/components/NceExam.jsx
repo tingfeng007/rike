@@ -70,7 +70,7 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
   }, []);
 
   const startExam = async () => {
-    const unit = units.find((item) => item.filename === unitId);
+    const unit = units.find((item) => item.filename === unitId) || units[0];
     if (!unit || preparing) return;
     abortRef.current?.abort();
     const controller = new AbortController();

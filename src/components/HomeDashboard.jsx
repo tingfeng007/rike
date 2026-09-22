@@ -5,12 +5,15 @@ import {
   Flame,
   GraduationCap,
   Headphones,
+  FileText,
+  RotateCcw,
   Layers,
   MessageSquare,
   Settings,
   Sparkles,
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
+import { buildNceReviewQueue } from '../services/nceReview';
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -30,6 +33,8 @@ function readCourseSnapshot() {
     started: entries.length,
     completed: entries.filter(([, value]) => value.status === 'completed').length,
     latest: entries[0] || null,
+    reviewItems: buildNceReviewQueue(progress).length,
+    examDraft: StorageService.getNceExams().draft,
   };
 }
 
@@ -47,9 +52,10 @@ export default function HomeDashboard({ onNavigate }) {
     };
   });
 
+  const coursePriority = snapshot.course.examDraft ? 'exam' : snapshot.course.reviewItems > 0 ? 'review' : 'lesson';
   const taskCount = [
     snapshot.dueWords > 0,
-    (snapshot.stats.todayCourseCount || 0) === 0,
+    coursePriority !== 'lesson' || (snapshot.stats.todayCourseCount || 0) === 0,
     (snapshot.stats.todayOralCount || 0) < 3,
   ].filter(Boolean).length;
 
@@ -100,11 +106,13 @@ export default function HomeDashboard({ onNavigate }) {
             {snapshot.dueWords === 0 ? <span className="text-xs font-semibold text-emerald-600">完成</span> : <ArrowRight className="w-4 h-4 text-slate-300" />}
           </button>
 
-          <button onClick={() => onNavigate('nce', { resume: true })} className="w-full flex items-center gap-3 py-3 border-b border-slate-100 text-left">
-            <span className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center"><Headphones className="w-4 h-4" /></span>
-            <span className="flex-1"><span className="block text-sm font-semibold text-slate-800">继续新概念第一册</span><span className="block text-xs text-slate-400 mt-0.5">{snapshot.course.latest ? `最近：${snapshot.course.latest[0].replace(/^\d+&\d+\./, '')}` : '从第一课开始，听读并完成练习'}</span></span>
-            {(snapshot.stats.todayCourseCount || 0) > 0 ? <span className="text-xs font-semibold text-emerald-600">完成</span> : <ArrowRight className="w-4 h-4 text-slate-300" />}
+          <button onClick={() => onNavigate('nce', coursePriority === 'lesson' ? { resume: true } : { entry: coursePriority })} className="w-full flex items-center gap-3 py-3 border-b border-slate-100 text-left">
+            <span className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">{coursePriority === 'exam' ? <FileText className="w-4 h-4" /> : coursePriority === 'review' ? <RotateCcw className="w-4 h-4" /> : <Headphones className="w-4 h-4" />}</span>
+            <span className="flex-1"><span className="block text-sm font-semibold text-slate-800">{coursePriority === 'exam' ? '继续未交卷试题' : coursePriority === 'review' ? '逐题复盘新概念错题' : '继续新概念第一册'}</span><span className="block text-xs text-slate-400 mt-0.5">{coursePriority === 'exam' ? `${snapshot.course.examDraft.title || '单元试题'} · 答案自动保留` : coursePriority === 'review' ? `${snapshot.course.reviewItems} 项待复习，答对后移出` : snapshot.course.latest ? `最近：${snapshot.course.latest[0].replace(/^\d+&\d+\./, '')}` : '从第一课开始，听读并完成练习'}</span></span>
+            {coursePriority === 'lesson' && (snapshot.stats.todayCourseCount || 0) > 0 ? <span className="text-xs font-semibold text-emerald-600">完成</span> : <ArrowRight className="w-4 h-4 text-slate-300" />}
           </button>
+
+          {coursePriority === 'exam' && snapshot.course.reviewItems > 0 && <button type="button" onClick={() => onNavigate('nce', { entry: 'review' })} className="flex w-full items-center justify-between rounded-xl bg-amber-50 px-3 py-2 text-left text-xs font-semibold text-amber-800">另有 {snapshot.course.reviewItems} 项错题待复习 <ArrowRight className="h-3.5 w-3.5" /></button>}
 
           <button onClick={() => onNavigate('oral')} className="w-full flex items-center gap-3 pt-3 text-left">
             <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><MessageSquare className="w-4 h-4" /></span>

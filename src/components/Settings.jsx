@@ -478,7 +478,7 @@ export default function Settings() {
                 <span>🛡️ 全量安全备份与跨端迁移 2.0</span>
               </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                完整囊括生词库、外刊、划线批注、课程进度、对话历史与打卡记录
+                完整囊括生词库、外刊、划线批注、课程错题、试卷与打卡记录
               </p>
             </div>
           </div>
@@ -506,6 +506,7 @@ export default function Settings() {
               <strong className="text-emerald-700 text-sm font-mono">{localSummary.streakDays}天</strong>
             </div>
           </div>
+          <p className="text-[11px] text-slate-500">已保存 {localSummary.nceExamCount} 份新概念试卷；未交卷草稿也随备份导出。</p>
 
           {/* API Key Security Toggle for Export */}
           <div className="p-2.5 bg-sky-50/60 border border-sky-200/70 rounded-2xl flex items-center justify-between text-xs">
@@ -516,7 +517,7 @@ export default function Settings() {
               <span className="text-[10.5px] text-slate-500 block">
                 {includeApiKeyInExport
                   ? '备份文件内包含密钥原文，切勿通过微信群或公开网盘传输！'
-                  : '导出文件不含密钥，可安全发送至微信或网盘'}
+                  : '不含密钥，但仍有个人学习记录，请妥善保管备份文件'}
               </span>
             </div>
             <input
@@ -597,6 +598,10 @@ export default function Settings() {
               <div className="flex justify-between">
                 <span className="text-slate-500">新概念课程进度:</span>
                 <strong className="text-sky-700 font-mono">{importPreview.nceProgressCount || 0} 课</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">试卷记录与草稿:</span>
+                <strong className="text-sky-700 font-mono">{importPreview.nceExamCount || 0} 份{importPreview.hasNceDraft ? ' · 有未交卷草稿' : ''}</strong>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-200/60">
                 <span className="text-slate-500">包含 API Key:</span>

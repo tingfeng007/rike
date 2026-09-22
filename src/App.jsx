@@ -41,6 +41,7 @@ export default function App() {
   });
   const [dueVocabCount, setDueVocabCount] = useState(() => countDueWords());
   const [nceResumeLesson, setNceResumeLesson] = useState('');
+  const [nceEntryIntent, setNceEntryIntent] = useState('');
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
 
@@ -67,6 +68,7 @@ export default function App() {
     if (!VALID_TABS.has(tab)) return;
     if (tab === 'nce') {
       setNceResumeLesson(options.resume ? (StorageService.getAppState().lastNceLesson || '') : '');
+      setNceEntryIntent(options.entry === 'review' || options.entry === 'exam' ? options.entry : '');
     }
     setActiveTab(tab);
     StorageService.saveAppState({ ...StorageService.getAppState(), activeTab: tab });
@@ -112,7 +114,7 @@ export default function App() {
             <OralCoach onNavigateToVocab={() => navigate('vocab')} />
           )}
           {activeTab === 'reader' && <SmartReader />}
-          {activeTab === 'nce' && <NewConcept resumeLesson={nceResumeLesson} />}
+          {activeTab === 'nce' && <NewConcept resumeLesson={nceResumeLesson} entryIntent={nceEntryIntent} />}
           {activeTab === 'vocab' && <VocabularySRS />}
           {activeTab === 'settings' && <Settings />}
         </Suspense>

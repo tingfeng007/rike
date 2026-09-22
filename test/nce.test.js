@@ -9,6 +9,7 @@ import {
   scoreDictation,
 } from '../src/services/nce.js';
 import { buildNceExamQuestions, gradeNceExam } from '../src/services/nceExam.js';
+import { buildNceReviewQueue, gradeNceReview, resolveNceReviewMistake } from '../src/services/nceReview.js';
 
 const SAMPLE_LRC = `[00:01.50]Excuse me! | 打扰一下！
 [00:03.00]Is this your handbag? | 这是你的手提包吗？
@@ -104,4 +105,36 @@ test('NCE exam grades unanswered items and ignores case and punctuation', () => 
   assert.equal(result.score, 67);
   assert.equal(result.results[2].isCorrect, false);
   assert.equal(gradeNceExam(questions, {}).score, 0);
+});
+
+test('review queue combines exam, dictation and exercise mistakes without exposing dictation text', () => {
+  const progress = {
+    '001&002.Excuse Me': {
+      lastStudiedAt: 100,
+      dictationMistakes: [{ id: 'dict-1', text: 'Is this your handbag?', attempt: 'Is this handbag?' }],
+      exerciseMistakes: [{ id: 'exercise-1', sentence: 'Is this your _____?', answer: 'handbag', attempt: 'coat' }],
+      examMistakes: [{ id: 'exam-1', question: '这是你的手提包吗？', answer: 'Is this your handbag?', submitted: '' }],
+    },
+    '003&004.Sorry Sir': { examMistakes: [{ id: 'exam-2', question: '谢谢', answer: 'Thank you.' }] },
+  };
+  const queue = buildNceReviewQueue(progress);
+  assert.equal(queue.length, 4);
+  assert.equal(queue.find((item) => item.kind === 'dictation').prompt, '');
+  assert.equal(queue.find((item) => item.kind === 'exercise').answer, 'handbag');
+  assert.equal(buildNceReviewQueue({ '001&002.Excuse Me': { examMistakes: [{}] } }).length, 0);
+  assert.equal(buildNceReviewQueue(progress, 'other').length, 0);
+  assert.equal(buildNceReviewQueue(progress, '001&002.Excuse Me').length, 3);
+  const resolved = resolveNceReviewMistake(progress, queue.find((item) => item.kind === 'exercise'));
+  assert.equal(buildNceReviewQueue(resolved).length, 3);
+  assert.equal(resolved['001&002.Excuse Me'].exerciseMistakes.length, 0);
+  assert.equal(resolved['001&002.Excuse Me'].dictationMistakes.length, 1);
+  assert.equal(progress['001&002.Excuse Me'].exerciseMistakes.length, 1);
+  assert.equal(resolveNceReviewMistake(resolved, queue.find((item) => item.kind === 'exercise')), resolved);
+});
+
+test('review grading requires recalled words while ignoring punctuation and case', () => {
+  const item = { answer: 'Is this your handbag?' };
+  assert.equal(gradeNceReview(item, 'is this your handbag').correct, true);
+  assert.equal(gradeNceReview(item, 'is this handbag').correct, false);
+  assert.equal(gradeNceReview(item, '').correct, false);
 });

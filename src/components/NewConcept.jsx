@@ -21,9 +21,11 @@ import {
 } from 'lucide-react';
 import NceDictation from './NceDictation';
 import NceExam from './NceExam';
+import NceReview from './NceReview';
 import { tts } from '../services/speech';
 import { StorageService } from '../services/storage';
 import { buildDictationItems, buildExercises, extractWords, parseLrc, safeAssetName } from '../services/nce';
+import { buildNceReviewQueue, resolveNceReviewMistake } from '../services/nceReview';
 
 const NCE1_BASE = 'https://nce.mleo.site/NCE1';
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5];
@@ -57,13 +59,13 @@ function pendingReviewCount(item) {
     + (item?.examMistakes?.length || 0);
 }
 
-export default function NewConcept({ resumeLesson = '' }) {
+export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
   const [units, setUnits] = useState([]);
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [view, setView] = useState('lessons');
+  const [view, setView] = useState(() => entryIntent === 'review' || entryIntent === 'exam' ? entryIntent : 'lessons');
   const [showChinese, setShowChinese] = useState(true);
   const [activeLine, setActiveLine] = useState(-1);
   const [followAudio, setFollowAudio] = useState(() => StorageService.getAppState().nceFollowAudio !== false);
@@ -90,6 +92,7 @@ export default function NewConcept({ resumeLesson = '' }) {
   const [noteSaved, setNoteSaved] = useState(false);
   const [repeatRemaining, setRepeatRemaining] = useState(0);
   const [examUnitFilename, setExamUnitFilename] = useState('');
+  const [reviewUnitFilename, setReviewUnitFilename] = useState('');
   const [usingOfflineCopy, setUsingOfflineCopy] = useState(false);
   const audioRef = useRef(null);
   const lineRefs = useRef({});
@@ -167,6 +170,7 @@ export default function NewConcept({ resumeLesson = '' }) {
   const dictationCount = units.filter((unit) => progress[unit.filename]?.dictationCompleted).length;
   const examCount = units.reduce((total, unit) => total + (progress[unit.filename]?.examAttempts || 0), 0);
   const reviewCount = units.filter((unit) => pendingReviewCount(progress[unit.filename]) > 0).length;
+  const reviewItemCount = useMemo(() => buildNceReviewQueue(progress).length, [progress]);
   const courseWordCount = [...savedWords.values()].filter((item) => item.tags?.includes('新概念英语')).length;
   const courseProgressPercent = units.length ? Math.round((completedCount / units.length) * 100) : 0;
 
@@ -315,6 +319,7 @@ export default function NewConcept({ resumeLesson = '' }) {
     setRepeatRemaining(0);
     tts.stop();
     setView('lessons');
+    setReviewUnitFilename('');
     setSelectedUnit(null);
     setLines([]);
     setError('');
@@ -333,6 +338,27 @@ export default function NewConcept({ resumeLesson = '' }) {
     setError('');
     setExamUnitFilename(unit?.filename || continueUnit?.filename || '');
     setView('exam');
+  };
+
+  const openReview = (unit = null) => {
+    requestSeqRef.current += 1;
+    requestAbortRef.current?.abort();
+    audioRef.current?.pause();
+    ttsLoopRef.current += 1;
+    tts.stop();
+    setReviewUnitFilename(unit?.filename || '');
+    setView('review');
+  };
+
+  const handleResolveReview = (item) => {
+    const current = progressRef.current;
+    const next = resolveNceReviewMistake(current, item);
+    if (next === current) return false;
+    if (!StorageService.saveNceProgress(next)) return false;
+    progressRef.current = next;
+    setProgress(next);
+    StorageService.recordStudyActivity({ type: 'course', count: 1 });
+    return true;
   };
 
   const handleExamComplete = (attempt) => {
@@ -687,10 +713,10 @@ export default function NewConcept({ resumeLesson = '' }) {
           <ChevronRight className="relative w-5 h-5 text-amber-900/50 shrink-0" />
         </button>
 
-        {reviewCount > 0 && (
-          <button type="button" onClick={() => setCourseFilter('review')} className="w-full mt-2 rounded-2xl bg-amber-50 border border-amber-100 p-3 flex items-center gap-3 text-left hover:border-amber-300 transition-colors">
+        {reviewItemCount > 0 && (
+          <button type="button" onClick={() => openReview()} className="w-full mt-2 rounded-2xl bg-amber-50 border border-amber-100 p-3 flex items-center gap-3 text-left hover:border-amber-300 transition-colors">
             <span className="w-9 h-9 rounded-xl bg-white text-amber-600 flex items-center justify-center"><RotateCcw className="w-4 h-4" /></span>
-            <span className="flex-1"><span className="block text-sm font-semibold text-amber-900">复习薄弱单元</span><span className="block text-xs text-amber-700/70 mt-0.5">{reviewCount} 个单元还有听写、练习或试题错题</span></span>
+            <span className="flex-1"><span className="block text-sm font-semibold text-amber-900">逐题复盘薄弱点</span><span className="block text-xs text-amber-700/70 mt-0.5">{reviewItemCount} 项待重练 · 答对后移出列表</span></span>
             <ChevronRight className="w-4 h-4 text-amber-400" />
           </button>
         )}
@@ -736,6 +762,10 @@ export default function NewConcept({ resumeLesson = '' }) {
 
   if (view === 'exam') {
     return <NceExam key={examUnitFilename} units={units} baseUrl={NCE1_BASE} initialUnitFilename={examUnitFilename} onBack={backToLessons} onOpenLesson={(unit) => unit && openUnit(unit)} onComplete={handleExamComplete} />;
+  }
+
+  if (view === 'review') {
+    return <NceReview progress={progress} units={units} initialUnitFilename={reviewUnitFilename} onResolve={handleResolveReview} onOpenLesson={(filename) => { const unit = units.find((item) => item.filename === filename); if (unit) openUnit(unit); }} onBack={backToLessons} />;
   }
 
   const exerciseScore = Math.min(exercises.length, exerciseCorrectCount);
@@ -818,6 +848,7 @@ export default function NewConcept({ resumeLesson = '' }) {
 
       <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-700">本课掌握度</span><span className="text-xs font-bold text-sky-700">{masteryCount}/4</span></div><div className="grid grid-cols-4 gap-1.5 mt-2">{[['听读', masterySteps[0]], ['听写', masterySteps[1]], ['单词', masterySteps[2]], ['练习', masterySteps[3]]].map(([label, done]) => <div key={label} className="text-center"><div className={`h-1.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-slate-100'}`} /><span className={`text-[9px] mt-1 block ${done ? 'text-emerald-600' : 'text-slate-400'}`}>{label}</span></div>)}</div>{currentReviewCount > 0 && <p className="text-[11px] text-amber-700 mt-2">还有 {currentReviewCount} 项薄弱内容，改对后会自动移出复习列表。</p>}</div>
       <div className="flex gap-2 mt-3"><button onClick={playCurrentLine} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-sm flex items-center justify-center gap-1"><Play className="w-4 h-4" />{activeLine >= 0 ? '朗读当前句' : '从第一句开始'}</button><button onClick={markComplete} className={`flex-1 py-2.5 rounded-xl text-sm flex items-center justify-center gap-1 ${currentProgress.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 className="w-4 h-4" />{currentProgress.status === 'completed' ? '已完成本课' : masteryCount === 4 ? '完成本课' : '标记完成'}</button></div>
+      {currentReviewCount > 0 && <button type="button" onClick={() => openReview(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 py-2.5 text-sm font-semibold text-sky-900"><RotateCcw className="w-4 h-4" />复盘本课 {currentReviewCount} 项</button>}
       <button type="button" onClick={() => openExam(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-semibold text-amber-900"><FileText className="w-4 h-4" />做本课试题</button>
       <div className="flex items-center justify-between gap-2 mt-3"><button type="button" onClick={() => goToAdjacentUnit(previousUnit)} disabled={!previousUnit} className="flex items-center gap-1 text-xs text-slate-500 disabled:opacity-30"><ChevronLeft className="w-4 h-4" />上一课</button><span className="text-[11px] text-slate-400">{selectedUnitIndex + 1}/{units.length || 72} 单元</span><button type="button" onClick={() => goToAdjacentUnit(nextUnit)} disabled={!nextUnit} className="flex items-center gap-1 text-xs text-slate-500 disabled:opacity-30">下一课<ChevronRight className="w-4 h-4" /></button></div>
       {view === 'exercise' && <button onClick={resetExercise} className="w-full mt-2 py-2 text-xs text-slate-400 flex items-center justify-center gap-1"><RotateCcw className="w-3 h-3" />重置本课练习</button>}
