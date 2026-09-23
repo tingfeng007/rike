@@ -1287,7 +1287,15 @@ export default function SmartReader() {
       {/* 4. Bottom Sheet: Sentence Highlight & Personal Note */}
       {editingAnnotation && (
         <div onClick={() => setEditingAnnotation(null)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#fffdf7] cursor-default w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-amber-100 max-h-[88vh] overflow-y-auto">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#fffdf7] cursor-default w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-amber-100 max-h-[88vh] overflow-y-auto overscroll-contain"
+            style={{
+              // Keep the sheet inside the *visual* mobile viewport and above the home indicator.
+              maxHeight: 'min(88dvh, 720px)',
+              paddingBottom: 'max(1.25rem, var(--safe-area-inset-bottom, 0px))',
+            }}
+          >
             <div className="w-10 h-1 bg-amber-200 rounded-full mx-auto mb-4 sm:hidden" />
             <div className="flex items-start justify-between pb-3 border-b border-amber-100">
               <div className="flex items-center gap-2">
@@ -1320,10 +1328,12 @@ export default function SmartReader() {
               onChange={(e) => setAnnotationDraft(e.target.value)}
               placeholder="例如：这句话适合在工作汇报中表达‘先做重要的事’……"
               className="w-full p-3 text-sm leading-relaxed bg-white border border-amber-200 rounded-2xl outline-hidden focus:ring-2 focus:ring-amber-400/60 resize-none placeholder:text-slate-400"
-              autoFocus
             />
 
-            <div className="flex gap-2 mt-4">
+            <div
+              className="sticky bottom-0 flex gap-2 mt-4 pt-3 border-t border-amber-100/80 bg-[#fffdf7]/95 backdrop-blur-sm"
+              style={{ paddingBottom: 'max(0.25rem, var(--safe-area-inset-bottom, 0px))' }}
+            >
               {currentAnnotations.some((item) => item.id === editingAnnotation.id) && (
                 <button
                   onClick={() => removeAnnotation(editingAnnotation.id)}
@@ -1346,7 +1356,11 @@ export default function SmartReader() {
       {/* 5. Modal: Reading Notes Collection & Markdown Export */}
       {showNotesModal && (
         <div onClick={() => setShowNotesModal(false)} className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#faf8f2] cursor-default w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-stone-200 max-h-[90vh] flex flex-col overflow-hidden">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#faf8f2] cursor-default w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-stone-200 max-h-[90vh] flex flex-col overflow-hidden overscroll-contain"
+            style={{ maxHeight: 'min(90dvh, 720px)' }}
+          >
             <div className="flex-none p-5 pb-3 border-b border-stone-200 bg-white/70">
               <div className="flex items-start justify-between">
                 <div className="flex gap-2.5">
@@ -1379,7 +1393,10 @@ export default function SmartReader() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div
+              className="min-h-0 flex-1 overflow-y-auto p-4 space-y-3 overscroll-contain"
+              style={{ paddingBottom: 'max(1.5rem, calc(1.5rem + var(--safe-area-inset-bottom, 0px)))' }}
+            >
               {currentAnnotations.length > 0 ? currentAnnotations.map((item, index) => (
                 <div key={item.id} className="bg-white rounded-2xl p-4 border border-stone-200/80 shadow-2xs">
                   <div className="flex items-start gap-3">
