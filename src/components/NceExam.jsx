@@ -145,7 +145,7 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
     const answered = draft.questions.filter((item) => String(draft.answers[item.id] || '').trim()).length;
     const selected = draft.answers[question.id] || '';
     return (
-      <section className="h-full overflow-y-auto p-4 pb-28">
+      <section className="study-page h-full overflow-y-auto p-4 pb-28">
         <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 mb-4"><ArrowLeft className="w-4 h-4" />退出试卷 · 自动保存</button>
         <div className="nce-exam-paper rounded-[28px] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/5 nce-reveal">
           <div className="flex items-start justify-between gap-3">
@@ -178,7 +178,7 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
   if (screen === 'results' && attempt) {
     const displayed = showAllResults ? attempt.results : attempt.results.filter((item) => !item.isCorrect);
     return (
-      <section className="h-full overflow-y-auto p-4 pb-28">
+      <section className="study-page h-full overflow-y-auto p-4 pb-28">
         <button type="button" onClick={() => setScreen('home')} className="flex items-center gap-1.5 text-sm text-slate-500 mb-4"><ArrowLeft className="w-4 h-4" />返回试题中心</button>
         <div className="rounded-[30px] bg-[#102a43] text-white p-6 nce-grid-texture nce-reveal"><p className="text-[11px] tracking-[0.2em] text-amber-300 font-bold">EXAM REPORT</p><div className="flex items-end justify-between gap-3 mt-3"><div><h1 className="editorial-serif text-2xl font-bold">{attempt.title}</h1><p className="text-xs text-slate-300 mt-1">{attempt.expired ? '时间到，已自动交卷' : '答卷已提交'} · {attempt.correct}/{attempt.total} 题正确</p></div><div className="text-5xl font-bold tabular-nums text-amber-300">{attempt.score}<span className="text-base text-slate-300">分</span></div></div><div className="h-2 rounded-full bg-white/15 mt-5 overflow-hidden"><div className="h-full bg-amber-300" style={{ width: `${attempt.score}%` }} /></div></div>
         <div className="grid grid-cols-3 gap-2 mt-3 text-center"><div className="bg-white rounded-2xl p-3"><strong className="block text-lg text-emerald-600">{attempt.correct}</strong><span className="text-[11px] text-slate-500">答对</span></div><div className="bg-white rounded-2xl p-3"><strong className="block text-lg text-rose-600">{attempt.total - attempt.correct - attempt.unanswered}</strong><span className="text-[11px] text-slate-500">答错</span></div><div className="bg-white rounded-2xl p-3"><strong className="block text-lg text-slate-600">{attempt.unanswered}</strong><span className="text-[11px] text-slate-500">未答</span></div></div>
@@ -192,7 +192,7 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
   }
 
   return (
-    <section className="h-full overflow-y-auto p-4 pb-28">
+    <section className="study-page h-full overflow-y-auto p-4 pb-28">
       <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 mb-4"><ArrowLeft className="w-4 h-4" />第一册课程</button>
       <div className="rounded-[30px] bg-[#102a43] text-white p-6 nce-grid-texture relative overflow-hidden nce-reveal"><div className="absolute -right-10 -top-10 w-36 h-36 bg-amber-400/15 rounded-full blur-2xl" /><div className="relative"><p className="text-[11px] tracking-[0.22em] text-amber-300 font-bold">EXAM · NCE BOOK ONE</p><FileText className="w-10 h-10 text-amber-300 mt-4" /><h1 className="editorial-serif text-3xl font-bold mt-3">第一册试题中心</h1><p className="text-sm leading-6 text-slate-300 mt-2">像正式测验一样独立作答，交卷后再看答案与错题。</p><div className="flex gap-2 mt-5 text-[11px]"><span className="bg-white/10 rounded-full px-3 py-1.5">限时答卷</span><span className="bg-white/10 rounded-full px-3 py-1.5">自动评分</span><span className="bg-white/10 rounded-full px-3 py-1.5">错题回看</span></div></div></div>
       {data.draft && <div className="mt-4 rounded-2xl bg-amber-50 border border-amber-200 p-4"><p className="font-semibold text-amber-900">有一份未交卷试题</p><p className="text-xs text-amber-800 mt-1">{data.draft.title} · 已作答 {Object.values(data.draft.answers || {}).filter((value) => String(value).trim()).length}/{data.draft.questions.length} 题</p><button type="button" onClick={() => setScreen('paper')} className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-amber-800">继续答卷<ArrowRight className="w-4 h-4" /></button></div>}

@@ -22,6 +22,7 @@ import {
 } from '../services/storage';
 import { callAICompletion } from '../services/ai';
 import { tts } from '../services/speech';
+import StudyHeader from './StudyHeader';
 
 export default function Settings() {
   const [settings, setSettings] = useState(() => StorageService.getSettings());
@@ -186,54 +187,43 @@ export default function Settings() {
   const currentPreset = PROVIDER_PRESETS[settings.provider] || PROVIDER_PRESETS.custom;
 
   return (
-    <div className="flex flex-col h-full bg-transparent overflow-y-auto">
-      {/* Top Header */}
-      <header 
-        className="flex-none glass-panel border-b border-white/80 px-4 py-2.5 shadow-xs flex items-center justify-between sticky top-0 z-20"
-        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}
-      >
-        <div className="flex items-center space-x-2">
-          <SettingsIcon className="w-5 h-5 text-sky-600" />
-          <h2 className="font-bold text-slate-900 text-sm">
-            个人自用配置与服务
-          </h2>
-        </div>
-
-        {savedSuccess && (
-          <span className="flex items-center gap-1 text-xs text-emerald-700 font-semibold bg-emerald-100/80 px-2.5 py-0.5 rounded-full ring-1 ring-emerald-200 animate-fade-in">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            已自动保存
-          </span>
-        )}
-      </header>
+    <div className="study-page flex flex-col h-full overflow-y-auto">
+      <StudyHeader
+        eyebrow="MY LINGOFLOW · LOCAL FIRST"
+        title="设备与服务"
+        description="先保证学习记录安全，再按需连接 AI 与调整语音。所有设置自动保存在当前浏览器。"
+        icon={<SettingsIcon className="w-4 h-4" />}
+        status="本地优先"
+        actions={savedSuccess ? <span className="flex items-center gap-1 rounded-xl bg-emerald-400/15 px-2.5 py-2 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-300/20 animate-fade-in"><CheckCircle2 className="w-3.5 h-3.5" />已保存</span> : null}
+      />
 
       {/* Main Form Content */}
       <div className="p-4 space-y-4 max-w-md mx-auto pb-28 w-full">
         {/* PWA Mobile Install Banner */}
-        <div className="bg-gradient-to-br from-sky-600 via-blue-600 to-indigo-700 rounded-3xl p-4.5 text-white shadow-md border border-white/20">
+        <div className="paper-grain rounded-[26px] border border-[#dfd2b9] bg-[#f3e7ce] p-5 text-[#102a43] shadow-sm">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                极简随身体验
+              <span className="text-[10px] font-bold bg-[#102a43] text-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                安装到主屏幕
               </span>
               <h3 className="text-base font-bold tracking-tight">添加到手机主屏幕 (PWA)</h3>
-              <p className="text-xs text-white/80 leading-relaxed">
-                无需通过应用商店，在 Safari 或 Chrome 中添加到主屏幕，享受全屏原生 App 极速体验！
+              <p className="text-xs text-slate-600 leading-relaxed">
+                无需应用商店；从 Safari 或 Chrome 添加后，可全屏打开并保留本地学习记录。
               </p>
             </div>
-            <Smartphone className="w-7 h-7 text-white/80 flex-none ml-2" />
+            <Smartphone className="w-7 h-7 text-amber-700 flex-none ml-2" />
           </div>
 
           <button
             onClick={() => setShowPwaGuide(true)}
-            className="mt-3 bg-white text-sky-750 hover:bg-sky-50 text-xs font-bold px-3.5 py-1.5 rounded-xl shadow-xs transition-colors active:scale-95"
+            className="mt-3 bg-[#102a43] text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-xs transition-colors active:scale-95"
           >
             查看苹果/安卓添加教程
           </button>
         </div>
 
         {/* Section 1: AI Model Configuration */}
-        <div className="glass-panel rounded-3xl p-5 shadow-xs border border-white/90 space-y-3.5">
+        <div className="study-card rounded-[26px] p-5 space-y-3.5">
           <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Key className="w-4 h-4 text-sky-600" />
@@ -372,7 +362,7 @@ export default function Settings() {
         </div>
 
         {/* Section 2: Speech & TTS Settings */}
-        <div className="glass-panel rounded-3xl p-5 shadow-xs border border-white/90 space-y-3.5">
+        <div className="study-card rounded-[26px] p-5 space-y-3.5">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Volume2 className="w-4 h-4 text-sky-600" />
@@ -471,7 +461,7 @@ export default function Settings() {
         </div>
 
         {/* Section 3: Data Management & Cross-device sync 2.0 */}
-        <div className="glass-panel rounded-3xl p-5 shadow-xs border border-white/90 space-y-3.5">
+        <div className="study-card rounded-[26px] p-5 space-y-3.5">
           <div className="pb-2 border-b border-slate-100 flex items-start justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">

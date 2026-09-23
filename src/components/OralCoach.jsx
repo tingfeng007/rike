@@ -23,6 +23,7 @@ import { SCENARIOS } from '../data/scenarios';
 import { StorageService } from '../services/storage';
 import { getOralCoachResponseStream } from '../services/ai';
 import { tts, stt } from '../services/speech';
+import StudyHeader from './StudyHeader';
 
 // Diagnostic helper for friendly error categorization
 function diagnoseErrorMessage(errMsg) {
@@ -51,6 +52,29 @@ function diagnoseErrorMessage(errMsg) {
   };
 }
 
+function pickWantedWords() {
+  const words = StorageService.getVocabulary();
+  const unmastered = words.filter((word) => word.status !== 'mastered');
+  const pool = unmastered.length >= 3 ? unmastered : words;
+  return [...pool].sort(() => 0.5 - Math.random()).slice(0, 3);
+}
+
+function currentTimestamp() {
+  return Date.now();
+}
+
+function loadScenarioMessages(scenario) {
+  const history = StorageService.getChatMessages(scenario.id);
+  if (history.length > 0) return history;
+  return [{
+    id: `init_${scenario.id}`,
+    role: 'assistant',
+    replyText: scenario.initialMessage,
+    replyTextCn: scenario.initialMessageCn,
+    timestamp: currentTimestamp(),
+  }];
+}
+
 export default function OralCoach({ onNavigateToVocab }) {
   const [scenarios] = useState(SCENARIOS);
   const [currentScenario, setCurrentScenario] = useState(() => {
@@ -58,7 +82,7 @@ export default function OralCoach({ onNavigateToVocab }) {
     return SCENARIOS.find((s) => s.id === saved) || SCENARIOS[0];
   });
 
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => loadScenarioMessages(currentScenario));
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -68,7 +92,7 @@ export default function OralCoach({ onNavigateToVocab }) {
   const [addedWordFeedback, setAddedWordFeedback] = useState({});
   const [activatedWords, setActivatedWords] = useState({});
   const [missionToast, setMissionToast] = useState(null);
-  const [wantedWordsList, setWantedWordsList] = useState([]);
+  const [wantedWordsList, setWantedWordsList] = useState(() => pickWantedWords());
   const [hasApiKey, setHasApiKey] = useState(() => Boolean(StorageService.getSettings().apiKey?.trim()));
   const [showQuickKeyModal, setShowQuickKeyModal] = useState(false);
   const [quickKeyInput, setQuickKeyInput] = useState('');
@@ -77,40 +101,11 @@ export default function OralCoach({ onNavigateToVocab }) {
 
   // Randomly refresh wanted words
   const refreshWantedWords = () => {
-    const words = StorageService.getVocabulary();
-    const unmastered = words.filter((w) => w.status !== 'mastered');
-    const pool = unmastered.length >= 3 ? unmastered : words;
-    const shuffled = [...pool].sort(() => 0.5 - Math.random());
-    setWantedWordsList(shuffled.slice(0, 3));
+    setWantedWordsList(pickWantedWords());
   };
-
-  useEffect(() => {
-    refreshWantedWords();
-  }, [currentScenario.id]);
 
   const messagesEndRef = useRef(null);
   const isSttSupported = stt.isSupported();
-
-  // Load chat history for current scenario
-  useEffect(() => {
-    const history = StorageService.getChatMessages(currentScenario.id);
-    if (history.length === 0) {
-      // Setup initial welcome greeting from AI
-      const initial = [
-        {
-          id: `init_${currentScenario.id}`,
-          role: 'assistant',
-          replyText: currentScenario.initialMessage,
-          replyTextCn: currentScenario.initialMessageCn,
-          timestamp: Date.now(),
-        },
-      ];
-      setMessages(initial);
-      StorageService.saveChatMessages(currentScenario.id, initial);
-    } else {
-      setMessages(history);
-    }
-  }, [currentScenario.id]);
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -120,6 +115,9 @@ export default function OralCoach({ onNavigateToVocab }) {
   // Save current scenario selection to settings
   const handleSelectScenario = (scenario) => {
     setCurrentScenario(scenario);
+    setMessages(loadScenarioMessages(scenario));
+    setWantedWordsList(pickWantedWords());
+    setActivatedWords({});
     const settings = StorageService.getSettings();
     settings.currentScenarioId = scenario.id;
     StorageService.saveSettings(settings);
@@ -194,7 +192,7 @@ export default function OralCoach({ onNavigateToVocab }) {
       setTimeout(() => setMissionToast(null), 4000);
     }
 
-    const now = Date.now();
+    const now = currentTimestamp();
     const userMsg = {
       id: `usr_${now}`,
       role: 'user',
@@ -241,7 +239,7 @@ export default function OralCoach({ onNavigateToVocab }) {
         feedback: aiResponse.feedback,
         suggestedReplies: aiResponse.suggestedReplies || [],
         isStreaming: false,
-        timestamp: Date.now(),
+        timestamp: currentTimestamp(),
       };
 
       const finalMessages = [...messagesWithUser, finalAssistantMsg];
@@ -266,7 +264,7 @@ export default function OralCoach({ onNavigateToVocab }) {
         failedUserText: text,
         isError: true,
         isStreaming: false,
-        timestamp: Date.now(),
+        timestamp: currentTimestamp(),
       };
       setMessages((prev) =>
         prev.map((m) => (m.id === tempAiId ? errorMsg : m))
@@ -379,65 +377,50 @@ export default function OralCoach({ onNavigateToVocab }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-transparent">
-      {/* Top Header: Scenario Selector & Actions */}
-      <header 
-        className="flex-none glass-panel border-b border-white/80 px-4 py-2.5 shadow-xs z-10"
-        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}
-      >
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center space-x-2">
-            <span className="text-2xl drop-shadow-xs">{currentScenario.icon}</span>
-            <div>
-              <h2 className="font-bold text-slate-900 text-sm leading-tight flex items-center gap-1.5">
-                {currentScenario.name}
-                <span className="text-[10px] font-semibold text-sky-700 bg-sky-100/80 px-2 py-0.5 rounded-full ring-1 ring-sky-200/60">
-                  AI 外教 Echo
-                </span>
-              </h2>
-              <p className="text-[11px] text-slate-500 truncate max-w-[210px] mt-0.5">
-                {currentScenario.desc}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-1.5">
+    <div className="study-page flex flex-col h-full">
+      <StudyHeader
+        eyebrow="SPEAK · ACTIVE ENGLISH"
+        title={currentScenario.name}
+        description={`${currentScenario.desc} · 让今天记住的词真正说出口。`}
+        icon={<span className="text-base">{currentScenario.icon}</span>}
+        status={hasApiKey ? 'AI 已连接' : '待连接 AI'}
+        actions={(
+          <>
             <button
+              type="button"
               onClick={() => setPracticeWithVocab(!practiceWithVocab)}
+              aria-pressed={practiceWithVocab}
               title="联动生词本：在对话中强化记忆今日生词"
-              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full transition-all border ${
+              className={`tap-lift flex items-center gap-1 rounded-xl border px-2.5 py-2 text-[11px] font-semibold transition-all ${
                 practiceWithVocab
-                  ? 'bg-amber-100/80 text-amber-900 border-amber-300 font-semibold shadow-xs ring-1 ring-amber-200'
-                  : 'bg-white/80 text-slate-600 border-slate-200 hover:bg-white'
+                  ? 'border-amber-300 bg-amber-400 text-[#102a43]'
+                  : 'border-white/15 bg-white/10 text-slate-200'
               }`}
             >
-              <Flame className={`w-3.5 h-3.5 ${practiceWithVocab ? 'text-amber-600 fill-amber-500' : 'text-slate-400'}`} />
-              <span>生词联动</span>
+              <Flame className={`w-3.5 h-3.5 ${practiceWithVocab ? 'fill-current' : ''}`} />
+              <span>{practiceWithVocab ? '生词联动中' : '联动生词'}</span>
             </button>
-
             <button
+              type="button"
               onClick={handleClearHistory}
               title="重置当前对话"
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-full transition-colors"
+              className="tap-lift rounded-xl border border-white/15 bg-white/10 p-2 text-slate-200 hover:bg-white/15"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
-          </div>
-        </div>
-
-        {/* Scenario Pills Scroll */}
-        <div className="flex space-x-2 overflow-x-auto pb-1 no-scrollbar text-xs">
+          </>
+        )}
+      >
+        <div className="flex space-x-2 overflow-x-auto pb-1 no-scrollbar text-xs" aria-label="口语练习场景">
           {scenarios.map((sc) => {
             const isActive = sc.id === currentScenario.id;
             return (
               <button
+                type="button"
                 key={sc.id}
                 onClick={() => handleSelectScenario(sc)}
-                className={`flex-none flex items-center space-x-1.5 px-3 py-1 rounded-full border transition-all ${
-                  isActive
-                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white border-transparent shadow-sm font-semibold'
-                    : 'bg-white/80 text-slate-600 border-slate-200/80 hover:bg-white'
-                }`}
+                aria-pressed={isActive}
+                className="study-pill tap-lift flex-none flex items-center space-x-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition-all"
               >
                 <span>{sc.icon}</span>
                 <span>{sc.name}</span>
@@ -446,12 +429,11 @@ export default function OralCoach({ onNavigateToVocab }) {
           })}
         </div>
 
-        {/* Wanted Words Mission Banner with Shuffle */}
         {practiceWithVocab && wantedWordsList.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-900 flex-none mr-2">
-              <Target className="w-3.5 h-3.5 text-amber-600" />
-              <span>生词通缉令：</span>
+          <div className="mt-2 flex items-center justify-between rounded-xl bg-white/5 p-2 text-xs ring-1 ring-white/10">
+            <div className="flex items-center gap-1 text-[10px] font-bold text-amber-300 flex-none mr-2">
+              <Target className="w-3.5 h-3.5" />
+              <span>本轮目标</span>
             </div>
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
               {wantedWordsList.map((item) => {
@@ -462,8 +444,8 @@ export default function OralCoach({ onNavigateToVocab }) {
                     onClick={() => tts.speak(item.word)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 flex-none transition-all active:scale-95 ${
                       isHit
-                        ? 'bg-emerald-500 text-white border-emerald-600 font-bold shadow-xs'
-                        : 'bg-amber-50/90 text-amber-900 border-amber-300/80 hover:bg-amber-100'
+                        ? 'bg-emerald-500 text-white border-emerald-400 font-bold'
+                        : 'bg-white/10 text-amber-100 border-white/15 hover:bg-white/15'
                     }`}
                     title={`点击听发音：${item.translation || ''}`}
                   >
@@ -475,7 +457,7 @@ export default function OralCoach({ onNavigateToVocab }) {
             </div>
             <button
               onClick={refreshWantedWords}
-              className="flex-none ml-1.5 p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-100/60 rounded-md text-[10.5px] transition-colors flex items-center gap-0.5"
+              className="flex-none ml-1.5 p-1 text-slate-300 hover:text-amber-300 rounded-md text-[10.5px] transition-colors flex items-center gap-0.5"
               title="随机换一批通缉生词挑战"
             >
               <RotateCcw className="w-3 h-3" />
@@ -483,7 +465,7 @@ export default function OralCoach({ onNavigateToVocab }) {
             </button>
           </div>
         )}
-      </header>
+      </StudyHeader>
 
       {/* Floating Mission Success Toast */}
       {missionToast && (

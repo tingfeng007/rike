@@ -58,9 +58,10 @@ export default function HomeDashboard({ onNavigate }) {
     coursePriority !== 'lesson' || (snapshot.stats.todayCourseCount || 0) === 0,
     (snapshot.stats.todayOralCount || 0) < 3,
   ].filter(Boolean).length;
+  const completedTaskCount = 3 - taskCount;
 
   return (
-    <section className="h-full overflow-y-auto pb-28 bg-[#f7f5ef]">
+    <section className="study-page h-full overflow-y-auto pb-28">
       <div className="relative overflow-hidden px-5 pt-6 pb-8 bg-[#102a43] text-white">
         <div className="absolute -top-16 -right-12 w-48 h-48 rounded-full bg-sky-400/20 blur-3xl" />
         <div className="absolute bottom-0 left-0 w-40 h-24 bg-amber-300/10 blur-2xl" />
@@ -68,8 +69,8 @@ export default function HomeDashboard({ onNavigate }) {
           <p className="text-[11px] font-semibold tracking-[0.22em] text-sky-200">LINGOFLOW · TODAY</p>
           <button onClick={() => onNavigate('settings')} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-slate-200" aria-label="打开设置"><Settings className="w-4 h-4" /></button>
         </div>
-        <h1 className="relative mt-3 text-[27px] leading-tight font-bold tracking-tight">{getGreeting()}</h1>
-        <p className="relative mt-2 text-sm text-slate-300">今天只做 {taskCount} 件事，完成比做多更重要。</p>
+        <h1 className="editorial-serif relative mt-3 text-[29px] leading-tight font-bold tracking-tight">{getGreeting()}</h1>
+        <p className="relative mt-2 text-sm text-slate-300">{taskCount > 0 ? `还剩 ${taskCount} 个学习动作，按顺序完成就好。` : '今天的学习闭环已完成，可以安心收工。'}</p>
 
         <div className="relative grid grid-cols-3 gap-2 mt-5">
           <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
@@ -84,20 +85,24 @@ export default function HomeDashboard({ onNavigate }) {
           </div>
           <div className="rounded-2xl bg-white/10 border border-white/10 p-3">
             <GraduationCap className="w-4 h-4 text-emerald-300 mb-2" />
-            <p className="text-xl font-bold">{snapshot.course.completed}</p>
-            <p className="text-[10px] text-slate-300">已完成单元</p>
+            <p className="text-xl font-bold">{snapshot.course.reviewItems}</p>
+            <p className="text-[10px] text-slate-300">课程待复习</p>
           </div>
         </div>
       </div>
 
       <div className="px-4 -mt-3 relative z-10 space-y-4">
-        <div className="rounded-[22px] bg-white border border-[#e7e2d8] shadow-[0_8px_24px_rgba(53,45,30,0.08)] p-4">
+        <div className="study-card paper-grain rounded-[24px] p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="text-xs font-semibold tracking-wide text-slate-400">今日 10 分钟</p>
-              <h2 className="font-bold text-slate-900 mt-0.5">按顺序完成这三步</h2>
+              <h2 className="font-bold text-slate-900 mt-0.5">{taskCount ? '按顺序完成这三步' : '今天已经完成'}</h2>
             </div>
             <Sparkles className="w-5 h-5 text-amber-500" />
+          </div>
+          <div className="mb-2 flex items-center gap-2" aria-label={`今日计划已完成 ${completedTaskCount} 项，共 3 项`}>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${completedTaskCount / 3 * 100}%` }} /></div>
+            <span className="text-[10px] font-semibold tabular-nums text-slate-400">{completedTaskCount}/3</span>
           </div>
 
           <button onClick={() => onNavigate('vocab')} className="w-full flex items-center gap-3 py-3 border-b border-slate-100 text-left">

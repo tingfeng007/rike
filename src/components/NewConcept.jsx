@@ -674,7 +674,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
 
   if (view === 'lessons') {
     return (
-      <section className="h-full overflow-y-auto p-4 pb-28">
+      <section className="study-page h-full overflow-y-auto p-4 pb-28">
         <div className="rounded-[30px] bg-[#102a43] text-white p-5 shadow-xl shadow-slate-900/15 overflow-hidden relative nce-grid-texture nce-reveal">
           <div className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-sky-400/20 blur-2xl" />
           <div className="relative">
@@ -771,7 +771,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
   const exerciseScore = Math.min(exercises.length, exerciseCorrectCount);
 
   return (
-    <section className="h-full overflow-y-auto p-4 pb-28">
+    <section className="study-page h-full overflow-y-auto p-4 pb-28">
       <button onClick={backToLessons} className="flex items-center gap-1 text-sm text-slate-500 mb-3 hover:text-slate-800"><ArrowLeft className="w-4 h-4" />第一册课程</button>
       <div className="rounded-[28px] bg-gradient-to-br from-white via-white to-sky-50 border border-white p-4 mb-3 shadow-sm nce-reveal">
         <div className="flex items-start justify-between gap-3">

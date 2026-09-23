@@ -85,12 +85,12 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full max-w-md mx-auto overflow-hidden bg-slate-50 font-sans shadow-2xl relative">
+    <div className="study-page flex flex-col h-[100dvh] w-full max-w-md mx-auto overflow-hidden font-sans shadow-2xl relative">
       {/* Background Subtle Gradient Atmosphere */}
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute -top-24 -left-24 w-72 h-72 bg-sky-200/30 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 -right-24 w-80 h-80 bg-indigo-100/30 rounded-full blur-3xl" />
-        <div className="absolute -bottom-24 left-1/4 w-72 h-72 bg-amber-100/20 rounded-full blur-3xl" />
+        <div className="absolute -top-24 -left-24 w-72 h-72 bg-sky-200/25 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 -right-24 w-80 h-80 bg-[#dfeaf1]/30 rounded-full blur-3xl" />
+        <div className="absolute -bottom-24 left-1/4 w-72 h-72 bg-amber-100/25 rounded-full blur-3xl" />
       </div>
 
       {/* Offline / Online Status Toast Bar */}
@@ -123,15 +123,17 @@ export default function App() {
 
       {/* Bottom Floating Frosted Glass TabBar */}
       <nav 
-        className="flex-none glass-floating-bar border-t border-white/80 px-3 py-1.5 select-none z-30 transition-all"
+        className="flex-none bg-[#fffdf8]/95 backdrop-blur-2xl border-t border-[#e7e0d4] px-3 pt-1.5 select-none z-30 shadow-[0_-12px_30px_-24px_rgba(15,23,42,0.5)]"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
       >
         <div className="grid grid-cols-5 gap-1">
           <button
+            type="button"
+            aria-current={activeTab === 'home' ? 'page' : undefined}
             onClick={() => navigate('home')}
-            className={`flex flex-col items-center py-1.5 px-0.5 rounded-2xl transition-all ${
+            className={`tap-lift flex flex-col items-center py-1.5 px-0.5 rounded-2xl transition-all ${
               activeTab === 'home'
-                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100'
+                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -140,10 +142,12 @@ export default function App() {
           </button>
 
           <button
+            type="button"
+            aria-current={activeTab === 'oral' ? 'page' : undefined}
             onClick={() => navigate('oral')}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
+            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'oral'
-                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -153,10 +157,12 @@ export default function App() {
 
           {/* Tab 2: Smart Reader */}
           <button
+            type="button"
+            aria-current={activeTab === 'reader' ? 'page' : undefined}
             onClick={() => navigate('reader')}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
+            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'reader'
-                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -166,10 +172,12 @@ export default function App() {
 
           {/* Tab 3: Vocabulary & SRS */}
           <button
+            type="button"
+            aria-current={activeTab === 'nce' ? 'page' : undefined}
             onClick={() => navigate('nce')}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
+            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
               activeTab === 'nce'
-                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -179,13 +187,15 @@ export default function App() {
 
           {/* Tab 4: Vocabulary & SRS */}
           <button
+            type="button"
+            aria-current={activeTab === 'vocab' ? 'page' : undefined}
             onClick={() => {
               navigate('vocab');
               updateDueCount();
             }}
-            className={`flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all relative ${
+            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all relative ${
               activeTab === 'vocab'
-                ? 'bg-sky-50/90 text-sky-600 font-semibold shadow-xs ring-1 ring-sky-100 scale-102'
+                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >

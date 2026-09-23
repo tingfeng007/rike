@@ -51,7 +51,7 @@ export default function NceReview({ progress, units, initialUnitFilename = '', o
     || filename.replace(/^\d+&\d+\./, '');
 
   return (
-    <section className="h-full overflow-y-auto bg-[#f7f5ef] p-4 pb-28">
+    <section className="study-page h-full overflow-y-auto p-4 pb-28">
       <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-slate-500 mb-4 hover:text-slate-800"><ArrowLeft className="w-4 h-4" />第一册课程</button>
       <div className="relative overflow-hidden rounded-[30px] bg-[#102a43] p-6 text-white nce-grid-texture nce-reveal">
         <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-amber-300/15 blur-2xl" />

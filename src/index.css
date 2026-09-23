@@ -6,6 +6,11 @@
   :root {
     --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-inset-top: env(safe-area-inset-top, 0px);
+    --paper: #f7f3ea;
+    --paper-deep: #eee7da;
+    --ink: #102a43;
+    --sky: #0ea5e9;
+    --amber: #f59e0b;
   }
 
   html, body {
@@ -68,6 +73,58 @@
   font-family: "Charter", "Iowan Old Style", "Palatino", "Source Serif Pro", Georgia, serif;
 }
 
+.study-page {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.07), transparent 30%),
+    radial-gradient(circle at 0% 100%, rgba(245, 158, 11, 0.06), transparent 32%);
+}
+
+.study-hero {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--ink);
+  background-image:
+    radial-gradient(circle at 88% 8%, rgba(56, 189, 248, 0.2), transparent 30%),
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: auto, 24px 24px, 24px 24px;
+  box-shadow: 0 14px 30px -22px rgba(15, 23, 42, 0.9);
+}
+
+.study-card {
+  border: 1px solid rgba(215, 207, 193, 0.82);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 32px -24px rgba(30, 41, 59, 0.5);
+}
+
+.study-pill {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgb(226 232 240);
+}
+
+.study-pill[aria-pressed="true"] {
+  border-color: rgba(253, 230, 138, 0.6);
+  background: rgb(245 158 11);
+  color: var(--ink);
+  box-shadow: 0 8px 18px -12px rgba(245, 158, 11, 0.85);
+}
+
+.paper-grain {
+  background-image:
+    linear-gradient(115deg, rgba(255, 255, 255, 0.5), transparent 32%),
+    repeating-linear-gradient(0deg, rgba(15, 23, 42, 0.012) 0, rgba(15, 23, 42, 0.012) 1px, transparent 1px, transparent 4px);
+}
+
+.tap-lift {
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.tap-lift:active {
+  transform: translateY(1px) scale(0.99);
+}
+
 .nce-grid-texture {
   background-image:
     radial-gradient(circle at 82% 14%, rgba(125, 211, 252, 0.2), transparent 28%),
@@ -94,6 +151,10 @@
 @media (prefers-reduced-motion: reduce) {
   .nce-reveal {
     animation: none;
+  }
+
+  .tap-lift {
+    transition: none;
   }
 }
 
