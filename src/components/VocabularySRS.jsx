@@ -144,7 +144,7 @@ export default function VocabularySRS() {
 
     const currentCard = dueCards[currentIndex];
     StorageService.updateWordSRS(currentCard.id, quality);
-    const updatedStats = StorageService.recordReviewActivity(1);
+    const updatedStats = StorageService.recordReviewActivity(1, { entityId: currentCard.id, durationMinutes: 1 });
     setStudyStats(updatedStats);
 
     setIsFlipped(false);
@@ -346,6 +346,14 @@ export default function VocabularySRS() {
         percent: Math.round((correct / quizQuestions.length) * 100),
         wrongs,
       });
+      const updatedStats = StorageService.recordStudyActivity({
+        type: 'quiz',
+        count: 1,
+        source: 'vocab-quiz',
+        label: '完成 AI 词汇测验',
+        metadata: { correct, total: quizQuestions.length },
+      });
+      setStudyStats(updatedStats);
 
       if (correct === quizQuestions.length) {
         confetti({
@@ -724,6 +732,7 @@ export default function VocabularySRS() {
                 { id: 'all', label: '全部', count: vocabulary.length },
                 { id: 'learning', label: '学习中', count: vocabulary.filter((w) => w.status === 'learning').length },
                 { id: 'review', label: '复习中', count: vocabulary.filter((w) => w.status === 'review').length },
+                { id: 'hard', label: '困难词', count: vocabulary.filter((w) => w.tags?.includes('困难词') || (w.easeFactor || 2.5) <= 1.8).length },
                 { id: 'needsMeaning', label: '待补释义', count: missingMeaningCount },
                 { id: 'mastered', label: '👑 已牢记', count: vocabulary.filter((w) => w.status === 'mastered').length },
               ].map((f) => {
@@ -828,6 +837,15 @@ export default function VocabularySRS() {
                             : `间隔: ${item.intervalDays || 1} 天`}
                         </span>
                       </div>
+                      {Array.isArray(item.sources) && item.sources.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {item.sources.slice(0, 3).map((source) => (
+                            <span key={source.key || `${source.type}:${source.id}`} className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">
+                              来源 · {source.label || source.id}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex flex-col gap-1 flex-none">

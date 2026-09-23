@@ -48,7 +48,7 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
     };
     persist({ attempts: [attempt, ...current.attempts].slice(0, 30), draft: null });
     onComplete?.(attempt);
-    StorageService.recordStudyActivity({ type: 'course', count: 1 });
+    StorageService.recordStudyActivity({ type: 'course', count: 1, source: 'nce-exam', entityId: attempt.unitId, label: '完成新概念单元测验', metadata: { score: attempt.score } });
     setSelectedAttemptId(attempt.id);
     setShowAllResults(false);
     setScreen('results');

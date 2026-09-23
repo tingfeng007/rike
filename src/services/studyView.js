@@ -15,10 +15,12 @@ export function filterVocabulary(words, query = '', status = 'all') {
       item.userNote,
       item.contextSentence,
       ...(item.tags || []),
+      ...(Array.isArray(item.sources) ? item.sources : []).map((source) => source.label || source.id || ''),
     ].filter(Boolean).join(' ').toLowerCase();
     if (normalizedQuery && !searchable.includes(normalizedQuery)) return false;
     if (status === 'all') return true;
     if (status === 'needsMeaning') return !item.translation?.trim();
+    if (status === 'hard') return item.tags?.includes('困难词') || (item.easeFactor || 2.5) <= 1.8;
     return item.status === status;
   });
 }

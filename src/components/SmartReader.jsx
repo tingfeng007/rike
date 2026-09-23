@@ -222,6 +222,7 @@ export default function SmartReader() {
       setArticleSpeechIndex(articleSpeechSentences.length);
       setIsArticleSpeaking(false);
       setIsArticlePaused(false);
+      StorageService.recordStudyActivity({ type: 'reader', count: 1, durationMinutes: readingMinutes, source: 'reader-session', entityId: currentArticle?.id, label: '完成精读朗读' });
     }
   };
 
@@ -272,7 +273,7 @@ export default function SmartReader() {
       ? articleNotes.map((item) => item.id === savedNote.id ? savedNote : item)
       : [...articleNotes, savedNote];
     persistAnnotations({ ...annotations, [articleKey]: nextNotes });
-    StorageService.recordStudyActivity({ type: 'annotation', count: 1 });
+    StorageService.recordStudyActivity({ type: 'annotation', count: 1, durationMinutes: 2, source: 'reader-annotation', entityId: articleKey, label: '收藏精读句子' });
     setEditingAnnotation(null);
     setAnnotationDraft('');
   };
@@ -565,6 +566,7 @@ export default function SmartReader() {
       contextSentence: selectedWord.sentence || '',
       contextSentenceCn: wordAnalysis?.contextSentenceCn || '',
       tags: ['精读摘录', currentArticle?.title || '自主精读'],
+      sources: [{ type: 'reader', id: currentArticle?.id, key: `reader:${currentArticle?.id}`, label: currentArticle?.title || '精读文章' }],
     });
     setIsWordSaved(true);
     // Auto dismiss after 1.1s so reading flow continues seamlessly!

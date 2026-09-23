@@ -45,6 +45,10 @@ export default function App() {
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
 
+  useEffect(() => {
+    StorageService.ensureSchema();
+  }, []);
+
   // Online / Offline Detection
   useEffect(() => {
     const handleOnline = () => {

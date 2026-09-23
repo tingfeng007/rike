@@ -96,3 +96,15 @@ test('backup restores the review queue after resolving one mistake', () => {
   assert.deepEqual(restored.examMistakes.map((item) => item.id), ['q-2']);
   assert.equal(restored.dictationMistakes[0].id, 'd-1');
 });
+
+test('study events and daily plan survive a safe backup roundtrip', () => {
+  StorageService.recordStudyActivity({ type: 'oral', count: 2, source: 'oral-chat', entityId: 'daily_chat' });
+  StorageService.saveStudyPlan({ version: 1, dailyMinutes: 20, days: { '2026-09-23': { completedTaskIds: ['oral-practice'] } } });
+  const backup = StorageService.exportAllData();
+  const preview = StorageService.parseBackupPreview(backup);
+  assert.equal(preview.studyEventCount, 1);
+  localStorage.clear();
+  assert.equal(StorageService.importAllData(backup).success, true);
+  assert.equal(StorageService.getStudyEvents().length, 1);
+  assert.equal(StorageService.getStudyPlan().dailyMinutes, 20);
+});

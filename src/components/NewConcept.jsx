@@ -18,6 +18,7 @@ import {
   Sparkles,
   Volume2,
   BookmarkPlus,
+  Download,
 } from 'lucide-react';
 import NceDictation from './NceDictation';
 import NceExam from './NceExam';
@@ -26,6 +27,8 @@ import { tts } from '../services/speech';
 import { StorageService } from '../services/storage';
 import { buildDictationItems, buildExercises, extractWords, parseLrc, safeAssetName } from '../services/nce';
 import { buildNceReviewQueue, resolveNceReviewMistake } from '../services/nceReview';
+import { getNceMastery, getNceNextReviewAt, isNceReviewDue } from '../services/nceMastery';
+import { cacheCourseAudio, getCachedCourseAudioUrl, supportsCourseCache } from '../services/offline';
 
 const NCE1_BASE = 'https://nce.mleo.site/NCE1';
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5];
@@ -94,6 +97,8 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
   const [examUnitFilename, setExamUnitFilename] = useState('');
   const [reviewUnitFilename, setReviewUnitFilename] = useState('');
   const [usingOfflineCopy, setUsingOfflineCopy] = useState(false);
+  const [audioSourceUrl, setAudioSourceUrl] = useState('');
+  const [audioCacheState, setAudioCacheState] = useState('idle');
   const audioRef = useRef(null);
   const lineRefs = useRef({});
   const progressRef = useRef(progress);
@@ -173,6 +178,9 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
   const reviewItemCount = useMemo(() => buildNceReviewQueue(progress).length, [progress]);
   const courseWordCount = [...savedWords.values()].filter((item) => item.tags?.includes('新概念英语')).length;
   const courseProgressPercent = units.length ? Math.round((completedCount / units.length) * 100) : 0;
+  const averageMastery = units.length
+    ? Math.round(units.reduce((sum, unit) => sum + getNceMastery(progress[unit.filename] || {}).score, 0) / units.length)
+    : 0;
 
   const latestUnit = useMemo(() => {
     const latestFilename = Object.entries(progress)
@@ -195,6 +203,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
     Boolean(currentProgress.vocabViewed),
     Boolean(currentProgress.exercisesCompleted),
   ];
+  const currentMastery = getNceMastery(currentProgress);
   const masteryCount = masterySteps.filter(Boolean).length;
 
   const filteredUnits = useMemo(() => {
@@ -206,18 +215,22 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
         || (courseFilter === 'completed' && itemProgress?.status === 'completed')
         || (courseFilter === 'learning' && itemProgress && itemProgress.status !== 'completed')
         || (courseFilter === 'pending' && !itemProgress)
-        || (courseFilter === 'review' && pendingReviewCount(itemProgress) > 0);
+        || (courseFilter === 'review' && pendingReviewCount(itemProgress) > 0)
+        || (courseFilter === 'due' && isNceReviewDue(itemProgress));
       return matchesQuery && matchesFilter;
     });
   }, [courseFilter, courseSearch, progress, units]);
 
   const saveProgress = (filename, patch) => {
     const current = progressRef.current;
+    const mergedItem = { ...(current[filename] || {}), ...patch };
+    const mastery = getNceMastery(mergedItem);
     const next = {
       ...current,
       [filename]: {
-        ...(current[filename] || {}),
-        ...patch,
+        ...mergedItem,
+        masteryScore: mastery.score,
+        nextReviewAt: patch.nextReviewAt || mergedItem.nextReviewAt || (mastery.score > 0 ? getNceNextReviewAt(mergedItem) : 0),
         lastStudiedAt: Date.now(),
       },
     };
@@ -357,7 +370,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
     if (!StorageService.saveNceProgress(next)) return false;
     progressRef.current = next;
     setProgress(next);
-    StorageService.recordStudyActivity({ type: 'course', count: 1 });
+    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 2, source: 'nce-review', entityId: item.unitId, label: '新概念错题复盘' });
     return true;
   };
 
@@ -377,6 +390,43 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
   };
 
   const audioUrl = selectedUnit ? `${NCE1_BASE}/${safeAssetName(selectedUnit.filename)}.mp3` : '';
+
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl = '';
+    setAudioSourceUrl('');
+    setAudioCacheState('idle');
+    if (!audioUrl) return undefined;
+    getCachedCourseAudioUrl(audioUrl).then((cachedUrl) => {
+      if (disposed) {
+        if (cachedUrl) URL.revokeObjectURL(cachedUrl);
+        return;
+      }
+      if (cachedUrl) {
+        objectUrl = cachedUrl;
+        setAudioSourceUrl(cachedUrl);
+        setAudioCacheState('cached');
+      }
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [audioUrl]);
+
+  const handleCacheAudio = async () => {
+    if (!audioUrl || !supportsCourseCache()) {
+      setAudioCacheState('unsupported');
+      return;
+    }
+    setAudioCacheState('caching');
+    try {
+      await cacheCourseAudio(audioUrl);
+      setAudioCacheState('cached');
+    } catch {
+      setAudioCacheState('error');
+    }
+  };
 
   const cancelSentenceLoop = (stopAudio = false) => {
     ttsLoopRef.current += 1;
@@ -495,7 +545,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
       if (selectedUnit) {
         const bestScore = Math.max(currentProgress.exerciseScore || 0, exerciseCorrectCount);
         saveProgress(selectedUnit.filename, { exercisesCompleted: true, exerciseScore: bestScore });
-        StorageService.recordStudyActivity({ type: 'course', count: 1 });
+        StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 5, source: 'nce-exercise', entityId: selectedUnit.filename, label: '新概念句子练习' });
       }
       setExerciseFinished(true);
       return;
@@ -509,7 +559,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
       status: 'completed',
       completedCount: (currentProgress.completedCount || 0) + 1,
     });
-    StorageService.recordStudyActivity({ type: 'course', count: 1 });
+    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 5, source: 'nce-lesson', entityId: selectedUnit.filename, label: '完成新概念课程' });
   };
 
   const changeLearningView = (nextView) => {
@@ -559,7 +609,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
       dictationCompleted: true,
       dictationBest: Math.max(lessonProgress.dictationBest || 0, averageScore),
     });
-    StorageService.recordStudyActivity({ type: 'course', count: 1 });
+    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 5, source: 'nce-dictation', entityId: selectedUnit.filename, label: '新概念听写' });
   };
 
   const buildWordPayload = (item) => ({
@@ -568,6 +618,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
     contextSentence: item.sentence,
     contextSentenceCn: item.sentenceCn,
     tags: ['新概念英语', '第一册', displayUnitTitle(selectedUnit)],
+    sources: [{ type: 'nce', id: selectedUnit?.filename, key: `nce:${selectedUnit?.filename}`, label: displayUnitTitle(selectedUnit) }],
   });
 
   const saveWord = (item) => {
@@ -577,7 +628,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
       return;
     }
     setWordSaveError('');
-    StorageService.recordStudyActivity({ type: 'vocab', count: 1 });
+    StorageService.recordStudyActivity({ type: 'vocab', count: 1, source: 'nce-vocab', entityId: selectedUnit.filename, label: '收录新概念单词' });
     setSavedWords(new Map(StorageService.getVocabulary().map((word) => [word.word.toLowerCase(), word])));
   };
 
@@ -598,7 +649,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
     setIsSavingAllWords(false);
     if (addedCount > 0) {
       setWordSaveError('');
-      StorageService.recordStudyActivity({ type: 'vocab', count: addedCount });
+      StorageService.recordStudyActivity({ type: 'vocab', count: addedCount, durationMinutes: 1, source: 'nce-vocab', entityId: selectedUnit.filename, label: '批量收录新概念单词' });
     } else {
       setWordSaveError('单词没有保存成功，请检查浏览器存储空间。');
     }
@@ -692,7 +743,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
               <div className="rounded-2xl bg-white/10 p-3"><span className="block text-xl font-bold">{reviewCount}</span><span className="text-[11px] text-slate-300">待复习单元</span></div>
               <div className="rounded-2xl bg-white/10 p-3"><span className="block text-xl font-bold">{courseWordCount}</span><span className="text-[11px] text-slate-300">已收录词</span></div>
             </div>
-            <div className="mt-4 flex items-center justify-between text-xs text-sky-100"><span>第一册完成度</span><span>{courseProgressPercent}% · {completedCount}/{units.length || 72} 单元</span></div>
+            <div className="mt-4 flex items-center justify-between text-xs text-sky-100"><span>第一册课程进度</span><span>{courseProgressPercent}% · 掌握度均值 {averageMastery}%</span></div>
             <div className="h-2 bg-white/15 rounded-full overflow-hidden mt-2"><div className="h-full bg-sky-300 rounded-full transition-all" style={{ width: `${courseProgressPercent}%` }} /></div>
             <p className="text-[10px] text-slate-400 mt-2">已完成 {dictationCount} 次听写 · {exerciseCount} 个单元练习 · {examCount} 份试题</p>
           </div>
@@ -734,7 +785,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
           {courseSearch && <button type="button" onClick={() => setCourseSearch('')} className="text-xs text-slate-400 hover:text-slate-700">清除</button>}
         </div>
         <div className="flex gap-2 overflow-x-auto no-scrollbar mt-2 pb-1">
-          {[['all', '全部'], ['pending', '未开始'], ['learning', '学习中'], ['review', `待复习 ${reviewCount}`], ['completed', '已完成']].map(([value, label]) => (
+          {[['all', '全部'], ['pending', '未开始'], ['learning', '学习中'], ['review', `错题 ${reviewCount}`], ['due', '到期复习'], ['completed', '已完成']].map(([value, label]) => (
             <button key={value} type="button" onClick={() => setCourseFilter(value)} aria-pressed={courseFilter === value} className={`flex-none px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${courseFilter === value ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'}`}>{label}</button>
           ))}
         </div>
@@ -747,10 +798,12 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
             const itemProgress = progress[unit.filename];
             const completed = itemProgress?.status === 'completed';
             const itemReviewCount = pendingReviewCount(itemProgress);
+            const itemMastery = getNceMastery(itemProgress || {});
+            const itemDue = isNceReviewDue(itemProgress || {});
             return (
               <button key={unit.filename} onClick={() => openUnit(unit)} className={`w-full text-left bg-white border rounded-2xl p-3 flex items-center gap-3 transition-colors ${completed ? 'border-emerald-100 hover:border-emerald-300' : 'border-slate-200 hover:border-sky-300'}`}>
                 <span className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${completed ? 'bg-emerald-50 text-emerald-600' : itemProgress ? 'bg-amber-50 text-amber-600' : 'bg-sky-50 text-sky-600'}`}>{String(originalIndex * 2 + 1).padStart(3, '0')}</span>
-                <span className="flex-1 min-w-0"><span className="block font-semibold text-slate-800 truncate editorial-serif">{displayUnitTitle(unit)}</span><span className="block text-xs text-slate-400 mt-1">{lessonRange(unit)} · {progressLabel(itemProgress)}{itemProgress?.dictationCompleted ? ' · 听写完成' : ''}{itemProgress?.exercisesCompleted ? ' · 练习完成' : ''}{itemProgress?.examAttempts ? ` · 测验最佳 ${itemProgress.examBest} 分` : ''}{itemReviewCount ? ` · ${itemReviewCount} 项待复习` : ''}</span></span>
+                <span className="flex-1 min-w-0"><span className="block font-semibold text-slate-800 truncate editorial-serif">{displayUnitTitle(unit)}</span><span className="block text-xs text-slate-400 mt-1">{lessonRange(unit)} · {progressLabel(itemProgress)}{itemProgress?.examAttempts ? ` · 测验最佳 ${itemProgress.examBest} 分` : ''}{itemReviewCount ? ` · ${itemReviewCount} 项错题` : itemDue ? ' · 到期复习' : ''}</span><span className="mt-2 flex items-center gap-2"><span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full rounded-full ${itemMastery.score >= 80 ? 'bg-emerald-400' : itemMastery.score > 0 ? 'bg-amber-400' : 'bg-slate-200'}`} style={{ width: `${itemMastery.score}%` }} /></span><span className="text-[10px] font-semibold tabular-nums text-slate-400">{itemMastery.score}%</span></span></span>
                 {completed ? <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /> : <ChevronRight className="w-5 h-5 text-slate-300 shrink-0" />}
               </button>
             );
@@ -794,8 +847,8 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
 
       <div className="sticky top-2 z-10 rounded-2xl bg-white/95 backdrop-blur-xl border border-white p-3 mb-3 shadow-lg shadow-slate-900/5">
         <div className="flex items-center justify-between gap-3 mb-2"><span className="text-xs font-semibold text-slate-700">听读训练</span><div className="flex items-center gap-2"><label className="text-[11px] text-slate-400" htmlFor="nce-playback-rate">速度</label><select id="nce-playback-rate" value={playbackRate} onChange={(event) => changePlaybackRate(Number(event.target.value))} className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-slate-600"><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></div></div>
-        <audio ref={audioRef} src={audioUrl} controls preload="metadata" className="w-full" onLoadedMetadata={restoreAudioPosition} onTimeUpdate={handleAudioTimeUpdate} onError={() => setError('这课音频暂时无法加载；可以点击下方句子使用系统朗读。')} onEnded={handleAudioEnded} />
-        <div className="flex items-center gap-1.5 mt-2 overflow-x-auto no-scrollbar"><button type="button" onClick={playCurrentLine} className="flex-none text-xs text-sky-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50"><Play className="w-3.5 h-3.5" />{activeLine >= 0 ? '从当前句播放' : '从第一句开始'}</button><button type="button" onClick={toggleRepeatCurrentLine} disabled={lines.length === 0} className="flex-none text-xs text-amber-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 disabled:opacity-40"><Repeat2 className="w-3.5 h-3.5" />{repeatRemaining ? `停止循环 · ${repeatRemaining}` : '当前句 ×3'}</button><button type="button" onClick={toggleFollowAudio} aria-pressed={followAudio} className={`flex-none text-xs px-2 py-1 rounded-lg transition-colors ${followAudio ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400 bg-slate-50'}`}>{followAudio ? '跟随：开' : '跟随：关'}</button></div>
+        <audio ref={audioRef} src={audioSourceUrl || audioUrl} controls preload="metadata" className="w-full" onLoadedMetadata={restoreAudioPosition} onTimeUpdate={handleAudioTimeUpdate} onError={() => setError('这课音频暂时无法加载；可以点击下方句子使用系统朗读。')} onEnded={handleAudioEnded} />
+        <div className="flex items-center gap-1.5 mt-2 overflow-x-auto no-scrollbar"><button type="button" onClick={playCurrentLine} className="flex-none text-xs text-sky-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50"><Play className="w-3.5 h-3.5" />{activeLine >= 0 ? '从当前句播放' : '从第一句开始'}</button><button type="button" onClick={toggleRepeatCurrentLine} disabled={lines.length === 0} className="flex-none text-xs text-amber-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 disabled:opacity-40"><Repeat2 className="w-3.5 h-3.5" />{repeatRemaining ? `停止循环 · ${repeatRemaining}` : '当前句 ×3'}</button><button type="button" onClick={toggleFollowAudio} aria-pressed={followAudio} className={`flex-none text-xs px-2 py-1 rounded-lg transition-colors ${followAudio ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400 bg-slate-50'}`}>{followAudio ? '跟随：开' : '跟随：关'}</button><button type="button" onClick={handleCacheAudio} disabled={audioCacheState === 'caching'} className={`flex-none text-xs px-2 py-1 rounded-lg flex items-center gap-1 ${audioCacheState === 'cached' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}><Download className="w-3.5 h-3.5" />{audioCacheState === 'caching' ? '缓存中…' : audioCacheState === 'cached' ? '已缓存' : audioCacheState === 'error' ? '缓存失败' : '缓存音频'}</button></div>
       </div>
 
       {wordSaveError && <div className="rounded-xl bg-rose-50 text-rose-700 text-xs p-3 mb-3">{wordSaveError}</div>}
@@ -846,7 +899,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
         </div>
       )}
 
-      <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-700">本课掌握度</span><span className="text-xs font-bold text-sky-700">{masteryCount}/4</span></div><div className="grid grid-cols-4 gap-1.5 mt-2">{[['听读', masterySteps[0]], ['听写', masterySteps[1]], ['单词', masterySteps[2]], ['练习', masterySteps[3]]].map(([label, done]) => <div key={label} className="text-center"><div className={`h-1.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-slate-100'}`} /><span className={`text-[9px] mt-1 block ${done ? 'text-emerald-600' : 'text-slate-400'}`}>{label}</span></div>)}</div>{currentReviewCount > 0 && <p className="text-[11px] text-amber-700 mt-2">还有 {currentReviewCount} 项薄弱内容，改对后会自动移出复习列表。</p>}</div>
+      <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-700">本课掌握度</span><span className="text-xs font-bold text-sky-700">{currentMastery.score}% · {currentMastery.label}</span></div><div className="grid grid-cols-5 gap-1.5 mt-2">{[['听读', masterySteps[0]], ['听写', masterySteps[1]], ['单词', masterySteps[2]], ['练习', masterySteps[3]], ['测验', currentMastery.examBonus]].map(([label, done]) => <div key={label} className="text-center"><div className={`h-1.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-slate-100'}`} /><span className={`text-[9px] mt-1 block ${done ? 'text-emerald-600' : 'text-slate-400'}`}>{label}</span></div>)}</div>{currentReviewCount > 0 && <p className="text-[11px] text-amber-700 mt-2">还有 {currentReviewCount} 项薄弱内容，改对后会自动移出复习列表。</p>}{currentProgress.nextReviewAt && <p className="text-[11px] text-slate-400 mt-2">下次课程复习：{new Date(currentProgress.nextReviewAt).toLocaleDateString('zh-CN')}</p>}</div>
       <div className="flex gap-2 mt-3"><button onClick={playCurrentLine} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-sm flex items-center justify-center gap-1"><Play className="w-4 h-4" />{activeLine >= 0 ? '朗读当前句' : '从第一句开始'}</button><button onClick={markComplete} className={`flex-1 py-2.5 rounded-xl text-sm flex items-center justify-center gap-1 ${currentProgress.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 className="w-4 h-4" />{currentProgress.status === 'completed' ? '已完成本课' : masteryCount === 4 ? '完成本课' : '标记完成'}</button></div>
       {currentReviewCount > 0 && <button type="button" onClick={() => openReview(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 py-2.5 text-sm font-semibold text-sky-900"><RotateCcw className="w-4 h-4" />复盘本课 {currentReviewCount} 项</button>}
       <button type="button" onClick={() => openExam(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-semibold text-amber-900"><FileText className="w-4 h-4" />做本课试题</button>

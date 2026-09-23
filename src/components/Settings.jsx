@@ -13,6 +13,8 @@ import {
   Smartphone,
   ExternalLink,
   Zap,
+  HardDrive,
+  Trash2,
 } from 'lucide-react';
 import {
   StorageService,
@@ -22,6 +24,7 @@ import {
 } from '../services/storage';
 import { callAICompletion } from '../services/ai';
 import { tts } from '../services/speech';
+import { clearCourseCaches, getCourseCacheCount } from '../services/offline';
 import StudyHeader from './StudyHeader';
 
 export default function Settings() {
@@ -36,6 +39,8 @@ export default function Settings() {
   const [importPreview, setImportPreview] = useState(null);
   const [showResetModal, setShowResetModal] = useState(false);
   const [localSummary] = useState(() => StorageService.getLocalDataSummary());
+  const [storageDiagnostics, setStorageDiagnostics] = useState(() => StorageService.getStorageDiagnostics());
+  const [audioCacheCount, setAudioCacheCount] = useState(0);
 
   // Reload voices when speech system initializes
   useEffect(() => {
@@ -46,6 +51,10 @@ export default function Settings() {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = updateVoices;
     }
+  }, []);
+
+  useEffect(() => {
+    getCourseCacheCount().then(setAudioCacheCount).catch(() => setAudioCacheCount(0));
   }, []);
 
   // Sync settings when changed
@@ -120,6 +129,15 @@ export default function Settings() {
     a.download = `lingoflow_backup_${new Date().toISOString().slice(0, 10)}${keyTag}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleClearCourseCache = () => {
+    if (!confirm('清除课程缓存后，学习进度和生词不会删除；下次打开课程会重新联网下载。确定继续吗？')) return;
+    Promise.all([clearCourseCaches(), Promise.resolve(StorageService.clearNceCache())]).then(() => {
+      setAudioCacheCount(0);
+      setStorageDiagnostics(StorageService.getStorageDiagnostics());
+      alert('课程缓存已清除，学习记录仍然保留。');
+    });
   };
 
   // Select File & Parse Preview
@@ -496,7 +514,15 @@ export default function Settings() {
               <strong className="text-emerald-700 text-sm font-mono">{localSummary.streakDays}天</strong>
             </div>
           </div>
-          <p className="text-[11px] text-slate-500">已保存 {localSummary.nceExamCount} 份新概念试卷；未交卷草稿也随备份导出。</p>
+          <p className="text-[11px] text-slate-500">已保存 {localSummary.nceExamCount} 份新概念试卷；未交卷草稿也随备份导出。数据结构 v{localSummary.schemaVersion || 3}，升级会自动迁移。</p>
+
+          <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2"><HardDrive className="h-4 w-4 text-sky-700" /><div><p className="text-xs font-semibold text-sky-900">本地存储与课程缓存</p><p className="mt-0.5 text-[10.5px] text-slate-500">约 {storageDiagnostics.approximateMegabytes} MB · {storageDiagnostics.studyEventCount} 条学习记录 · {storageDiagnostics.nceLessonCacheCount} 课字幕 · {audioCacheCount} 课音频</p></div></div>
+              <button type="button" onClick={handleClearCourseCache} className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-100 hover:bg-sky-100"><Trash2 className="h-3 w-3" />清理课程缓存</button>
+            </div>
+            <p className="mt-2 text-[10px] leading-4 text-slate-500">清理只移除课程目录和字幕缓存，不会删除单词、错题、试卷和学习进度。</p>
+          </div>
 
           {/* API Key Security Toggle for Export */}
           <div className="p-2.5 bg-sky-50/60 border border-sky-200/70 rounded-2xl flex items-center justify-between text-xs">

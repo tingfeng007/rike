@@ -10,7 +10,12 @@ const STORAGE_KEYS = {
   NCE_CACHE: 'lingoflow_nce1_cache_v1',
   NCE_EXAMS: 'lingoflow_nce1_exams_v1',
   APP_STATE: 'lingoflow_app_state',
+  STUDY_EVENTS: 'lingoflow_study_events_v1',
+  STUDY_PLAN: 'lingoflow_study_plan_v1',
+  SCHEMA_VERSION: 'lingoflow_schema_version',
 };
+
+const STORAGE_SCHEMA_VERSION = 3;
 
 function safeSetItem(key, value) {
   try {
@@ -94,6 +99,30 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const StorageService = {
+  ensureSchema() {
+    try {
+      const current = Number(localStorage.getItem(STORAGE_KEYS.SCHEMA_VERSION) || 0);
+      if (current < 1) {
+        if (localStorage.getItem(STORAGE_KEYS.STUDY_EVENTS) == null) safeSetItem(STORAGE_KEYS.STUDY_EVENTS, '[]');
+        if (localStorage.getItem(STORAGE_KEYS.STUDY_PLAN) == null) safeSetItem(STORAGE_KEYS.STUDY_PLAN, '{}');
+      }
+      if (current < STORAGE_SCHEMA_VERSION) {
+        safeSetItem(STORAGE_KEYS.SCHEMA_VERSION, String(STORAGE_SCHEMA_VERSION));
+      }
+      return STORAGE_SCHEMA_VERSION;
+    } catch {
+      return 0;
+    }
+  },
+
+  getSchemaVersion() {
+    try {
+      return Number(localStorage.getItem(STORAGE_KEYS.SCHEMA_VERSION) || 0);
+    } catch {
+      return 0;
+    }
+  },
+
   // --- App navigation state ---
   getAppState() {
     try {
@@ -166,11 +195,18 @@ export const StorageService = {
       reviewCount: 0,
       status: 'learning', // 'learning' | 'review' | 'mastered'
       tags: wordObj.tags || ['自学收集'],
+      sources: Array.isArray(wordObj.sources) ? wordObj.sources : [],
+      lastEncounteredAt: now,
     };
 
     if (existingIndex >= 0) {
       const existing = words[existingIndex];
       const mergedTags = Array.from(new Set([...(existing.tags || []), ...(wordObj.tags || [])]));
+      const sourceMap = new Map((existing.sources || []).map((source) => [source.key || `${source.type}:${source.id}`, source]));
+      (wordObj.sources || []).forEach((source) => {
+        if (!source || typeof source !== 'object') return;
+        sourceMap.set(source.key || `${source.type || 'source'}:${source.id || source.label || source.key}`, source);
+      });
       words[existingIndex] = {
         ...existing,
         phonetic: existing.phonetic || newEntry.phonetic,
@@ -180,6 +216,7 @@ export const StorageService = {
         contextSentence: existing.contextSentence || newEntry.contextSentence,
         contextSentenceCn: existing.contextSentenceCn || newEntry.contextSentenceCn,
         tags: mergedTags.length ? mergedTags : ['自学收集'],
+        sources: [...sourceMap.values()],
         lastEncounteredAt: now,
       };
     } else {
@@ -247,6 +284,12 @@ export const StorageService = {
       reviewCount: (word.reviewCount || 0) + 1,
       lastReviewedAt: now,
       nextReviewDate: now + newInterval * ONE_DAY_MS,
+      tags: (() => {
+        const tags = new Set(word.tags || []);
+        if (quality === 'again' || quality === 'hard') tags.add('困难词');
+        if (quality === 'good' && newStep >= 2) tags.delete('困难词');
+        return [...tags];
+      })(),
     };
 
     words[index] = updated;
@@ -306,7 +349,114 @@ export const StorageService = {
     return safeSetItem(STORAGE_KEYS.STUDY_STATS, JSON.stringify(stats));
   },
 
-  recordStudyActivity({ type = 'review', count = 1 } = {}) {
+  getStudyEvents({ since = 0, limit = 2000 } = {}) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.STUDY_EVENTS) || '[]');
+      if (!Array.isArray(saved)) return [];
+      return saved
+        .filter((event) => event && typeof event === 'object' && (!since || (event.at || 0) >= since))
+        .sort((a, b) => (a.at || 0) - (b.at || 0))
+        .slice(-Math.max(1, limit));
+    } catch {
+      return [];
+    }
+  },
+
+  recordStudyEvent({
+    type = 'review',
+    count = 1,
+    durationMinutes = 0,
+    source = '',
+    entityId = '',
+    label = '',
+    metadata = {},
+  } = {}) {
+    const event = {
+      id: `event_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type,
+      count: Math.max(1, Number(count) || 1),
+      durationMinutes: Math.max(0, Number(durationMinutes) || 0),
+      source,
+      entityId,
+      label,
+      metadata: metadata && typeof metadata === 'object' ? metadata : {},
+      at: Date.now(),
+    };
+    const events = [...this.getStudyEvents({ limit: 2000 }), event].slice(-2000);
+    safeSetItem(STORAGE_KEYS.STUDY_EVENTS, JSON.stringify(events));
+    return event;
+  },
+
+  getStudyPlan() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.STUDY_PLAN) || '{}');
+      return saved && typeof saved === 'object' ? saved : {};
+    } catch {
+      return {};
+    }
+  },
+
+  saveStudyPlan(plan) {
+    return safeSetItem(STORAGE_KEYS.STUDY_PLAN, JSON.stringify(plan || {}));
+  },
+
+  getStudyOverview(days = 7) {
+    const since = Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000;
+    const events = this.getStudyEvents({ since });
+    const byType = {};
+    const byDay = {};
+    events.forEach((event) => {
+      byType[event.type] = (byType[event.type] || 0) + (event.count || 1);
+      const date = new Date(event.at || 0).toLocaleDateString('en-CA');
+      byDay[date] = (byDay[date] || 0) + (event.count || 1);
+    });
+    const activeDays = Object.keys(byDay).length;
+    return {
+      days,
+      events,
+      byType,
+      byDay,
+      activeDays,
+      totalActions: events.reduce((sum, event) => sum + (event.count || 1), 0),
+      totalMinutes: events.reduce((sum, event) => sum + (event.durationMinutes || 0), 0),
+      latestAt: events.at(-1)?.at || 0,
+    };
+  },
+
+  getStorageDiagnostics() {
+    let bytes = 0;
+    let keyCount = 0;
+    try {
+      keyCount = localStorage.length;
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key) bytes += (localStorage.getItem(key) || '').length * 2;
+      }
+    } catch {
+      // Some privacy modes deny storage inspection; keep the diagnostic useful.
+    }
+    const cache = this.getNceCache();
+    return {
+      keyCount,
+      approximateBytes: bytes,
+      approximateMegabytes: Number((bytes / 1024 / 1024).toFixed(2)),
+      studyEventCount: this.getStudyEvents().length,
+      nceLessonCacheCount: Object.keys(cache.lessons || {}).length,
+      hasCourseBookCache: Boolean(cache.book?.units?.length),
+      cacheUpdatedAt: cache.updatedAt || 0,
+    };
+  },
+
+  clearNceCache() {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.NCE_CACHE);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  recordStudyActivity({ type = 'review', count = 1, ...eventMeta } = {}) {
     const todayStr = getLocalDateKey();
     const current = this.getStudyStats();
 
@@ -349,11 +499,12 @@ export const StorageService = {
     };
 
     this.saveStudyStats(updated);
+    this.recordStudyEvent({ type, count, ...eventMeta });
     return updated;
   },
 
-  recordReviewActivity(count = 1) {
-    return this.recordStudyActivity({ type: 'review', count });
+  recordReviewActivity(count = 1, metadata = {}) {
+    return this.recordStudyActivity({ type: 'review', count, source: 'vocab-review', label: '完成生词复习', ...metadata });
   },
 
   deleteWord(wordId) {
@@ -573,6 +724,9 @@ export const StorageService = {
       scenarioCount,
       streakDays: stats.streakDays || 0,
       todayReviewedCount: stats.todayReviewedCount || 0,
+      studyEventCount: this.getStudyEvents().length,
+      storage: this.getStorageDiagnostics(),
+      schemaVersion: this.getSchemaVersion(),
       nceStartedCount: nceEntries.length,
       nceCompletedCount: nceEntries.filter((item) => item.status === 'completed').length,
       nceExamCount: this.getNceExams().attempts.length,
@@ -590,7 +744,8 @@ export const StorageService = {
 
     const backup = {
       app: 'LingoFlow',
-      version: 2,
+      version: 3,
+      schemaVersion: this.getSchemaVersion() || STORAGE_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       meta: {
         includeApiKey,
@@ -606,6 +761,8 @@ export const StorageService = {
       nceProgress: this.getNceProgress(),
       nceExams: this.getNceExams(),
       appState: this.getAppState(),
+      studyEvents: this.getStudyEvents({ limit: 2000 }),
+      studyPlan: this.getStudyPlan(),
     };
     return JSON.stringify(backup, null, 2);
   },
@@ -635,6 +792,7 @@ export const StorageService = {
         ? Object.keys(data.nceProgress).length
         : 0;
       const nceExamCount = Array.isArray(data.nceExams?.attempts) ? data.nceExams.attempts.length : 0;
+      const studyEventCount = Array.isArray(data.studyEvents) ? data.studyEvents.length : 0;
       const hasNceDraft = Boolean(data.nceExams?.draft);
       const exportedAt = data.exportedAt
         ? new Date(data.exportedAt).toLocaleString('zh-CN')
@@ -651,6 +809,7 @@ export const StorageService = {
         nceProgressCount,
         nceExamCount,
         hasNceDraft,
+        studyEventCount,
         hasApiKey,
       };
     } catch (err) {
@@ -841,6 +1000,23 @@ export const StorageService = {
       if (data.appState && typeof data.appState === 'object') {
         this.saveAppState({ ...this.getAppState(), ...data.appState });
       }
+
+      if (Array.isArray(data.studyEvents)) {
+        const currentEvents = this.getStudyEvents({ limit: 2000 });
+        const events = new Map(currentEvents.map((event) => [event.id, event]));
+        data.studyEvents.forEach((event) => {
+          if (event?.id) events.set(event.id, event);
+        });
+        safeSetItem(STORAGE_KEYS.STUDY_EVENTS, JSON.stringify(
+          [...events.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-2000),
+        ));
+      }
+
+      if (data.studyPlan && typeof data.studyPlan === 'object') {
+        this.saveStudyPlan({ ...this.getStudyPlan(), ...data.studyPlan });
+      }
+
+      this.ensureSchema();
 
       return {
         success: true,

@@ -245,7 +245,7 @@ export default function OralCoach({ onNavigateToVocab }) {
       const finalMessages = [...messagesWithUser, finalAssistantMsg];
       setMessages(finalMessages);
       StorageService.saveChatMessages(currentScenario.id, finalMessages);
-      StorageService.recordStudyActivity({ type: 'oral', count: 1 });
+      StorageService.recordStudyActivity({ type: 'oral', count: 1, durationMinutes: 3, source: 'oral-chat', entityId: currentScenario.id, label: '完成一轮口语对练' });
 
       // Auto play audio if enabled
       const settings = StorageService.getSettings();
@@ -369,6 +369,7 @@ export default function OralCoach({ onNavigateToVocab }) {
       contextSentenceCn: translation || '',
       pos: wordOrPhrase.includes(' ') ? 'phrase' : 'expression',
       tags: ['口语实战', currentScenario.name],
+      sources: [{ type: 'oral', id: currentScenario.id, key: `oral:${currentScenario.id}`, label: currentScenario.name }],
     });
     setAddedWordFeedback((prev) => ({ ...prev, [wordOrPhrase]: true }));
     setTimeout(() => {

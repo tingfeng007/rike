@@ -26,3 +26,12 @@ test('needs-meaning filter only returns words without a translation', () => {
   assert.deepEqual(filterVocabulary(words, '', 'needsMeaning').map((item) => item.word), ['handbag']);
   assert.deepEqual(filterVocabulary(words, '', 'review').map((item) => item.word), ['resilience']);
 });
+
+test('hard-word filter and source labels stay searchable', () => {
+  const words = [
+    { word: 'handbag', translation: '手提包', tags: ['困难词'], sources: [{ label: 'Excuse Me' }], easeFactor: 1.5 },
+    { word: 'resilience', translation: '韧性', tags: ['心智'], sources: [{ label: '精读文章' }], easeFactor: 2.5 },
+  ];
+  assert.deepEqual(filterVocabulary(words, '', 'hard').map((item) => item.word), ['handbag']);
+  assert.deepEqual(filterVocabulary(words, 'Excuse Me').map((item) => item.word), ['handbag']);
+});
