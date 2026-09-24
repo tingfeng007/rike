@@ -71,6 +71,16 @@ function taskTone(task) {
   return 'bg-sky-50 text-sky-600';
 }
 
+function activityTone(level, isToday) {
+  const tones = [
+    'bg-slate-100 text-slate-300',
+    'bg-sky-100 text-sky-700',
+    'bg-sky-300 text-[#102a43]',
+    'bg-[#102a43] text-white',
+  ];
+  return `${tones[level] || tones[0]} ${isToday ? 'ring-2 ring-amber-300 ring-offset-2' : ''}`;
+}
+
 export default function HomeDashboard({ onNavigate }) {
   const [snapshot, setSnapshot] = useState(readSnapshot);
   const [showWeekly, setShowWeekly] = useState(false);
@@ -160,7 +170,36 @@ export default function HomeDashboard({ onNavigate }) {
 
         <div className="study-card rounded-[24px] p-4">
           <button type="button" onClick={() => setShowWeekly((value) => !value)} className="flex w-full items-center justify-between text-left"><div><p className="text-xs font-semibold tracking-wide text-slate-400">近 7 天 · 学习回看</p><h2 className="font-bold text-slate-900 mt-0.5">{weekly.activeDays} 天有学习 · {weekly.totalActions} 个动作</h2></div><ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showWeekly ? 'rotate-180' : ''}`} /></button>
-          {showWeekly && <div className="mt-4 nce-reveal"><div className="grid grid-cols-4 gap-2 text-center"><div className="rounded-xl bg-sky-50 p-2.5"><strong className="block text-lg text-sky-700">{weekly.courseSessions}</strong><span className="text-[10px] text-slate-500">课程</span></div><div className="rounded-xl bg-rose-50 p-2.5"><strong className="block text-lg text-rose-600">{weekly.vocabReviews}</strong><span className="text-[10px] text-slate-500">复习词</span></div><div className="rounded-xl bg-emerald-50 p-2.5"><strong className="block text-lg text-emerald-700">{weekly.oralRounds}</strong><span className="text-[10px] text-slate-500">口语轮次</span></div><div className="rounded-xl bg-amber-50 p-2.5"><strong className="block text-lg text-amber-700">{weekly.readerNotes}</strong><span className="text-[10px] text-slate-500">精读摘录</span></div></div><p className="mt-3 rounded-xl bg-[#f7f3ea] px-3 py-2.5 text-xs leading-5 text-slate-600">{weekly.recommendation}</p><div className="mt-3 flex items-center justify-between text-[11px] text-slate-400"><span>连续学习 {weekly.streakDays} 天</span><span>{weekly.totalMinutes ? `记录约 ${weekly.totalMinutes} 分钟` : '从今天开始积累真实记录'}</span></div></div>}
+          {showWeekly && (
+            <div className="mt-4 nce-reveal">
+              <div className="mb-3 flex items-end justify-between">
+                <div>
+                  <p className="text-[10px] font-bold tracking-[0.14em] text-slate-400">STUDY RHYTHM</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-700">每天留下一点痕迹，比偶尔冲刺更有效</p>
+                </div>
+                <span className="text-[10px] text-slate-400">今天用金色圈出</span>
+              </div>
+              <div className="grid grid-cols-7 gap-1.5" aria-label="近七天学习节奏">
+                {weekly.activityCalendar.map((day) => (
+                  <div key={day.dateKey} className="flex min-w-0 flex-col items-center gap-1" title={`${day.dateKey} · ${day.actions} 个动作${day.minutes ? ` · ${day.minutes} 分钟` : ''}`}>
+                    <span className={`flex h-9 w-full items-center justify-center rounded-xl text-[11px] font-bold transition-transform ${activityTone(day.level, day.isToday)}`}>
+                      {day.actions || '·'}
+                    </span>
+                    <span className="text-[9px] text-slate-400">周{day.weekday}</span>
+                    <span className={`text-[10px] tabular-nums ${day.isToday ? 'font-bold text-amber-700' : 'text-slate-400'}`}>{day.day}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+                <div className="rounded-xl bg-sky-50 p-2.5"><strong className="block text-lg text-sky-700">{weekly.courseSessions}</strong><span className="text-[10px] text-slate-500">课程</span></div>
+                <div className="rounded-xl bg-rose-50 p-2.5"><strong className="block text-lg text-rose-600">{weekly.vocabReviews}</strong><span className="text-[10px] text-slate-500">复习词</span></div>
+                <div className="rounded-xl bg-emerald-50 p-2.5"><strong className="block text-lg text-emerald-700">{weekly.oralRounds}</strong><span className="text-[10px] text-slate-500">口语轮次</span></div>
+                <div className="rounded-xl bg-amber-50 p-2.5"><strong className="block text-lg text-amber-700">{weekly.readerNotes}</strong><span className="text-[10px] text-slate-500">精读摘录</span></div>
+              </div>
+              <p className="mt-3 rounded-xl bg-[#f7f3ea] px-3 py-2.5 text-xs leading-5 text-slate-600">{weekly.recommendation}</p>
+              <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400"><span>连续学习 {weekly.streakDays} 天</span><span>{weekly.totalMinutes ? `记录约 ${weekly.totalMinutes} 分钟` : '从今天开始积累真实记录'}</span></div>
+            </div>
+          )}
         </div>
 
         <div><p className="px-1 text-xs font-semibold tracking-wide text-slate-400 mb-2">快速进入</p><div className="grid grid-cols-2 gap-3"><button onClick={() => onNavigate('reader')} className="rounded-2xl bg-[#fffaf0] border border-amber-100 p-4 text-left"><BookOpen className="w-5 h-5 text-amber-600" /><p className="font-semibold text-slate-800 mt-3">精读文库</p><p className="text-xs text-slate-400 mt-1">{snapshot.articles.length} 篇文章</p></button><button onClick={() => onNavigate('vocab')} className="rounded-2xl bg-[#f2f8ff] border border-sky-100 p-4 text-left"><Layers className="w-5 h-5 text-sky-600" /><p className="font-semibold text-slate-800 mt-3">我的词库</p><p className="text-xs text-slate-400 mt-1">{snapshot.totalWords} 个词</p></button></div></div>

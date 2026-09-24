@@ -17,6 +17,37 @@ function clampMinutes(value, minimum = 3) {
   return Math.max(minimum, Math.round(Number(value) || minimum));
 }
 
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+/**
+ * Turn the event buckets into a compact, deterministic seven-day rhythm view.
+ * Keeping this calculation outside the UI lets the dashboard stay presentational
+ * and makes the local-first activity history easy to test and reuse.
+ */
+export function buildActivityCalendar({ now = new Date(), days = 7, byDay = {}, byDayMinutes = {} } = {}) {
+  const totalDays = Math.max(1, Math.round(Number(days) || 7));
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: totalDays }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (totalDays - index - 1));
+    const dateKey = getDateKey(date);
+    const actions = Math.max(0, Number(byDay[dateKey]) || 0);
+    const minutes = Math.max(0, Number(byDayMinutes[dateKey]) || 0);
+
+    return {
+      dateKey,
+      day: date.getDate(),
+      weekday: WEEKDAY_LABELS[date.getDay()],
+      actions,
+      minutes,
+      isToday: index === totalDays - 1,
+      level: actions === 0 ? 0 : actions <= 2 ? 1 : actions <= 5 ? 2 : 3,
+    };
+  });
+}
+
 export function getDailyPlanState(studyPlan = {}, dateKey = getDateKey()) {
   const day = studyPlan.days?.[dateKey];
   return day && typeof day === 'object'
@@ -175,9 +206,9 @@ export function buildDailyPlan({
   };
 }
 
-export function getWeeklyReview({ overview = {}, stats = {}, vocabulary = [], nceProgress = {} } = {}) {
+export function getWeeklyReview({ overview = {}, stats = {}, vocabulary = [], nceProgress = {}, now = new Date() } = {}) {
   const allProgress = Object.values(nceProgress).filter((item) => item && typeof item === 'object');
-  const dueWords = vocabulary.filter((word) => !word.nextReviewDate || word.nextReviewDate <= Date.now()).length;
+  const dueWords = vocabulary.filter((word) => !word.nextReviewDate || word.nextReviewDate <= now.getTime()).length;
   const reviewItems = buildNceReviewQueue(nceProgress).length;
   const byType = overview.byType || {};
   return {
@@ -192,6 +223,12 @@ export function getWeeklyReview({ overview = {}, stats = {}, vocabulary = [], nc
     nceCompleted: allProgress.filter((item) => item.status === 'completed').length,
     dueWords,
     reviewItems,
+    activityCalendar: buildActivityCalendar({
+      now,
+      days: 7,
+      byDay: overview.byDay || {},
+      byDayMinutes: overview.byDayMinutes || {},
+    }),
     streakDays: stats.streakDays || 0,
     recommendation: reviewItems > 0
       ? '先复盘新概念错题，再开始新课。'

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDailyPlan, getWeeklyReview, saveDailyTaskState } from '../src/services/studyPlan.js';
+import { buildActivityCalendar, buildDailyPlan, getWeeklyReview, saveDailyTaskState } from '../src/services/studyPlan.js';
 import { getNceMastery, isNceReviewDue } from '../src/services/nceMastery.js';
 
 test('daily plan prioritizes due vocabulary, course review and unfinished oral practice', () => {
@@ -56,6 +56,22 @@ test('weekly review exposes real event buckets and an actionable recommendation'
   assert.equal(review.activeDays, 3);
   assert.equal(review.vocabReviews, 8);
   assert.equal(review.oralRounds, 3);
+  assert.equal(review.activityCalendar.length, 7);
   assert.match(review.recommendation, /复盘/);
 });
 
+test('activity calendar fills quiet days and marks the current day', () => {
+  const calendar = buildActivityCalendar({
+    now: new Date('2026-09-24T09:00:00'),
+    days: 3,
+    byDay: { '2026-09-22': 1, '2026-09-24': 7 },
+    byDayMinutes: { '2026-09-24': 12 },
+  });
+
+  assert.deepEqual(calendar.map((day) => day.dateKey), ['2026-09-22', '2026-09-23', '2026-09-24']);
+  assert.deepEqual(calendar.map((day) => day.actions), [1, 0, 7]);
+  assert.equal(calendar[0].level, 1);
+  assert.equal(calendar[1].level, 0);
+  assert.equal(calendar[2].isToday, true);
+  assert.equal(calendar[2].minutes, 12);
+});

@@ -405,10 +405,12 @@ export const StorageService = {
     const events = this.getStudyEvents({ since });
     const byType = {};
     const byDay = {};
+    const byDayMinutes = {};
     events.forEach((event) => {
       byType[event.type] = (byType[event.type] || 0) + (event.count || 1);
-      const date = new Date(event.at || 0).toLocaleDateString('en-CA');
+      const date = getLocalDateKey(new Date(event.at || 0));
       byDay[date] = (byDay[date] || 0) + (event.count || 1);
+      byDayMinutes[date] = (byDayMinutes[date] || 0) + (event.durationMinutes || 0);
     });
     const activeDays = Object.keys(byDay).length;
     return {
@@ -416,6 +418,7 @@ export const StorageService = {
       events,
       byType,
       byDay,
+      byDayMinutes,
       activeDays,
       totalActions: events.reduce((sum, event) => sum + (event.count || 1), 0),
       totalMinutes: events.reduce((sum, event) => sum + (event.durationMinutes || 0), 0),
