@@ -442,7 +442,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
     for (let index = repeats; index > 0; index -= 1) {
       if (ttsLoopRef.current !== loopToken) return;
       setRepeatRemaining(index);
-      await tts.speak(line.en);
+      await tts.speak(line.en, { channel: 'course', mode: 'system' });
     }
     if (ttsLoopRef.current === loopToken) setRepeatRemaining(0);
   };
@@ -473,9 +473,9 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
     setActiveLine(index);
     if (audioRef.current && Number.isFinite(line.time)) {
       audioRef.current.currentTime = line.time;
-      audioRef.current.play().catch(() => tts.speak(line.en));
+      audioRef.current.play().catch(() => tts.speak(line.en, { channel: 'course', mode: 'system' }));
     } else {
-      tts.speak(line.en);
+      tts.speak(line.en, { channel: 'course', mode: 'system' });
     }
   };
 
@@ -885,7 +885,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
         <div className="rounded-2xl bg-white border border-slate-200 p-4">
           <div className="flex items-start justify-between gap-3 mb-3"><div><h2 className="font-semibold text-slate-800">本课重点词</h2><p className="text-xs text-slate-400 mt-1">按出现频率排序 · 已收录 {lessonWords.length - unsavedWordCount}/{lessonWords.length}</p></div><button type="button" onClick={saveAllWords} disabled={isSavingAllWords || unsavedWordCount === 0} className="text-xs px-2.5 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed">{isSavingAllWords ? '收录中…' : unsavedWordCount ? `一键收录 ${unsavedWordCount} 词` : '已全部收录'}</button></div>
           <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 mb-3"><Search className="w-4 h-4 text-slate-400" /><input value={wordFilter} onChange={(event) => setWordFilter(event.target.value)} placeholder="筛选本课单词" className="bg-transparent outline-none text-sm flex-1" /></div>
-          {selectedUnit && lessonWords.length === 0 ? <div className="text-center py-8 text-sm text-slate-500">课文加载后会生成本课重点词。</div> : <div className="space-y-2">{filteredWords.map((item) => { const saved = savedWords.has(item.word); return <div key={item.word} className="border border-slate-100 rounded-xl p-3"><div className="flex items-center gap-2"><button onClick={() => tts.speak(item.word)} className="text-sky-600" title={`朗读 ${item.word}`}><Volume2 className="w-4 h-4" /></button><span className="font-semibold text-slate-800">{item.word}</span><span className="text-xs text-slate-400">出现 {item.count} 次</span><button onClick={() => saved ? null : saveWord(item)} className={`ml-auto text-xs px-2 py-1 rounded-lg ${saved ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600'}`}>{saved ? <span className="flex items-center gap-1"><Check className="w-3 h-3" />已收录</span> : <span className="flex items-center gap-1"><BookmarkPlus className="w-3 h-3" />加入生词本</span>}</button></div><p className="text-xs text-slate-500 mt-2">{item.sentence}</p>{item.sentenceCn && <p className="text-xs text-slate-400 mt-1">{item.sentenceCn}</p>}</div>; })}</div>}
+          {selectedUnit && lessonWords.length === 0 ? <div className="text-center py-8 text-sm text-slate-500">课文加载后会生成本课重点词。</div> : <div className="space-y-2">{filteredWords.map((item) => { const saved = savedWords.has(item.word); return <div key={item.word} className="border border-slate-100 rounded-xl p-3"><div className="flex items-center gap-2"><button onClick={() => tts.speak(item.word, { channel: 'course', mode: 'system' })} className="text-sky-600" title={`朗读 ${item.word}`}><Volume2 className="w-4 h-4" /></button><span className="font-semibold text-slate-800">{item.word}</span><span className="text-xs text-slate-400">出现 {item.count} 次</span><button onClick={() => saved ? null : saveWord(item)} className={`ml-auto text-xs px-2 py-1 rounded-lg ${saved ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600'}`}>{saved ? <span className="flex items-center gap-1"><Check className="w-3 h-3" />已收录</span> : <span className="flex items-center gap-1"><BookmarkPlus className="w-3 h-3" />加入生词本</span>}</button></div><p className="text-xs text-slate-500 mt-2">{item.sentence}</p>{item.sentenceCn && <p className="text-xs text-slate-400 mt-1">{item.sentenceCn}</p>}</div>; })}</div>}
         </div>
       )}
 

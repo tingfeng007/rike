@@ -94,6 +94,15 @@ export const DEFAULT_SETTINGS = {
   voicePitch: 1.05,
   voiceAccent: 'en-US',
   preferredVoiceURI: '',
+  // Non-course speech can prefer higher-quality browser voices or an optional
+  // OpenAI-compatible neural TTS endpoint. New Concept lesson audio remains
+  // controlled by the course player and passes an explicit course channel.
+  speechMode: 'natural',
+  speechApiKey: '',
+  speechBaseUrl: 'https://api.openai.com/v1',
+  speechModel: 'gpt-4o-mini-tts',
+  speechVoice: 'coral',
+  speechInstructions: 'Warm, natural English tutor voice. Clear articulation, gentle pauses, and a friendly conversational tone.',
   autoPlayOralAudio: true,
   currentScenarioId: 'daily_chat',
 };
@@ -740,9 +749,11 @@ export const StorageService = {
   exportAllData({ includeApiKey = false } = {}) {
     const settings = { ...this.getSettings() };
     const hadKey = Boolean(settings.apiKey?.trim());
+    const hadSpeechKey = Boolean(settings.speechApiKey?.trim());
 
     if (!includeApiKey) {
       settings.apiKey = '';
+      settings.speechApiKey = '';
     }
 
     const backup = {
@@ -753,6 +764,7 @@ export const StorageService = {
       meta: {
         includeApiKey,
         hadKeyBeforeExport: hadKey,
+        hadSpeechKeyBeforeExport: hadSpeechKey,
       },
       settings,
       vocabulary: this.getVocabulary(),

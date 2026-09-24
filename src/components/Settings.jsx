@@ -15,6 +15,8 @@ import {
   Zap,
   HardDrive,
   Trash2,
+  Sparkles,
+  Cloud,
 } from 'lucide-react';
 import {
   StorageService,
@@ -34,6 +36,8 @@ export default function Settings() {
   const [testStatus, setTestStatus] = useState({ state: 'idle', message: '' }); // 'idle' | 'testing' | 'success' | 'error'
   const [showPwaGuide, setShowPwaGuide] = useState(false);
   const [availableVoices, setAvailableVoices] = useState(() => tts.getAvailableFemaleVoices());
+  const [speechStatus, setSpeechStatus] = useState(() => tts.getSpeechStatus());
+  const [showSpeechKey, setShowSpeechKey] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [includeApiKeyInExport, setIncludeApiKeyInExport] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
@@ -45,12 +49,19 @@ export default function Settings() {
   // Reload voices when speech system initializes
   useEffect(() => {
     const updateVoices = () => {
+      tts.loadVoices();
       setAvailableVoices(tts.getAvailableFemaleVoices());
+      setSpeechStatus(tts.getSpeechStatus(StorageService.getSettings()));
     };
     updateVoices();
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = updateVoices;
     }
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis?.onvoiceschanged === updateVoices) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -62,6 +73,7 @@ export default function Settings() {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
     StorageService.saveSettings(updated);
+    setSpeechStatus(tts.getSpeechStatus(updated));
     triggerSavedToast();
   };
 
@@ -195,6 +207,8 @@ export default function Settings() {
     tts.speak(
       "Hi there! I'm Echo, your English coach. I'm so excited to help you speak with natural confidence!",
       {
+        mode: settings.speechMode,
+        channel: 'settings',
         accent: settings.voiceAccent,
         rate: settings.voiceRate,
         voiceURI: settings.preferredVoiceURI,
@@ -396,6 +410,34 @@ export default function Settings() {
             </button>
           </div>
 
+          {/* Non-course speech mode */}
+          <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-3.5">
+            <div className="flex items-start gap-2">
+              <Sparkles className="mt-0.5 h-4 w-4 flex-none text-sky-600" />
+              <div>
+                <p className="text-xs font-bold text-sky-950">非课文内容使用自然语音</p>
+                <p className="mt-1 text-[11px] leading-5 text-sky-800/75">
+                  单词、精读、口语和练习会使用这里的设置；新概念课文继续播放原声，不受影响。
+                </p>
+              </div>
+            </div>
+            <select
+              value={settings.speechMode || 'natural'}
+              onChange={(e) => updateSetting('speechMode', e.target.value)}
+              className="mt-3 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-sky-500"
+            >
+              <option value="natural">✨ 自然音色优先（推荐）</option>
+              <option value="cloud">☁️ 云端真人感（需配置语音接口）</option>
+              <option value="system">设备系统语音</option>
+            </select>
+            <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-sky-800/70">
+              <span>本机自然音色 {speechStatus.naturalVoiceCount} 个 · 增强音色 {speechStatus.enhancedVoiceCount} 个</span>
+              <span className={speechStatus.cloudConfigured ? 'font-semibold text-emerald-700' : 'text-slate-500'}>
+                {speechStatus.cloudConfigured ? '云端已配置' : '云端未配置'}
+              </span>
+            </div>
+          </div>
+
           {/* Accent */}
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
@@ -424,14 +466,92 @@ export default function Settings() {
               <option value="">✨ 智能优选（iPhone 推荐：Ava / Samantha 自然甜美女声）</option>
               {availableVoices.map((v) => (
                 <option key={v.voiceURI} value={v.voiceURI}>
-                  👩 {v.name} ({v.lang})
+                  👩 {v.name} · {tts.getVoiceQualityLabel(v)} ({v.lang})
                 </option>
               ))}
             </select>
             <p className="text-[11px] text-slate-600 mt-1">
-              💡 默认优先匹配苹果 iOS 高品质自然女声，音色更甜美、抑扬顿挫更地道。
+              💡 自动优先匹配 Natural / Online / Premium 音色；如果设备没有这类音色，会平稳退回系统语音。
             </p>
           </div>
+
+          <details className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-semibold text-slate-700">
+              <Cloud className="h-4 w-4 text-sky-600" />配置云端自然语音（可选）
+            </summary>
+            <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+              <p className="text-[11px] leading-5 text-slate-500">
+                支持 OpenAI Audio Speech 或兼容接口。只对新概念之外的内容生效；密钥仅保存在当前浏览器，不会写入代码。
+              </p>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-600">语音接口地址</label>
+                <input
+                  value={settings.speechBaseUrl || ''}
+                  onChange={(e) => updateSetting('speechBaseUrl', e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-600">语音 API Key</label>
+                <div className="relative">
+                  <input
+                    type={showSpeechKey ? 'text' : 'password'}
+                    value={settings.speechApiKey || ''}
+                    onChange={(e) => updateSetting('speechApiKey', e.target.value)}
+                    placeholder="输入后点击上方试听"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-xs outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSpeechKey((value) => !value)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:text-slate-700"
+                    aria-label={showSpeechKey ? '隐藏语音 API Key' : '显示语音 API Key'}
+                  >
+                    {showSpeechKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-600">模型</label>
+                  <input
+                    value={settings.speechModel || ''}
+                    onChange={(e) => updateSetting('speechModel', e.target.value)}
+                    placeholder="gpt-4o-mini-tts"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-600">音色</label>
+                  <select
+                    value={settings.speechVoice || 'coral'}
+                    onChange={(e) => updateSetting('speechVoice', e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-sky-500"
+                  >
+                    <option value="coral">Coral · 温暖女声</option>
+                    <option value="marin">Marin · 清晰自然</option>
+                    <option value="cedar">Cedar · 稳重自然</option>
+                    <option value="nova">Nova · 明亮女声</option>
+                    <option value="shimmer">Shimmer · 柔和女声</option>
+                    <option value="alloy">Alloy · 中性自然</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-600">语气提示（可选）</label>
+                <textarea
+                  value={settings.speechInstructions || ''}
+                  onChange={(e) => updateSetting('speechInstructions', e.target.value)}
+                  rows={2}
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-sky-500"
+                />
+              </div>
+              <p className="text-[10px] leading-4 text-amber-700">
+                提醒：静态网站中的云端请求会把输入文字发送到你配置的服务，并可能产生费用；没有配置时会自动使用本机自然音色。
+              </p>
+            </div>
+          </details>
 
           {/* Voice Rate Slider */}
           <div>
