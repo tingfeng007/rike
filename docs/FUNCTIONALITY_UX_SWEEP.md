@@ -501,6 +501,42 @@ $ npm run build
 
 **仍未做**：O-17 中口语页的小图标按钮（未逐一迁移）；`label-has-associated-control` 26 处（表单 label 与控件未关联）、`no-array-index-key` 11 处、NceReview 的 `role="status"` 2 处、`media-has-caption` 1 处 —— 这些是独立的小项，不属于本次组件抽取范围。
 
+### 6.11 第六批（首次上手：示例数据与缺 Key）已落地
+
+| 编号 | 修复内容 | 改动位置 | 验证 |
+| :--- | :--- | :--- | :--- |
+| **Q-01** | **示例数据可识别、可清空**：新增 `isUsingSampleData()` / `isUsingSampleVocabulary()`（"键不存在"=仍在看演示内容）；`clearSampleData()` **显式写入 `[]`**（关键：`getVocabulary()` 在键缺失时会回退到演示词库，只"不保存"会把示例带回来）；新增 onboarding 标记（`hasSeenOnboarding` / `markOnboardingSeen`）。首页首启显示说明卡（"这 30 个演示生词不是你的学习记录"）+「清空示例，从零开始」；首页到期数标签改为"**示例词**到期"；设置页新增同功能的"清空示例数据"按钮 | `storage.js`、`HomeDashboard.jsx`、`Settings.jsx` | 新测试 3 例（红测失败） |
+| **Q-02** | **首页不再对缺 Key 沉默**：无 Key 时首页计划区顶部显示统一的 `ApiKeyNotice`（说明哪些功能需要 Key、哪些不需要，并给「去设置」按钮） | `ui/ApiKeyNotice.jsx`（新增）、`HomeDashboard.jsx` | 代码确证（UI 层） |
+| **Q-03** | **统一失败口径**：新增 `hasApiKey()` 与 `describeAIError(error,{fallback})`，把失败分成"**还没配 Key** / 超时 / 网络失败 / 密钥被拒 / 其他"，并据此给出可操作文案。精读的占位文案不再把缺 Key 说成"可能是网络波动"（`ai.js` 中旧文案已标注为误导来源） | `ai.js`、`SmartReader.jsx` | 新测试 1 例（红测失败） |
+| **R-05（收口）** | 查词失败时**禁用存入按钮**并在卡片内说明原因，彻底堵住"把失败提示当词义存进词库"这一路径 | `SmartReader.jsx` | 代码确证 |
+
+```
+$ npm test
+ℹ tests 88   ℹ pass 88   ℹ fail 0        （第五批 84 例 + 本批新增 4 例）
+
+$ npm run lint
+Found 48 warnings and 0 errors.          （与第五批持平）
+
+$ npm run build
+✓ built in 1.27s
+```
+
+**红→绿（第六批）**：指向 `HEAD` = `c6d9b57` → 4 项失败：
+`sample data is detected on a fresh install…`、`clearSampleData can keep the articles…`、
+`onboarding flags survive…`、以及 `ai-normalize.test.js`（`describeAIError` 不存在）。
+
+**过程中修正的一处测试缺陷**：新测试一开始失败在"密钥已配置"这一步 —— 原因是 `ai-normalize.test.js` **没有 localStorage**（Node 环境），`saveSettings` 静默失败，于是 `hasApiKey()` 恒为 false。已在测试内装入内存 shim（与 `storage-safety.test.js` 一致）。这提醒：涉及存储的服务函数在单测里必须先有 storage shim，否则会得到"看起来像逻辑错误"的假失败。
+
+### 6.12 报告主线的收口状态
+
+六批累计修复 **44 项**：第一批 8 项、第二批 4 项、第三批 5 项、第四批 3 项、第五批（组件抽取，覆盖 D-30/D-35/R-19/V-20/D-25/O-17/R-20/R-21/V-19）、第六批 4 项。
+
+**仍未做**（按价值排序）：
+1. **N-01** 本课词表补释义入口（唯一还没闭环的学习路径）。
+2. **O-17 剩余项**：口语页的小图标按钮尚未逐一迁到 `IconButton`。
+3. 组件抽取的收尾：`label-has-associated-control` 26 处（表单 label 未关联控件）、`no-array-index-key` 11 处、`NceReview` 的 `role="status"` 2 处、`media-has-caption` 1 处。
+4. **口径统一**（2.4-C）：到期词 5 份实现、"困难词"阈值 2 处、活动/打卡口径 —— 建议收敛为单一 `metrics` 模块，属于需要产品决策的重构。
+
 ---
 
 ## 附录：本次扫描用到的核验手法

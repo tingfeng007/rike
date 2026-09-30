@@ -432,6 +432,39 @@ test('hasStudyEventToday distinguishes today, other days and other entities', ()
   assert.equal(StorageService.hasStudyEventToday({ type: 'reader', entityId: 'art-1' }), false);
 });
 
+// --- Q-01: demo data must be recognisable and clearable -------------------------------
+
+test('sample data is detected on a fresh install and can be cleared for good', () => {
+  // A fresh store serves the demo decks from memory without writing them.
+  assert.equal(StorageService.isUsingSampleVocabulary(), true);
+  assert.ok(StorageService.getVocabulary().length > 0, 'demo words are served');
+
+  assert.equal(StorageService.clearSampleData(), true);
+
+  // The decks are now real (empty) — crucially, reading them must NOT fall back to the demo
+  // deck again, which is why clearing writes an explicit [].
+  assert.equal(StorageService.isUsingSampleVocabulary(), false);
+  assert.deepEqual(StorageService.getVocabulary(), []);
+  assert.deepEqual(StorageService.getArticles(), []);
+  assert.equal(StorageService.isUsingSampleData(), false);
+});
+
+test('clearSampleData can keep the articles when asked', () => {
+  assert.equal(StorageService.getArticles().length > 0, true, 'demo articles start out');
+  StorageService.clearSampleData({ keepArticles: true });
+  assert.deepEqual(StorageService.getVocabulary(), []);
+  assert.equal(StorageService.getArticles().length > 0, true, 'articles were kept');
+  assert.equal(StorageService.isUsingSampleData(), true, 'articles are still demo content');
+});
+
+test('onboarding flags survive and default to unseen', () => {
+  assert.equal(StorageService.hasSeenOnboarding('demoNoticeSeen'), false);
+  assert.equal(StorageService.markOnboardingSeen('demoNoticeSeen'), true);
+  assert.equal(StorageService.hasSeenOnboarding('demoNoticeSeen'), true);
+  assert.equal(StorageService.hasSeenOnboarding('neverSet'), false);
+  assert.equal(StorageService.markOnboardingSeen(''), false, 'a missing key is rejected');
+});
+
 // --- V-24: a word saved without a meaning must stay discoverable ---------------
 
 test('a word added without an AI meaning is findable by the needs-meaning filter', () => {

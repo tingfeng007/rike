@@ -28,6 +28,8 @@ import {
   analyzeSentenceWithAI,
   translateParagraphWithAI,
   generateDailyArticleWithAI,
+  describeAIError,
+  hasApiKey,
 } from '../services/ai';
 import { tts } from '../services/speech';
 import { containsTerm } from '../services/text';
@@ -715,13 +717,18 @@ export default function SmartReader({ intent = null }) {
     try {
       const analysis = await analyzeWordWithAI(clean, sentence);
       setWordAnalysis(analysis);
-    } catch {
+    } catch (error) {
+      // Say what actually went wrong. The old single string blamed "网络波动或未配置 API Key"
+      // for every failure, so people checked their Wi-Fi when the key was simply missing.
+      const described = describeAIError(error, { fallback: '释义解析未成功' });
       setWordAnalysis({
         word: clean,
         phonetic: '',
         pos: '',
         isError: true,
-        translation: '释义解析未成功（可能是网络波动或未配置 API Key）',
+        // Deliberately NOT stored as a meaning: the save-to-vocab button is disabled while
+        // isError is set, so this text never becomes the card's translation.
+        translation: described.message,
         contextSentence: sentence,
       });
     } finally {
@@ -1295,19 +1302,34 @@ export default function SmartReader({ intent = null }) {
 
             {/* Footer Action: Add to Vocabulary */}
             <div className="pt-2">
+              {/* R-05: while the lookup is in an error state there is no meaning to store. Saving
+                  it used to write the failure message in as the card's translation. */}
+              {wordAnalysis?.isError && (
+                <p className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] leading-5 text-rose-800">
+                  这次没有取到释义，已禁止存入生词本，避免把错误提示当成词义保存下来。
+                  {hasApiKey() ? '可以点上方“重新解析”再试一次。' : '配置 API Key 后即可正常查词。'}
+                </p>
+              )}
               <button
                 onClick={handleSaveToVocab}
-                disabled={isWordSaved || isAnalyzingWord}
-                className={`w-full py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all ${
+                disabled={isWordSaved || isAnalyzingWord || Boolean(wordAnalysis?.isError)}
+                className={`w-full py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all disabled:cursor-not-allowed ${
                   isWordSaved
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
-                    : 'bg-sky-600 hover:bg-sky-700 text-white shadow-xs'
+                    : wordAnalysis?.isError
+                      ? 'bg-slate-100 text-slate-400'
+                      : 'bg-sky-600 hover:bg-sky-700 text-white shadow-xs'
                 }`}
               >
                 {isWordSaved ? (
                   <>
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     <span>已存入生词本 (自动关联原句)</span>
+                  </>
+                ) : wordAnalysis?.isError ? (
+                  <>
+                    <BookmarkPlus className="w-4 h-4" />
+                    <span>未取到释义，暂不可存入</span>
                   </>
                 ) : (
                   <>

@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   STUDY_STATS: 'lingoflow_study_stats',
   READING_ANNOTATIONS: 'lingoflow_reading_annotations',
   ARTICLE_READ_STATE: 'lingoflow_article_read_state_v1',
+  ONBOARDING: 'lingoflow_onboarding_v1',
   NCE_PROGRESS: 'lingoflow_nce1_progress',
   NCE_CACHE: 'lingoflow_nce1_cache_v1',
   NCE_EXAMS: 'lingoflow_nce1_exams_v1',
@@ -265,6 +266,59 @@ export const StorageService = {
   // --- Last write failure (quota / blocked storage) ---
   getLastWriteError() {
     return lastWriteError ? { ...lastWriteError } : null;
+  },
+
+  // --- Demo / sample data ---------------------------------------------------------------
+  // On a fresh install both decks are served from memory without being written to disk, so
+  // "the key is absent" is exactly "the user is still looking at demo content". The app had no
+  // way to say that: the home screen reported "今日到期词 30" and the due badge showed 30 as if
+  // the learner had built that deck, while the settings page called the same words 演示生词.
+  isUsingSampleData() {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.VOCABULARY) === null
+        || localStorage.getItem(STORAGE_KEYS.ARTICLES) === null;
+    } catch {
+      return false;
+    }
+  },
+
+  isUsingSampleVocabulary() {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.VOCABULARY) === null;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Replace the in-memory demo decks with real (empty) ones, so the learner starts from zero.
+   * Writing `[]` matters: `getVocabulary()` falls back to the demo deck whenever the key is
+   * absent, so merely "not saving" would bring the samples straight back.
+   */
+  clearSampleData({ keepArticles = false } = {}) {
+    const wordsSaved = this.saveVocabulary([]);
+    const articlesSaved = keepArticles || this.saveArticles([]);
+    return Boolean(wordsSaved && articlesSaved);
+  },
+
+  getOnboardingState() {
+    return asObject(readJson(STORAGE_KEYS.ONBOARDING, {}));
+  },
+
+  saveOnboardingState(state) {
+    return safeSetItem(STORAGE_KEYS.ONBOARDING, JSON.stringify(asObject(state) || {}));
+  },
+
+  markOnboardingSeen(key) {
+    if (!key) return false;
+    const state = this.getOnboardingState();
+    state[key] = Date.now();
+    return this.saveOnboardingState(state);
+  },
+
+  hasSeenOnboarding(key) {
+    if (!key) return false;
+    return Boolean(this.getOnboardingState()[key]);
   },
 
   // --- Vocabulary ---

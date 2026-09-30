@@ -6,7 +6,9 @@ import {
   normalizeArticle,
   normalizeWordAnalysis,
   normalizeSentenceAnalysis,
+  describeAIError,
 } from '../src/services/ai.js';
+import { StorageService } from '../src/services/storage.js';
 
 /**
  * Regression tests for V-05: `extractJson` only proved the reply *parsed*, so a model that
@@ -148,4 +150,44 @@ test('sentence analysis normalizes clauses and grammar points', () => {
   assert.equal(typeof analysis.clauses[1].text, 'string');
   assert.deepEqual(analysis.grammarPoints, ['定语从句', '42']);
   assert.equal(analysis.sentence, 'This is the book that I bought.');
+});
+
+// --- Q-03: a missing key must not be reported as a network problem --------------------
+
+// `hasApiKey()` reads settings, which live in localStorage; Node has none, so install a shim
+// (mirrors the one in storage-safety.test.js).
+function installMemoryStorage() {
+  const data = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => (data.has(key) ? data.get(key) : null),
+    setItem: (key, value) => { data.set(key, String(value)); },
+    removeItem: (key) => { data.delete(key); },
+    clear: () => data.clear(),
+    key: (index) => Array.from(data.keys())[index] ?? null,
+    get length() { return data.size; },
+  };
+}
+
+test('describeAIError blames the missing key, not the network', () => {
+  installMemoryStorage();
+  StorageService.saveSettings({ apiKey: '' });
+  const missing = describeAIError(new Error('Failed to fetch'), { fallback: '释义解析未成功' });
+  assert.equal(missing.missingKey, true);
+  assert.match(missing.message, /API Key/);
+  assert.doesNotMatch(missing.message, /网络波动/, 'the old copy blamed the network');
+
+  StorageService.saveSettings({ apiKey: 'sk-test' });
+  const timeout = describeAIError(Object.assign(new Error('timeout'), { name: 'AbortError' }), { fallback: '查询失败' });
+  assert.equal(timeout.missingKey, false);
+  assert.match(timeout.message, /超时/);
+
+  const rejected = describeAIError(new Error('401 Unauthorized'), { fallback: '查询失败' });
+  assert.match(rejected.message, /密钥被拒绝/);
+
+  const unknown = describeAIError(new Error('boom'), { fallback: '查询失败' });
+  assert.match(unknown.message, /查询失败.*boom/);
+
+  // No message at all must still produce something readable.
+  const bare = describeAIError(null, { fallback: '查询失败' });
+  assert.match(bare.message, /查询失败/);
 });

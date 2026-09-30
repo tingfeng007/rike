@@ -219,6 +219,21 @@ export default function Settings() {
     window.location.reload();
   };
 
+  // Clear the built-in demo deck so the learner starts from their own words.
+  const handleClearSampleData = () => {
+    if (!confirm('清空示例生词与示例文章？你的学习记录、口语对话与课程进度都会保留。')) return;
+    const cleared = StorageService.clearSampleData();
+    if (!cleared) {
+      toast.error('清空失败（可能是浏览器存储不可写），请稍后重试。');
+      return;
+    }
+    StorageService.markOnboardingSeen('demoNoticeSeen');
+    StorageService.markOnboardingSeen('sampleDataCleared');
+    setLocalSummary(StorageService.getLocalDataSummary());
+    setStorageDiagnostics(StorageService.getStorageDiagnostics());
+    toast.success('示例数据已清空。');
+  };
+
   // Test Voice Speech
   const handleTestSpeech = () => {
     tts.speak(
@@ -725,6 +740,26 @@ export default function Settings() {
                 className="hidden"
               />
             </label>
+          </div>
+
+          {/* Demo data: the same "30 个演示生词" the home screen explains on first run. */}
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-amber-900">
+                {StorageService.isUsingSampleVocabulary() ? '当前词库是内置示例数据' : '示例数据已清空或已替换'}
+              </p>
+              <p className="mt-0.5 text-[10.5px] leading-4 text-amber-800">
+                示例生词只是用来体验流程的，不代表你的学习记录。清空后从零积累你自己的词库，学习统计不受影响。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearSampleData}
+              disabled={!StorageService.isUsingSampleVocabulary()}
+              className="flex-none rounded-xl bg-amber-500 px-2.5 py-1.5 text-[10.5px] font-bold text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              清空示例数据
+            </button>
           </div>
 
           {/* Danger Zone */}

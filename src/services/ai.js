@@ -23,6 +23,56 @@ export const AI_STREAM_IDLE_TIMEOUT_MS = 30000;
  * the exact shape the UI needs, or raise one readable Chinese error.
  */
 
+/**
+ * Whether an API key is configured. Used to tell "you have not set this up yet" apart from
+ * "the request failed", which the UI used to blur together.
+ */
+export function hasApiKey() {
+  try {
+    return Boolean(StorageService.getSettings()?.apiKey?.trim());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Turn an AI failure into something the user can act on.
+ *
+ * The reader showed the single string "释义解析未成功（可能是网络波动或未配置 API Key）" for
+ * every failure, which sends people to check their Wi-Fi when the real cause is a missing key.
+ *
+ * @param {unknown} error
+ * @param {{ fallback?: string }} [options]
+ * @returns {{ missingKey: boolean, message: string }}
+ */
+export function describeAIError(error, { fallback = 'AI 请求失败' } = {}) {
+  if (!hasApiKey()) {
+    return {
+      missingKey: true,
+      message: `${fallback}：还没有配置 API Key。去“设置”里填入密钥后即可使用 AI 功能。`,
+    };
+  }
+
+  const name = String(error?.name || '');
+  const message = String(error?.message || '');
+  if (name === 'AbortError' || /超时|timeout/i.test(message)) {
+    return { missingKey: false, message: `${fallback}：请求超时（网络较慢或服务商繁忙），请重试。` };
+  }
+  if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
+    return { missingKey: false, message: `${fallback}：网络连接失败，请检查网络后重试。` };
+  }
+  if (/401|403|invalid.*key|api key/i.test(message)) {
+    return { missingKey: false, message: `${fallback}：密钥被拒绝，请到“设置”里核对 API Key 与服务商。` };
+  }
+  return { missingKey: false, message: `${fallback}：${message || '请稍后重试'}` };
+}
+
+/**
+ * Heuristic that used to be blamed for every reader failure. Kept for the placeholder shown in
+ * the word-analysis card so that a failed lookup is visible but never stored as a meaning.
+ */
+export const WORD_ANALYSIS_FAILURE_TEXT = '释义解析未成功';
+
 function asText(value, fallback = '') {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);

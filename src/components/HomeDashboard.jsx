@@ -17,6 +17,9 @@ import {
 import { StorageService } from '../services/storage';
 import { buildNceReviewQueue } from '../services/nceReview';
 import { buildDailyPlan, getWeeklyReview, saveDailyTaskState, activityTypeForTask } from '../services/studyPlan';
+import { hasApiKey } from '../services/ai';
+import { useToast } from './ui/toastContext';
+import { ApiKeyNotice } from './ui/ApiKeyNotice';
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -82,6 +85,7 @@ function activityTone(level, isToday) {
 }
 
 export default function HomeDashboard({ onNavigate }) {
+  const toast = useToast();
   const [snapshot, setSnapshot] = useState(readSnapshot);
   const [showWeekly, setShowWeekly] = useState(false);
   const [showDuration, setShowDuration] = useState(false);
@@ -113,7 +117,33 @@ export default function HomeDashboard({ onNavigate }) {
   // still read 0/3.
   const dayIsFinished = remainingTasks === 0 && deferredCount === 0 && plan.totalCount > 0;
 
+  // First-run facts: is this still the built-in demo content, and can AI run at all?
+  const usingSampleData = StorageService.isUsingSampleVocabulary();
+  const [showDemoNotice, setShowDemoNotice] = useState(() => (
+    StorageService.isUsingSampleVocabulary() && !StorageService.hasSeenOnboarding('demoNoticeSeen')
+  ));
+  const hasKey = hasApiKey();
+
   const refresh = () => setSnapshot(readSnapshot());
+
+  const dismissDemoNotice = () => {
+    StorageService.markOnboardingSeen('demoNoticeSeen');
+    setShowDemoNotice(false);
+  };
+
+  const startWithMyOwnDeck = () => {
+    if (!confirm('清空示例生词与示例文章，从零开始建立你自己的词库？此操作不影响你的学习记录。')) return;
+    const cleared = StorageService.clearSampleData();
+    StorageService.markOnboardingSeen('demoNoticeSeen');
+    StorageService.markOnboardingSeen('sampleDataCleared');
+    setShowDemoNotice(false);
+    if (!cleared) {
+      toast.error('清空失败（可能是浏览器存储不可写），请稍后重试。');
+      return;
+    }
+    toast.success('示例数据已清空，现在收录的每一个词都是你自己的。');
+    refresh();
+  };
 
   const updateDuration = (minutes) => {
     const nextPlan = { ...snapshot.studyPlan, dailyMinutes: minutes };
@@ -171,12 +201,43 @@ export default function HomeDashboard({ onNavigate }) {
         </p>
         <div className="relative grid grid-cols-3 gap-2 mt-5">
           <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><Flame className="w-4 h-4 text-amber-300 mb-2" /><p className="text-xl font-bold">{snapshot.stats.streakDays || 0}</p><p className="text-[10px] text-slate-300">连续学习天</p></div>
-          <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><Layers className="w-4 h-4 text-sky-300 mb-2" /><p className="text-xl font-bold">{snapshot.dueWords}</p><p className="text-[10px] text-slate-300">今日到期词</p></div>
+          <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><Layers className="w-4 h-4 text-sky-300 mb-2" /><p className="text-xl font-bold">{snapshot.dueWords}</p><p className="text-[10px] text-slate-300">{usingSampleData ? '示例词到期' : '今日到期词'}</p></div>
           <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><GraduationCap className="w-4 h-4 text-emerald-300 mb-2" /><p className="text-xl font-bold">{snapshot.course.reviewItems}</p><p className="text-[10px] text-slate-300">课程待复习</p></div>
         </div>
       </div>
 
       <div className="px-4 -mt-3 relative z-10 space-y-4">
+        {/* First run: the deck is demo content, so say so instead of presenting 30 due cards as
+            the learner's own progress. */}
+        {showDemoNotice && usingSampleData && (
+          <div className="study-card paper-grain rounded-[24px] border border-amber-200 bg-amber-50/70 p-4">
+            <p className="text-xs font-bold text-amber-900">👋 你现在看到的是示例内容</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+              内置换好了 <strong>30 个演示生词</strong> 与 <strong>8 篇示例文章</strong>，方便你先体验流程——它们不是你的学习记录。
+              从「精读伴读」或「口语对练」里收藏的词才会进入你自己的词库。
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={startWithMyOwnDeck}
+                className="flex-1 rounded-xl bg-amber-500 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-amber-600"
+              >
+                清空示例，从零开始
+              </button>
+              <button
+                type="button"
+                onClick={dismissDemoNotice}
+                className="flex-1 rounded-xl bg-white px-3 py-2 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200 transition-colors hover:bg-amber-100"
+              >
+                先保留，我看看
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* The very first plan item is usually an AI task, so ask for the key up front instead of
+            letting each module fail in its own way. */}
+        {!hasKey && <ApiKeyNotice onOpenSettings={() => onNavigate('settings')} />}
         <div className="study-card paper-grain rounded-[24px] p-4">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div><p className="text-xs font-semibold tracking-wide text-slate-400">今日学习计划 · {plan.dailyMinutes} 分钟</p><h2 className="font-bold text-slate-900 mt-0.5">{remainingTasks ? '先做最重要的一步' : dayIsFinished ? '今天已经完成' : '今天还有推迟的项'}</h2></div>
