@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   ARTICLES: 'lingoflow_articles',
   STUDY_STATS: 'lingoflow_study_stats',
   READING_ANNOTATIONS: 'lingoflow_reading_annotations',
+  ARTICLE_READ_STATE: 'lingoflow_article_read_state_v1',
   NCE_PROGRESS: 'lingoflow_nce1_progress',
   NCE_CACHE: 'lingoflow_nce1_cache_v1',
   NCE_EXAMS: 'lingoflow_nce1_exams_v1',
@@ -817,6 +818,68 @@ export const StorageService = {
     } catch {
       // ignore
     }
+  },
+
+  // --- Article read state (powers the library's 已读 filter and progress) ---
+  // Shape: { [articleId]: { readAt: number, percent: number } }. Older records may be a bare
+  // number (readAt), so reads normalise both forms.
+  getArticleReadState() {
+    return asObject(readJson(STORAGE_KEYS.ARTICLE_READ_STATE, {}));
+  },
+
+  getArticleProgress(articleId) {
+    if (!articleId) return { readAt: 0, percent: 0 };
+    const entry = this.getArticleReadState()[String(articleId)];
+    if (entry == null) return { readAt: 0, percent: 0 };
+    if (typeof entry === 'number') return { readAt: entry, percent: 0 };
+    return {
+      readAt: Number(entry.readAt) || 0,
+      percent: Math.max(0, Math.min(100, Math.round(Number(entry.percent) || 0))),
+    };
+  },
+
+  saveArticleReadState(state) {
+    return safeSetItem(STORAGE_KEYS.ARTICLE_READ_STATE, JSON.stringify(asObject(state) || {}));
+  },
+
+  markArticleRead(articleId) {
+    if (!articleId) return false;
+    const state = this.getArticleReadState();
+    const previous = this.getArticleProgress(articleId);
+    state[String(articleId)] = { readAt: Date.now(), percent: Math.max(previous.percent, 100) };
+    return this.saveArticleReadState(state);
+  },
+
+  /**
+   * Persist how far through an article the reader has scrolled (0-100).
+   * Deliberately ignores 0 so that merely opening an article does not look like progress.
+   */
+  saveArticleProgress(articleId, percent) {
+    if (!articleId) return false;
+    const clamped = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    if (clamped <= 0) return false;
+    const state = this.getArticleReadState();
+    const key = String(articleId);
+    const previous = this.getArticleProgress(articleId);
+    const nextPercent = Math.max(previous.percent, clamped);
+    if (previous.percent === nextPercent && previous.readAt) return true;
+    state[key] = { readAt: previous.readAt || 0, percent: nextPercent };
+    return this.saveArticleReadState(state);
+  },
+
+  /**
+   * Whether an event of this type/entity has already been recorded today.
+   * Used to keep an automatic reading session from being counted twice in one day.
+   */
+  hasStudyEventToday({ type, entityId } = {}) {
+    if (!type) return false;
+    const todayKey = getLocalDateKey();
+    return this.getStudyEvents({ limit: 2000 }).some((event) => (
+      event?.type === type
+      && (!entityId || String(event.entityId) === String(entityId))
+      && event.at
+      && getLocalDateKey(new Date(event.at)) === todayKey
+    ));
   },
 
   // --- All Scenarios Chat Messages ---

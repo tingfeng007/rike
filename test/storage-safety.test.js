@@ -377,7 +377,62 @@ test('updateWord and deleteWord still succeed on a healthy store', () => {
   assert.deepEqual(StorageService.deleteWord('w2').map((w) => w.id), ['w1']);
 });
 
-// --- V-06: a word saved without a meaning must stay discoverable ---------------
+// --- R-03: reading quietly must be recorded, and read state must survive reloads --------
+
+test('markArticleRead records a finished article and clamps progress to 100', () => {
+  StorageService.saveArticle({ id: 'art-1', title: 'One', content: 'Body one' });
+
+  assert.deepEqual(StorageService.getArticleProgress('art-1'), { readAt: 0, percent: 0 });
+  assert.equal(StorageService.markArticleRead('art-1'), true);
+
+  const state = StorageService.getArticleProgress('art-1');
+  assert.ok(state.readAt > 0, 'a read timestamp is stored');
+  assert.equal(state.percent, 100);
+  assert.deepEqual(StorageService.getArticleProgress('nope'), { readAt: 0, percent: 0 });
+});
+
+test('saveArticleProgress keeps the furthest position and ignores non-progress', () => {
+  StorageService.saveArticle({ id: 'art-1', title: 'One', content: 'Body one' });
+
+  assert.equal(StorageService.saveArticleProgress('art-1', 0), false, 'opening an article is not progress');
+  assert.equal(StorageService.saveArticleProgress('art-1', 30), true);
+  assert.equal(StorageService.getArticleProgress('art-1').percent, 30);
+
+  // Scrolling back up must not lose the furthest point reached.
+  StorageService.saveArticleProgress('art-1', 12);
+  assert.equal(StorageService.getArticleProgress('art-1').percent, 30);
+  assert.equal(StorageService.getArticleProgress('art-1').readAt, 0, 'progress alone is not "finished"');
+
+  StorageService.saveArticleProgress('art-1', 250);
+  assert.equal(StorageService.getArticleProgress('art-1').percent, 100, 'percent is clamped');
+});
+
+test('markArticleRead keeps existing progress and tolerates legacy numeric records', () => {
+  StorageService.saveArticle({ id: 'art-1', title: 'One', content: 'Body one' });
+  StorageService.saveArticleProgress('art-1', 40);
+  StorageService.markArticleRead('art-1');
+  assert.equal(StorageService.getArticleProgress('art-1').percent, 100);
+
+  // Legacy shape: a bare timestamp instead of { readAt, percent }.
+  StorageService.saveArticleReadState({ 'art-9': 1700000000000 });
+  assert.deepEqual(StorageService.getArticleProgress('art-9'), { readAt: 1700000000000, percent: 0 });
+});
+
+test('hasStudyEventToday distinguishes today, other days and other entities', () => {
+  StorageService.recordStudyActivity({ type: 'reader', count: 1, entityId: 'art-1', source: 'reader-session' });
+  assert.equal(StorageService.hasStudyEventToday({ type: 'reader', entityId: 'art-1' }), true);
+  assert.equal(StorageService.hasStudyEventToday({ type: 'reader', entityId: 'art-2' }), false);
+  assert.equal(StorageService.hasStudyEventToday({ type: 'review', entityId: 'art-1' }), false);
+  assert.equal(StorageService.hasStudyEventToday({}), false);
+
+  // The same event dated two days ago must not count as today.
+  const stale = StorageService.getStudyEvents({ limit: 10 })
+    .map((event) => ({ ...event, at: Date.now() - 48 * 60 * 60 * 1000 }));
+  storage.setItem('lingoflow_study_events_v1', JSON.stringify(stale));
+  assert.equal(StorageService.hasStudyEventToday({ type: 'reader', entityId: 'art-1' }), false);
+});
+
+// --- V-24: a word saved without a meaning must stay discoverable ---------------
 
 test('a word added without an AI meaning is findable by the needs-meaning filter', () => {
   // The component used to write the placeholder "自主添加生词" on AI failure, which looked

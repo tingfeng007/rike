@@ -18,6 +18,8 @@ import {
   Play,
   Pause,
   Square,
+  Search,
+  ListFilter,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
@@ -30,7 +32,18 @@ import {
 import { tts } from '../services/speech';
 import { containsTerm } from '../services/text';
 import StudyHeader from './StudyHeader';
-import { getReadingMetrics } from '../services/studyView';
+import { getReadingMetrics, filterArticles } from '../services/studyView';
+
+// Read-scroll progress for every article, keyed by article id (see the library's 已读/在读
+// filters and progress sort).
+function readArticleProgressMap(articles) {
+  const map = {};
+  (articles || []).forEach((article) => {
+    if (!article?.id) return;
+    map[String(article.id)] = StorageService.getArticleProgress(article.id);
+  });
+  return map;
+}
 
 // Robust sentence splitter with abbreviation protection & Intl fallback
 function splitIntoSentences(text) {
@@ -140,6 +153,22 @@ export default function SmartReader({ intent = null }) {
   const [isParagraphPaused, setIsParagraphPaused] = useState(false);
   const [paragraphSpeechIndex, setParagraphSpeechIndex] = useState(0);
 
+  // Continuous whole-article playback (the reader used to offer per-paragraph buttons only).
+  const articleSpeechActiveRef = useRef(false);
+  const [isArticleSpeaking, setIsArticleSpeaking] = useState(false);
+  const paragraphRefs = useRef({});
+
+  // Library controls: search / difficulty / read status / sort.
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryLevel, setLibraryLevel] = useState('all');
+  const [libraryStatus, setLibraryStatus] = useState('all');
+  const [librarySort, setLibrarySort] = useState('unfinished');
+  const [showLibraryFilters, setShowLibraryFilters] = useState(false);
+
+  // Dwell tracking so that quietly reading an article still counts as study time.
+  const readingSessionRef = useRef({ articleId: '', startedAt: 0, scrolled: false });
+  const lastSavedPercentRef = useRef(0);
+
   // Map of saved vocabulary for instant in-article highlighting
   const savedVocabMap = {};
   StorageService.getVocabulary().forEach((word) => {
@@ -169,12 +198,99 @@ export default function SmartReader({ intent = null }) {
     }
   }, [currentArticle?.id]);
 
+  // Count a genuinely-read article in the activity stream.
+  //
+  // Only paragraph read-aloud used to be recorded, so reading quietly never advanced the
+  // daily plan's reader task, the streak, or the weekly review. A session counts when the
+  // article was actually worked on: at least 60 seconds of dwell time, or real scrolling,
+  // and only once per article per day.
+  useEffect(() => {
+    if (!currentArticle?.id) return undefined;
+    readingSessionRef.current = { articleId: String(currentArticle.id), startedAt: Date.now(), scrolled: false };
+    lastSavedPercentRef.current = 0;
+
+    return () => {
+      const session = readingSessionRef.current;
+      const elapsedMinutes = (Date.now() - session.startedAt) / 60000;
+      const meaningful = elapsedMinutes >= 1 || (session.scrolled && elapsedMinutes >= 0.4);
+      if (!meaningful || !session.articleId) return;
+      if (StorageService.hasStudyEventToday({ type: 'reader', entityId: session.articleId })) return;
+      StorageService.recordStudyActivity({
+        type: 'reader',
+        count: 1,
+        durationMinutes: Math.max(1, Math.round(elapsedMinutes)),
+        source: 'reader-session',
+        entityId: session.articleId,
+        label: '静读一篇文章',
+      });
+    };
+  }, [currentArticle?.id]);
+
+  // While the whole article is being read aloud, keep the current paragraph in view.
+  useEffect(() => {
+    if (!isArticleSpeaking || speechParagraphIndex == null) return;
+    paragraphRefs.current[speechParagraphIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [isArticleSpeaking, speechParagraphIndex]);
+
   const handleScroll = (e) => {
     if (!currentArticle?.id) return;
     const element = e.currentTarget;
     StorageService.saveReadingPosition(currentArticle.id, element.scrollTop);
     const maxScroll = Math.max(1, element.scrollHeight - element.clientHeight);
-    setReadingProgress(Math.min(100, Math.round(element.scrollTop / maxScroll * 100)));
+    const percent = Math.min(100, Math.round(element.scrollTop / maxScroll * 100));
+    setReadingProgress(percent);
+    // Persist progress so the library can show "读到 x%" without opening the article.
+    if (percent > 0) {
+      readingSessionRef.current.scrolled = true;
+      // Write only on a 5% step — one localStorage write per scroll event would stutter.
+      if (percent >= lastSavedPercentRef.current + 5 || percent >= 100) {
+        lastSavedPercentRef.current = percent;
+        StorageService.saveArticleProgress(currentArticle.id, percent);
+        setArticleProgressMap(readArticleProgressMap(articles));
+      }
+    }
+  };
+
+  // How far each article has been read (for the library's progress/status/sort). Held in state
+  // so the values are read once per change instead of on every render.
+  const [articleProgressMap, setArticleProgressMap] = useState(() => readArticleProgressMap(articles));
+  const articleReadState = articleProgressMap[String(currentArticle?.id)] || { readAt: 0, percent: 0 };
+
+  const libraryArticles = useMemo(() => filterArticles(
+    articles,
+    { query: libraryQuery, level: libraryLevel, status: libraryStatus, sort: librarySort },
+    (id) => articleProgressMap[String(id)] || { readAt: 0, percent: 0 },
+  ), [articles, libraryQuery, libraryLevel, libraryStatus, librarySort, articleProgressMap]);
+
+  const availableLevels = useMemo(
+    () => [...new Set(articles.map((article) => article.level).filter(Boolean))].slice(0, 4),
+    [articles],
+  );
+
+  useEffect(() => {
+    setArticleProgressMap(readArticleProgressMap(articles));
+  }, [articles]);
+
+  const handleMarkArticleRead = () => {
+    if (!currentArticle?.id) return;
+    const saved = StorageService.markArticleRead(currentArticle.id);
+    if (!saved) {
+      alert('标记没有保存成功（可能是浏览器存储已满）。请先导出备份再重试。');
+      return;
+    }
+    // Reading an article end to end is a real study action; without this the daily plan's
+    // reader task and the weekly review could never be satisfied by actually reading.
+    if (!StorageService.hasStudyEventToday({ type: 'reader', entityId: currentArticle.id })) {
+      StorageService.recordStudyActivity({
+        type: 'reader',
+        count: 1,
+        source: 'reader-session',
+        entityId: currentArticle.id,
+        label: '标记读完一篇精读',
+      });
+    }
+    setArticleProgressMap(readArticleProgressMap(articles));
+    confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
   };
 
   const selectArticle = (article, { scrollToTop = true } = {}) => {
@@ -182,6 +298,8 @@ export default function SmartReader({ intent = null }) {
     setCurrentArticle(article);
     setReadingProgress(0);
     paragraphSpeechRunRef.current += 1;
+    articleSpeechActiveRef.current = false;
+    setIsArticleSpeaking(false);
     tts.stop();
     setSpeechParagraphIndex(null);
     setIsParagraphSpeaking(false);
@@ -206,6 +324,43 @@ export default function SmartReader({ intent = null }) {
     setIsParagraphPaused(false);
     setSpeechParagraphIndex(null);
     if (resetProgress) setParagraphSpeechIndex(0);
+  };
+
+  // Sentence batches per paragraph, index-aligned with the rendered paragraphs. Whole-article
+  // playback walks this list; keeping the same indices is what makes the per-paragraph
+  // progress bar correct while the article is being read continuously.
+  const paragraphBatches = useMemo(
+    () => (currentArticle?.content || '').split('\n\n').map((para) => (para.trim() ? splitIntoSentences(para) : [])),
+    [currentArticle],
+  );
+
+  const nextSpeakableParagraph = (afterIndex) => paragraphBatches.findIndex(
+    (batch, index) => index > afterIndex && batch.length > 0,
+  );
+
+  const stopArticleSpeech = (resetProgress = true) => {
+    articleSpeechActiveRef.current = false;
+    setIsArticleSpeaking(false);
+    stopParagraphSpeech(resetProgress);
+  };
+
+  const startArticleSpeech = (fromIndex = 0) => {
+    const first = paragraphBatches.findIndex((batch, index) => index >= fromIndex && batch.length > 0);
+    if (first === -1) {
+      alert('这篇文章没有可朗读的内容。');
+      return;
+    }
+    articleSpeechActiveRef.current = true;
+    setIsArticleSpeaking(true);
+    startParagraphSpeech(first, paragraphBatches[first]);
+  };
+
+  const toggleArticleSpeech = () => {
+    if (articleSpeechActiveRef.current) {
+      stopArticleSpeech();
+      return;
+    }
+    startArticleSpeech(0);
   };
 
   const startParagraphSpeech = async (paragraphIndex, sentences, startIndex = 0) => {
@@ -234,6 +389,18 @@ export default function SmartReader({ intent = null }) {
       setIsParagraphPaused(false);
       const paragraphMinutes = getReadingMetrics(cleanSentences.join(' ')).minutes;
       StorageService.recordStudyActivity({ type: 'reader', count: 1, durationMinutes: paragraphMinutes, source: 'reader-session', entityId: currentArticle?.id, label: '完成精读段落朗读', metadata: { paragraphIndex } });
+
+      // Continuous "read the whole article" mode: move on to the next non-empty paragraph.
+      if (articleSpeechActiveRef.current) {
+        const next = nextSpeakableParagraph(paragraphIndex);
+        if (next === -1) {
+          articleSpeechActiveRef.current = false;
+          setIsArticleSpeaking(false);
+          StorageService.recordStudyActivity({ type: 'reader', count: 1, source: 'reader-session', entityId: currentArticle?.id, label: '完整听读一篇文章' });
+        } else {
+          startParagraphSpeech(next, paragraphBatches[next]);
+        }
+      }
     }
   };
 
@@ -528,9 +695,9 @@ export default function SmartReader({ intent = null }) {
     const clean = rawWord.replace(/^[^\w]+|[^\w]+$/g, '');
     if (!clean || clean.length < 2) return;
 
-    stopParagraphSpeech();
-
-    // Prefer the sentence the user actually tapped on; fall back to a whole-article search.
+    // Keep the sentence position: looking a word up while listening used to reset the
+    // paragraph to sentence 1, so resuming replayed what the learner had already heard.
+    stopParagraphSpeech(false);
     const sentence = (enclosingSentence || '').trim()
       || findEnclosingSentence(currentArticle.content, clean);
     setSelectedWord({ word: clean, sentence });
@@ -605,7 +772,7 @@ export default function SmartReader({ intent = null }) {
     const cleanSentence = sentence.trim();
     if (!cleanSentence) return;
 
-    stopParagraphSpeech();
+    stopParagraphSpeech(false);
 
     setSelectedSentence(cleanSentence);
     setSentenceAnalysis(null);
@@ -654,7 +821,8 @@ export default function SmartReader({ intent = null }) {
         )}
       >
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center rounded-xl bg-white/10 p-0.5 text-[11px] text-slate-300 ring-1 ring-white/10" aria-label="正文字号">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-xl bg-white/10 p-0.5 text-[11px] text-slate-300 ring-1 ring-white/10" aria-label="正文字号">
               <button
                 type="button"
                 onClick={() => setFontSize('text-sm')}
@@ -679,11 +847,97 @@ export default function SmartReader({ intent = null }) {
               >
                 大
               </button>
+            </div>
+            {/* Whole-article playback: reads paragraph after paragraph until the end. */}
+            <button
+              type="button"
+              onClick={toggleArticleSpeech}
+              disabled={!currentArticle?.content?.trim()}
+              className={`tap-lift flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold ring-1 ring-white/10 disabled:opacity-40 ${isArticleSpeaking ? 'bg-amber-400 text-[#102a43]' : 'bg-white/10 text-amber-200'}`}
+              title={tts.isSupported() ? '从第一段开始连续朗读整篇' : '当前浏览器不支持系统语音朗读'}
+            >
+              {isArticleSpeaking ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              <span>{isArticleSpeaking ? `停止朗读 ${Math.min(paragraphSpeechIndex || 0, 99)}句` : '整篇朗读'}</span>
+            </button>
           </div>
-          <button type="button" onClick={() => setShowRefreshModal(true)} className="tap-lift flex items-center gap-1 rounded-xl bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-amber-200 ring-1 ring-white/10"><Sparkles className="w-3.5 h-3.5" />换篇文章</button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleMarkArticleRead}
+              className={`tap-lift flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold ring-1 ring-white/10 ${articleReadState.readAt && articleReadState.percent >= 100 ? 'bg-emerald-400 text-[#102a43]' : 'bg-white/10 text-emerald-200'}`}
+              title="标记本篇已读完，并计入今日学习记录"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{articleReadState.readAt && articleReadState.percent >= 100 ? '已读完' : '标记读完'}</span>
+            </button>
+            <button type="button" onClick={() => setShowRefreshModal(true)} className="tap-lift flex items-center gap-1 rounded-xl bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-amber-200 ring-1 ring-white/10"><Sparkles className="w-3.5 h-3.5" />换篇文章</button>
+          </div>
         </div>
+
+        {/* Library: search / difficulty / read status / sort */}
+        <div className="mt-2 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className="flex flex-1 items-center gap-1.5 rounded-xl bg-white/10 px-2.5 py-1.5 ring-1 ring-white/10">
+              <Search className="w-3.5 h-3.5 text-slate-300" />
+              <input
+                value={libraryQuery}
+                onChange={(event) => setLibraryQuery(event.target.value)}
+                placeholder={`搜索 ${articles.length} 篇文章（标题/题材/难度）`}
+                aria-label="搜索精读文库"
+                className="w-full bg-transparent text-[11px] text-white placeholder:text-slate-400 outline-none"
+              />
+              {libraryQuery && (
+                <button type="button" onClick={() => setLibraryQuery('')} aria-label="清空搜索" className="text-slate-300">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowLibraryFilters((value) => !value)}
+              aria-expanded={showLibraryFilters}
+              className={`flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold ring-1 ring-white/10 ${showLibraryFilters || libraryStatus !== 'all' || libraryLevel !== 'all' ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-200'}`}
+            >
+              <ListFilter className="w-3.5 h-3.5" />筛选
+            </button>
+          </div>
+          {showLibraryFilters && (
+            <div className="rounded-xl bg-white/10 p-2 text-[10px] text-slate-200 ring-1 ring-white/10 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="w-8 flex-none text-slate-400">状态</span>
+                {[['all', '全部'], ['unfinished', '在读'], ['unread', '未读'], ['read', '已读完']].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setLibraryStatus(value === 'unfinished' ? 'reading' : value)}
+                    className={`rounded-md px-1.5 py-0.5 font-semibold ${(value === 'unfinished' ? libraryStatus === 'reading' : libraryStatus === value) ? 'bg-white text-[#102a43]' : 'bg-white/10'}`}
+                  >{label}</button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-8 flex-none text-slate-400">难度</span>
+                <button type="button" onClick={() => setLibraryLevel('all')} className={`rounded-md px-1.5 py-0.5 font-semibold ${libraryLevel === 'all' ? 'bg-white text-[#102a43]' : 'bg-white/10'}`}>全部</button>
+                {availableLevels.map((lv) => (
+                  <button key={lv} type="button" onClick={() => setLibraryLevel(lv)} className={`truncate rounded-md px-1.5 py-0.5 font-semibold ${libraryLevel === lv ? 'bg-white text-[#102a43]' : 'bg-white/10'}`}>{lv}</button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-8 flex-none text-slate-400">排序</span>
+                {[['unfinished', '在读优先'], ['recent', '最新'], ['title', '标题'], ['progress', '进度']].map(([value, label]) => (
+                  <button key={value} type="button" onClick={() => setLibrarySort(value)} className={`rounded-md px-1.5 py-0.5 font-semibold ${librarySort === value ? 'bg-white text-[#102a43]' : 'bg-white/10'}`}>{label}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="mt-2 flex space-x-2 overflow-x-auto pb-1 no-scrollbar text-xs" aria-label="精读文库">
-          {articles.map((art) => {
+          {libraryArticles.length === 0 && (
+            <p className="py-1.5 text-[11px] text-slate-300">
+              {articles.length === 0 ? '文库还是空的，点右上角“导入”添加文章。' : '没有符合条件的文章，试试换个筛选条件。'}
+            </p>
+          )}
+          {libraryArticles.map((art) => {
             const isActive = art.id === currentArticle?.id;
             return (
               <div
@@ -742,7 +996,11 @@ export default function SmartReader({ intent = null }) {
                 const paragraphSpeechDone = isActiveSpeechParagraph && paragraphSpeechIndex >= sentences.length;
 
                 return (
-                  <div key={pIdx} className="group/para -mx-2 rounded-xl border-l-2 border-transparent px-2 py-1 space-y-2 transition-colors hover:border-amber-200 hover:bg-[#fbf8f1]">
+                  <div
+                    key={pIdx}
+                    ref={(element) => { paragraphRefs.current[pIdx] = element; }}
+                    className="group/para -mx-2 rounded-xl border-l-2 border-transparent px-2 py-1 space-y-2 transition-colors hover:border-amber-200 hover:bg-[#fbf8f1]"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100/80 pb-1">
                       <span className="text-[10px] font-semibold tracking-[0.12em] text-slate-400">第 {pIdx + 1} 段 · {sentences.length} 句</span>
                       <div className="flex items-center gap-1.5">

@@ -442,6 +442,38 @@ $ npm run build
 
 N-01（词表补释义入口）、Q-01（首启演示数据说明与"清空示例"）、Q-02/Q-03（统一缺 Key 提示含"去设置"）、R-01（整篇连续朗读 + 查词保留句位）、R-02（文库检索/排序/难度与进度）、R-03（默读计入 + 标记读完），以及 2.4 的组件抽取（Modal/BottomSheet/IconButton/Toast，可一次消掉 D-25/D-30/D-35 与 R-19~R-21、V-19、O-17 等十余项）与口径统一。
 
+### 6.8 第四批（精读三大缺口）已落地
+
+| 编号 | 修复内容 | 改动位置 | 验证 |
+| :--- | :--- | :--- | :--- |
+| **R-01** | ①**恢复整篇连续朗读**：页头新增"整篇朗读/停止朗读"按钮，按段落顺序连续朗读并在读完后自动滚到当前段（`paragraphRefs` + `scrollIntoView`），读完一遍记录一条"完整听读一篇文章"；②**查词不再清零句位**：`handleWordClick` / `handleSentenceClick` 改用 `stopParagraphSpeech(false)`，听到一半点词查义后再点段落播放会**从原句继续**，而不是从头重放 | `SmartReader.jsx` | 代码确证（音频行为未经真机验证） |
+| **R-02** | **文库可检索/筛选/排序**：新增搜索框（标题/题材/难度）、筛选面板（状态：全部/在读/未读/已读完；难度；排序：在读优先/最新/标题/进度），芯片行显示每篇的**难度与阅读进度**（"读到 x%"/"已读完"）；筛选结果为空时给出可操作的文案。过滤排序逻辑抽为可测的 `filterArticles(articles, options, getProgress)` | `studyView.js`、`SmartReader.jsx` | 新测试 6 例（红测：模块级失败） |
+| **R-03** | **默读计入学习记录**：①新增"标记读完"按钮（标记 + 记一条 `reader` 活动 + 庆祝动效）；②**停留/滚动达标即自动计入**：每次打开文章记录 `dwell`，离开或换篇时若"≥1 分钟"或"有滚动且 ≥24 秒"则记一条"静读一篇文章"（含 `durationMinutes`），并用 `hasStudyEventToday` 保证**每篇每天只计一次**；③滚动进度按 5% 步长持久化（避免每次滚动都写 localStorage） | `storage.js`、`SmartReader.jsx` | 新测试 4 例（红测失败） |
+
+```
+$ npm test
+ℹ tests 84   ℹ pass 84   ℹ fail 0        （第三批 74 例 + 本批新增 10 例）
+
+$ npm run lint
+Found 88 warnings and 0 errors.          （与基线一致）
+
+$ npm run build
+✓ built in 1.06s
+```
+
+**红→绿（第四批）**：指向 `HEAD` = `2bb78ab` → 5 项失败：
+`markArticleRead records a finished article…`、`saveArticleProgress keeps the furthest position…`、
+`markArticleRead keeps existing progress…`、`hasStudyEventToday distinguishes today…`、
+以及 `studyView.test.js`（`filterArticles` 不存在）。
+
+**过程中修正的一处自身问题**：最初用 `readStateVersion` 计数器给 `useMemo` 当"缓存失效键"，
+oxlint 报 `useMemo has unnecessary dependency`（依赖没在回调里被引用）。改为把阅读进度放进
+`articleProgressMap` state、并让 `libraryArticles` 真实依赖它 —— 依赖变成诚实的，告警回到基线。
+
+### 6.9 第四批之后仍未做
+
+N-01（本课词表补释义入口）、Q-01（首启演示数据说明 + "清空示例"）、Q-02/Q-03（统一缺 Key 提示含"去设置"入口），以及 2.4 的**组件抽取**（`Modal`/`BottomSheet`/`IconButton`/`Toast`）与口径统一（到期词、"困难词"阈值、活动/打卡口径收敛为单一模块）。
+
 ---
 
 ## 附录：本次扫描用到的核验手法
