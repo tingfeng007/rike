@@ -662,6 +662,24 @@ export default function Settings() {
               <button type="button" onClick={handleClearCourseCache} className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-100 hover:bg-sky-100"><Trash2 className="h-3 w-3" />清理课程缓存</button>
             </div>
             <p className="mt-2 text-[10px] leading-4 text-slate-500">清理只移除课程目录和字幕缓存，不会删除单词、错题、试卷和学习进度。</p>
+
+            {/* A failed write (quota / blocked storage) used to be recorded but never shown,
+                so ratings, streaks and events could silently fail to persist. */}
+            {storageDiagnostics.lastWriteError ? (
+              <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-[10.5px] leading-4 text-rose-800">
+                <p className="font-semibold">
+                  {storageDiagnostics.lastWriteError.quotaExceeded
+                    ? '⚠️ 本地存储已写满，最近一次保存失败'
+                    : '⚠️ 最近一次保存失败（浏览器可能禁用了本地存储）'}
+                </p>
+                <p className="mt-1">
+                  受影响的键：<span className="font-mono">{storageDiagnostics.lastWriteError.key}</span>
+                  。请先<strong>导出备份</strong>，再清理课程缓存或删除不再需要的口语记录后重试。
+                </p>
+              </div>
+            ) : (
+              <p className="mt-2 text-[10px] leading-4 text-emerald-700">本地存储写入正常。</p>
+            )}
           </div>
 
           {/* API Key Security Toggle for Export */}

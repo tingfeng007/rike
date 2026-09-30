@@ -1,4 +1,7 @@
-import { StorageService } from './storage';
+// `.js` extension required: this module is loaded directly by `node --test`, which (unlike
+// Vite) does not resolve extension-less specifiers. Matches the convention used by the
+// other service modules (studyPlan.js, nce.js, nceReview.js).
+import { StorageService } from './storage.js';
 
 /**
  * Request timeouts. The audit found that AI calls had no timeout and no way to cancel,
@@ -9,6 +12,167 @@ export const AI_REQUEST_TIMEOUT_MS = 60000;
 // Streaming: abort only if the provider goes quiet for this long (a long answer is fine,
 // a stalled socket is not).
 export const AI_STREAM_IDLE_TIMEOUT_MS = 30000;
+
+/**
+ * Response shaping.
+ *
+ * `extractJson` only proves the reply *parsed*; it says nothing about structure. Components
+ * then read fields like `q.options.map(...)` or `generatedStory.storyEn.replace(...)`, so a
+ * model that omits a key or returns a different shape crashed the whole tab (the vocabulary
+ * page even took the ErrorBoundary down). These normalizers turn any parseable reply into
+ * the exact shape the UI needs, or raise one readable Chinese error.
+ */
+
+function asText(value, fallback = '') {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return fallback;
+}
+
+function asStringList(value, predicate = () => true) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => asText(item)).filter((item) => item && predicate(item));
+}
+
+/**
+ * Normalize `{ questions: [...] }` from the quiz generator.
+ * Invalid questions are dropped rather than crashing the reviewer; the surviving
+ * questions are guaranteed to have a unique id, at least two options and an in-range
+ * `correctIndex` (a missing/out-of-range index used to mark a correct answer wrong and
+ * additionally reset the word's SRS scheduling).
+ *
+ * @throws {Error} when no usable question survives
+ */
+export function normalizeVocabularyQuiz(raw) {
+  const source = Array.isArray(raw) ? raw : raw?.questions;
+  if (!Array.isArray(source)) {
+    throw new Error('AI 返回的测验格式无法识别，请重试一次');
+  }
+
+  const seenIds = new Set();
+  const questions = [];
+
+  source.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    const options = asStringList(item.options);
+    if (options.length < 2) return;
+
+    let correctIndex = Number(item.correctIndex);
+    if (!Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex >= options.length) {
+      // Fall back to the option that matches the target word/answer, otherwise drop it.
+      const answer = asText(item.answer || item.correctOption).trim().toLowerCase();
+      const matched = answer ? options.findIndex((option) => option.trim().toLowerCase() === answer) : -1;
+      if (matched < 0) return;
+      correctIndex = matched;
+    }
+
+    let id = asText(item.id).trim() || `q_${index + 1}`;
+    while (seenIds.has(id)) id = `${id}_${questions.length + 1}`;
+    seenIds.add(id);
+
+    questions.push({
+      id,
+      targetWord: asText(item.targetWord || item.word),
+      sentenceWithBlank: asText(item.sentenceWithBlank || item.sentence || item.question),
+      sentenceCn: asText(item.sentenceCn),
+      options,
+      correctIndex,
+      explanation: asText(item.explanation),
+    });
+  });
+
+  if (questions.length === 0) {
+    throw new Error('AI 这次没有给出可用的测验题，请再试一次');
+  }
+  return { questions };
+}
+
+/**
+ * Normalize the micro-story response. `storyEn` is required — the UI calls
+ * `.replace()` on it directly and offers a "save to reader" action.
+ *
+ * @throws {Error} when the story body is missing
+ */
+export function normalizeVocabStory(raw, { genre = 'mystery' } = {}) {
+  const story = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const storyEn = asText(story.storyEn || story.story || story.content).trim();
+  if (!storyEn) {
+    throw new Error('AI 这次没有返回故事正文，请重试一次');
+  }
+  return {
+    title: asText(story.title, 'A LingoFlow Story'),
+    titleCn: asText(story.titleCn, '生词微剧场'),
+    storyEn,
+    storyCn: asText(story.storyCn),
+    genre: asText(story.genre, genre),
+    usedWords: asStringList(story.usedWords),
+  };
+}
+
+/**
+ * Normalize the generated reader article.
+ *
+ * @throws {Error} when the article body is missing
+ */
+export function normalizeArticle(raw) {
+  const article = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const content = asText(article.content || article.body || article.text).trim();
+  if (!content) {
+    throw new Error('AI 这次没有返回文章正文，请重试一次');
+  }
+  return {
+    title: asText(article.title, 'AI 精选外刊'),
+    titleCn: asText(article.titleCn),
+    level: asText(article.level),
+    content,
+    tags: asStringList(article.tags),
+  };
+}
+
+/**
+ * Normalize a word/sentence analysis so every field the UI reads is a string.
+ * Never throws: a degraded card is better than a crashed reading view.
+ */
+export function normalizeWordAnalysis(raw, { word = '', sentence = '' } = {}) {
+  const analysis = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return {
+    ...analysis,
+    word: asText(analysis.word, word),
+    phonetic: asText(analysis.phonetic),
+    pos: asText(analysis.pos),
+    translation: asText(analysis.translation),
+    definitionEn: asText(analysis.definitionEn),
+    contextSentence: asText(analysis.contextSentence, sentence),
+    contextSentenceCn: asText(analysis.contextSentenceCn),
+    memoryTip: asText(analysis.memoryTip),
+    collocations: asStringList(analysis.collocations),
+  };
+}
+
+/**
+ * Normalize the sentence (long-sentence breakdown) analysis.
+ * Never throws.
+ */
+export function normalizeSentenceAnalysis(raw, { sentence = '' } = {}) {
+  const analysis = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const clauses = Array.isArray(analysis.clauses)
+    ? analysis.clauses
+      .filter((clause) => clause && typeof clause === 'object')
+      .map((clause) => ({
+        type: asText(clause.type, '成分'),
+        text: asText(clause.text),
+        explanation: asText(clause.explanation),
+      }))
+    : [];
+  return {
+    ...analysis,
+    sentence: asText(analysis.sentence, sentence),
+    structureSummary: asText(analysis.structureSummary),
+    translation: asText(analysis.translation),
+    clauses,
+    grammarPoints: asStringList(analysis.grammarPoints),
+  };
+}
 
 /**
  * Clean and format the base URL
@@ -404,7 +568,7 @@ ${contextSentence ? `该词出现在以下上下文中: "${contextSentence}"` : 
   ];
 
   const raw = await callAICompletion({ messages, temperature: 0.3, responseFormatJson: true });
-  return extractJson(raw);
+  return normalizeWordAnalysis(extractJson(raw), { word, sentence: contextSentence });
 }
 
 /**
@@ -440,7 +604,7 @@ export async function analyzeSentenceWithAI(sentence) {
   ];
 
   const raw = await callAICompletion({ messages, temperature: 0.3, responseFormatJson: true });
-  return extractJson(raw);
+  return normalizeSentenceAnalysis(extractJson(raw), { sentence });
 }
 
 /**
@@ -649,7 +813,7 @@ export async function generateVocabularyQuiz(words) {
   ];
 
   const raw = await callAICompletion({ messages, temperature: 0.4, responseFormatJson: true });
-  return extractJson(raw);
+  return normalizeVocabularyQuiz(extractJson(raw));
 }
 
 /**
@@ -707,7 +871,7 @@ export async function generateVocabStoryWithAI({
   ];
 
   const raw = await callAICompletion({ messages, temperature: 0.7, responseFormatJson: true });
-  return extractJson(raw);
+  return normalizeVocabStory(extractJson(raw), { genre });
 }
 
 /**
@@ -754,5 +918,5 @@ ${targetWordsPrompt}
   ];
 
   const raw = await callAICompletion({ messages, temperature: 0.7, responseFormatJson: true });
-  return extractJson(raw);
+  return normalizeArticle(extractJson(raw));
 }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { StorageService, DEFAULT_SAMPLE_WORDS, MAX_INTERVAL_DAYS } from '../src/services/storage.js';
+import { filterVocabulary } from '../src/services/studyView.js';
 
 /**
  * Regression tests for the data-safety defects found in the optimisation audit
@@ -351,4 +352,42 @@ test('revertReview only drops the event belonging to that word', () => {
   const remaining = StorageService.getStudyEvents();
   assert.equal(remaining.length, 1);
   assert.equal(remaining[0].entityId, 'w2', 'the other word\'s event is untouched');
+});
+
+// --- V-04: every vocab mutation must report a dropped write -------------------
+
+test('updateWord and deleteWord report a failed write instead of pretending success', () => {
+  const failing = createMemoryStorage();
+  globalThis.localStorage = failing;
+  StorageService.saveVocabulary([{ id: 'w1', word: 'alpha', translation: 'a' }]);
+
+  failing.failKeys.add('lingoflow_vocabulary');
+  assert.equal(StorageService.updateWord('w1', { translation: 'changed' }), null, 'edit must report failure');
+  assert.equal(StorageService.deleteWord('w1'), null, 'delete must report failure');
+
+  // Nothing was persisted, so the word is still on disk with its original translation.
+  const words = StorageService.getVocabulary();
+  assert.equal(words.length, 1);
+  assert.equal(words[0].translation, 'a');
+});
+
+test('updateWord and deleteWord still succeed on a healthy store', () => {
+  StorageService.saveVocabulary([{ id: 'w1', word: 'alpha', translation: 'a' }, { id: 'w2', word: 'beta' }]);
+  assert.equal(StorageService.updateWord('w1', { translation: 'changed' }).translation, 'changed');
+  assert.deepEqual(StorageService.deleteWord('w2').map((w) => w.id), ['w1']);
+});
+
+// --- V-06: a word saved without a meaning must stay discoverable ---------------
+
+test('a word added without an AI meaning is findable by the needs-meaning filter', () => {
+  // The component used to write the placeholder "自主添加生词" on AI failure, which looked
+  // like a real translation and hid the word from the app's own "需要释义" bucket.
+  StorageService.addWord({ word: 'handbag', translation: '', tags: ['手动输入'] });
+
+  const all = StorageService.getVocabulary();
+  assert.deepEqual(filterVocabulary(all, '', 'needsMeaning').map((w) => w.word), ['handbag']);
+
+  StorageService.addWord({ word: 'umbrella', translation: '雨伞' });
+  const afterSecond = StorageService.getVocabulary();
+  assert.deepEqual(filterVocabulary(afterSecond, '', 'needsMeaning').map((w) => w.word), ['handbag']);
 });

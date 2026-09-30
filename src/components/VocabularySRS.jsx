@@ -61,7 +61,7 @@ export default function VocabularySRS() {
   const [studyStats, setStudyStats] = useState(() => StorageService.getStudyStats());
   // Last rating, kept briefly so a mis-tap can be undone (word state + stats + event).
   const [undoState, setUndoState] = useState(null);
-  const [rateError, setRateError] = useState('');
+  const [dataError, setDataError] = useState('');
   const lastRatedRef = useRef({ id: '', at: 0 });
   const requeuedRef = useRef(new Set());
   const undoTimerRef = useRef(null);
@@ -104,11 +104,16 @@ export default function VocabularySRS() {
 
   const handleSaveEdit = () => {
     if (!editingWord) return;
-    StorageService.updateWord(editingWord.id, {
+    const saved = StorageService.updateWord(editingWord.id, {
       translation: editTranslation.trim(),
       contextSentence: editContextSentence.trim(),
       userNote: editUserNote.trim(),
     });
+    if (!saved) {
+      setDataError('修改没有保存成功（可能是浏览器存储已满）。请先导出备份，再清理空间后重试。');
+      return;
+    }
+    setDataError('');
     setEditingWord(null);
     reloadVocabulary();
   };
@@ -169,10 +174,10 @@ export default function VocabularySRS() {
     if (!updatedWord) {
       // The write failed (quota / blocked storage): keep the card and tell the user.
       lastRatedRef.current = { id: '', at: 0 };
-      setRateError('这次评分没有保存成功（可能是浏览器存储已满）。请先导出备份再重试。');
+      setDataError('这次评分没有保存成功（可能是浏览器存储已满）。请先导出备份再重试。');
       return;
     }
-    setRateError('');
+    setDataError('');
     const updatedStats = StorageService.recordReviewActivity(1, { entityId: currentCard.id, durationMinutes: 1 });
     setStudyStats(updatedStats);
 
@@ -225,7 +230,7 @@ export default function VocabularySRS() {
       entityId: undoState.wordId,
     });
     if (!restored) {
-      setRateError('撤销失败，未能恢复这条评分。');
+      setDataError('撤销失败，未能恢复这条评分。');
       return;
     }
     requeuedRef.current.delete(undoState.wordId);
@@ -245,7 +250,7 @@ export default function VocabularySRS() {
     setVocabulary(StorageService.getVocabulary());
     setStudyStats(StorageService.getStudyStats());
     setUndoState(null);
-    setRateError('');
+    setDataError('');
   };
 
   // Add new word manually with AI enhancement
@@ -259,18 +264,20 @@ export default function VocabularySRS() {
       try {
         analysis = await analyzeWordWithAI(word, inputContext);
       } catch {
-        // Fallback if no API key
+        // Offline / no key: keep the word but leave the meaning EMPTY. The placeholder text
+        // used to be written here ("自主添加生词"), which looked complete and defeated the
+        // app's own "需要释义" filter (studyView.js treats a blank translation as missing).
         analysis = {
           word,
           phonetic: '',
-          pos: 'word',
-          translation: '自主添加生词',
+          pos: '',
+          translation: '',
           definitionEn: '',
           contextSentence: inputContext,
         };
       }
 
-      StorageService.addWord({
+      const added = StorageService.addWord({
         word,
         phonetic: analysis?.phonetic || '',
         pos: analysis?.pos || '',
@@ -280,6 +287,11 @@ export default function VocabularySRS() {
         contextSentenceCn: analysis?.contextSentenceCn || '',
         tags: ['手动输入'],
       });
+      if (!added) {
+        setDataError('这个词没有保存成功（可能是浏览器存储已满）。');
+        return;
+      }
+      setDataError(added.translation ? '' : '已加入生词本，但暂时没有释义——可在“需要释义”筛选里补齐。');
 
       setShowAddModal(false);
       setInputWord('');
@@ -293,11 +305,15 @@ export default function VocabularySRS() {
   // Delete word
   const handleDeleteWord = (id, e) => {
     e.stopPropagation();
-    if (confirm('确认将此单词从生词本中删除？')) {
-      const updated = StorageService.deleteWord(id);
-      setVocabulary(updated);
-      reloadVocabulary();
+    if (!confirm('确认将此单词从生词本中删除？该词的复习进度、来源与个人笔记会一并移除，且不可撤销。')) return;
+    const updated = StorageService.deleteWord(id);
+    if (!updated) {
+      setDataError('删除没有保存成功，这个词仍在生词本里。');
+      return;
     }
+    setDataError('');
+    setVocabulary(updated);
+    reloadVocabulary();
   };
 
   // Open story studio modal
@@ -555,6 +571,14 @@ export default function VocabularySRS() {
 
       {/* Main Body */}
       <div className="flex-1 overflow-y-auto p-4 pb-20">
+        {/* Write failures (quota / blocked storage) must be visible from every tab, not only
+            on the flashcard: rating, adding, editing and deleting all write to localStorage. */}
+        {dataError && (
+          <output className="mx-auto mb-3 block max-w-md rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] leading-5 text-rose-800">
+            {dataError}
+          </output>
+        )}
+
         {/* ================= TAB 1: FLASHCARD SRS ================= */}
         {activeTab === 'flashcard' && (
           <div className="max-w-md mx-auto h-full flex flex-col justify-between py-2">
@@ -589,11 +613,6 @@ export default function VocabularySRS() {
                       撤销
                     </button>
                   </div>
-                )}
-                {rateError && (
-                  <output className="mb-3 block rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800">
-                    {rateError}
-                  </output>
                 )}
 
                 {/* 3D Flip Card Container */}

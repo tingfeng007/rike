@@ -381,6 +381,33 @@ NEW  containsTerm("I had an egg","e.g")             -> false
 
 **V-01 与 Q-04 属 UI 层改动**：本轮通过代码确证（守卫为纯 id+时间比较、文案分支互斥），但**未经浏览器验证**，建议纳入下次真机走查。
 
+### 6.4 第二批（数据可信与写入可见化）已落地
+
+| 编号 | 修复内容 | 改动位置 | 验证 |
+| :--- | :--- | :--- | :--- |
+| **V-05** | 新增 5 个响应归一化器（`normalizeVocabularyQuiz` / `normalizeVocabStory` / `normalizeArticle` / `normalizeWordAnalysis` / `normalizeSentenceAnalysis`）并接入全部 5 个非口语 AI 入口：非法题目**丢弃**而不是让页面崩、`correctIndex` 越界时从答案文本**恢复**或丢弃（此前会"答对判错"并额外触发 `again` 惩罚）、`id` 缺失/重复**本地补齐**（判分依赖 id 唯一）、`storyEn`/`content` 缺失时抛一条**可读中文错误**而不是稍后 `TypeError`、分析与长难句字段一律规范为字符串/数组 | `ai.js`（新增归一化段 + 5 处接线） | 新测试 13 例（红测：模块级失败） |
+| **V-04 / Q-11** | 写入失败契约贯彻到词库：`updateWord` / `deleteWord` 写盘失败返回 `null`（与 `addWord` / `updateWordSRS` 一致）；词库的**改 / 增 / 删**三处均消费返回值并提示；错误提示从闪卡页**上移为全标签可见的横幅**；设置页新增 `lastWriteError` 展示（区分"空间已满"与"存储被禁用"，并指引先导出备份） | `storage.js`、`VocabularySRS.jsx`、`Settings.jsx` | 新测试 2 例（红测失败） |
+| **V-06** | 手动加词在 AI 失败时不再写入占位文案 `'自主添加生词'`，改为**留空** —— 于是这个词能被应用自己的「需要释义」筛选出来（`studyView.js:22` 判空）；同时删除确认文案补上"复习进度/来源/笔记一并移除且不可撤销" | `VocabularySRS.jsx` | 新测试 1 例（该例对修复前后**均通过**，属契约护栏；真正的修复在组件层，无法在无渲染器环境下做红绿验证） |
+| — | 顺带把 `ai.js` 的 `'./storage'` 导入补上 `.js` 扩展名：Node 的 `node --test` 不解析省略扩展名的说明符（Vite 会），补上后该模块才可被单测直接加载；这也与 `studyPlan.js` / `nce.js` / `nceReview.js` 的既有写法一致 | `ai.js:1-4` | 测试可加载即为证 |
+
+```
+$ npm test
+ℹ tests 69   ℹ pass 69   ℹ fail 0        （第一批 53 例 + 第二批新增 16 例）
+
+$ npm run lint
+Found 88 warnings and 0 errors.          （仍与基线一致）
+
+$ npm run build
+✓ built in 1.02s
+```
+
+**红→绿（第二批）**：指向 `HEAD` = `b3fe5f4` 运行 → `ai-normalize.test.js` 模块级失败（归一化器不存在）、
+`updateWord and deleteWord report a failed write` 失败；修复后 69/69 全通过。
+
+### 6.5 第二批之后仍未做
+
+V-06/V-07/V-08（来源可跳转、显示下次复习日期、可选学多少）、N-05/N-01（错题定位到原句、词表补释义）、N-08/Q-07（"继续学习"intent 与 `entityId` 传递）、Q-01/Q-02/Q-03（首启引导与缺 Key 统一提示）、R-01/R-02/R-03（整篇朗读、文库检索、默读计入 + 标记读完），以及 2.4 的组件抽取与口径统一。详见 5.2 第三批。
+
 ---
 
 ## 附录：本次扫描用到的核验手法

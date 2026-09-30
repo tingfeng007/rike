@@ -446,8 +446,8 @@ export const StorageService = {
     const index = words.findIndex((w) => w.id === wordId);
     if (index === -1) return null;
     words[index] = { ...words[index], ...updatedFields };
-    this.saveVocabulary(words);
-    return words[index];
+    // Report a dropped write instead of pretending the edit was saved.
+    return this.saveVocabulary(words) ? words[index] : null;
   },
 
   /**
@@ -697,8 +697,8 @@ export const StorageService = {
 
   deleteWord(wordId) {
     const words = this.getVocabulary().filter((w) => w.id !== wordId);
-    this.saveVocabulary(words);
-    return words;
+    // null means "the deletion was not persisted" — the word is still on disk.
+    return this.saveVocabulary(words) ? words : null;
   },
 
   // --- Chat Messages ---
