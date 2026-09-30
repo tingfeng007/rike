@@ -1,3 +1,7 @@
+// Note: the `.js` extension is required — this module is loaded directly by
+// `node --test`, which (unlike Vite) does not resolve extension-less specifiers.
+import { escapeRegExp } from './text.js';
+
 const STOP_WORDS = new Set([
   'a', 'an', 'the', 'am', 'is', 'are', 'was', 'were', 'i', 'you', 'he', 'she', 'it',
   'we', 'they', 'this', 'that', 'to', 'of', 'in', 'on', 'at', 'and', 'or', 'but', 'for',
@@ -110,7 +114,7 @@ export function buildExercises(lines, limit = 5) {
     const words = line.en.replace(/[^A-Za-z' ]/g, '').split(/\s+/).filter(Boolean);
     const candidateWords = words.filter((word) => !STOP_WORDS.has(word.toLowerCase()));
     const answer = candidateWords[0] || words[Math.min(1, words.length - 1)];
-    const masked = line.en.replace(new RegExp(`\\b${answer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'), '_____');
+    const masked = line.en.replace(new RegExp(`\\b${escapeRegExp(answer)}\\b`, 'i'), '_____');
     const distractors = words.filter((word) => word.toLowerCase() !== answer.toLowerCase());
     const options = stableShuffle(
       Array.from(new Set([answer, distractors[0], distractors.at(-1), 'please'].filter(Boolean))).slice(0, 4),

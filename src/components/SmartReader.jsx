@@ -28,6 +28,7 @@ import {
   generateDailyArticleWithAI,
 } from '../services/ai';
 import { tts } from '../services/speech';
+import { containsTerm } from '../services/text';
 import StudyHeader from './StudyHeader';
 import { getReadingMetrics } from '../services/studyView';
 
@@ -297,7 +298,7 @@ export default function SmartReader() {
   const exportReadingNotes = () => {
     if (!currentArticle) return;
     const vocabInArticle = Object.values(savedVocabMap).filter((item) =>
-      new RegExp(`\\b${item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(currentArticle.content)
+      containsTerm(currentArticle.content, item.word)
     );
     const noteSections = currentAnnotations.length > 0
       ? currentAnnotations.map((item, index) =>
@@ -497,24 +498,29 @@ export default function SmartReader() {
     }
   };
 
-  // Find sentence containing the word
+  // Find sentence containing the word.
+  // Fallback only: the render already knows the enclosing sentence, so the primary path
+  // passes it in directly. This used to receive the whole article and return the *first*
+  // matching sentence, so a word appearing in several places got another occurrence's
+  // context (which was then stored on the vocabulary card). The match pattern is escaped
+  // so tokens like `e.g`, `C++` or `(a)` neither throw nor match unrelated sentences.
   const findEnclosingSentence = (text, word) => {
     const sentences = splitIntoSentences(text);
-    const match = sentences.find((s) =>
-      new RegExp(`\\b${word}\\b`, 'i').test(s)
-    );
+    const match = sentences.find((s) => containsTerm(s, word));
     return match ? match.trim() : '';
   };
 
   // Handle word click
-  const handleWordClick = async (rawWord) => {
+  const handleWordClick = async (rawWord, enclosingSentence = '') => {
     // Clean word: remove trailing punctuation
     const clean = rawWord.replace(/^[^\w]+|[^\w]+$/g, '');
     if (!clean || clean.length < 2) return;
 
     stopParagraphSpeech();
 
-    const sentence = findEnclosingSentence(currentArticle.content, clean);
+    // Prefer the sentence the user actually tapped on; fall back to a whole-article search.
+    const sentence = (enclosingSentence || '').trim()
+      || findEnclosingSentence(currentArticle.content, clean);
     setSelectedWord({ word: clean, sentence });
     setWordAnalysis(null);
     setIsAnalyzingWord(true);
@@ -793,7 +799,7 @@ export default function SmartReader() {
                               return (
                                 <span
                                   key={wIdx}
-                                  onClick={() => handleWordClick(word)}
+                                  onClick={() => handleWordClick(word, sentence)}
                                   className={`cursor-pointer rounded px-0.5 py-0.5 transition-all active:bg-sky-200 ${
                                     vocabHit
                                       ? 'bg-amber-100/90 text-amber-950 font-semibold border-b-2 border-amber-400 shadow-2xs hover:bg-amber-200'

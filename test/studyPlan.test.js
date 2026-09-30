@@ -1,7 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildActivityCalendar, buildDailyPlan, getWeeklyReview, saveDailyTaskState } from '../src/services/studyPlan.js';
+import { buildActivityCalendar, buildDailyPlan, getWeeklyReview, saveDailyTaskState, activityTypeForTask } from '../src/services/studyPlan.js';
 import { getNceMastery, isNceReviewDue } from '../src/services/nceMastery.js';
+
+// --- Q-05: ticking a plan item must feed the same activity stream as doing the work ---
+
+test('every daily-plan task type maps to an activity type the stats understand', () => {
+  // These are the activity types the streak / weekly review / activity calendar consume.
+  const known = new Set(['review', 'oral', 'reader', 'course']);
+  for (const taskType of ['vocab', 'oral', 'reader', 'nce']) {
+    const mapped = activityTypeForTask(taskType);
+    assert.ok(known.has(mapped), `${taskType} maps to a known activity type, got ${mapped}`);
+  }
+  assert.equal(activityTypeForTask('vocab'), 'review', 'the vocab plan item is a review task');
+  assert.equal(activityTypeForTask('nce'), 'course');
+  assert.equal(activityTypeForTask('unknown-type'), 'review', 'unknown types fall back safely');
+});
 
 test('daily plan prioritizes due vocabulary, course review and unfinished oral practice', () => {
   const now = new Date('2026-09-23T09:00:00');

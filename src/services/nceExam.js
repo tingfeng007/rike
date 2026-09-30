@@ -1,3 +1,6 @@
+// `.js` extension required: loaded directly by `node --test` (Vite would resolve either).
+import { escapeRegExp } from './text.js';
+
 const FUNCTION_WORDS = new Set([
   'a', 'an', 'the', 'am', 'is', 'are', 'was', 'were', 'i', 'you', 'he', 'she', 'it',
   'we', 'they', 'this', 'that', 'to', 'of', 'in', 'on', 'at', 'and', 'or', 'but', 'for',
@@ -20,7 +23,23 @@ function normalized(text) {
     .replace(/[^a-z0-9'\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-export function buildNceExamQuestions(lines, unitId, limit = 10) {
+/**
+ * Build a unit exam paper.
+ *
+ * @param {Array} lines parsed lesson lines (from `parseLrc`)
+ * @param {string} unitId unit filename
+ * @param {number} [limit] max number of questions
+ * @param {string|number} [variant] attempt salt. Seeds were derived only from
+ *   `unitId`/`line.id`, so every retake produced the *identical* paper (same questions,
+ *   same option order) and the test measured answer memorisation. Pass a per-attempt
+ *   value (e.g. the attempt count or start timestamp); omit it to keep the previous
+ *   deterministic behaviour.
+ */
+export function buildNceExamQuestions(lines, unitId, limit = 10, variant = '') {
+  // Keep the historical seeds exactly when no variant is supplied, so existing callers
+  // (and tests) stay deterministic; only a per-attempt variant perturbs the paper.
+  const hasVariant = variant !== '' && variant !== null && variant !== undefined;
+  const salt = hasVariant ? `${unitId}#${variant}` : unitId;
   const uniqueEnglish = new Set();
   const usable = lines.filter((line) => {
     if (/^Lesson\s+\d+|^Listen to the tape/i.test(line.en || '')) return false;
@@ -34,10 +53,10 @@ export function buildNceExamQuestions(lines, unitId, limit = 10) {
     (line.en.match(/[A-Za-z']+/g) || []).length >= 2
     && usable.filter((other) => other.zh !== line.zh).length >= 2
   ));
-  const choices = shuffled(choiceLines, `${unitId}:choice`).slice(0, Math.ceil(limit / 2)).map((line) => {
+  const choices = shuffled(choiceLines, `${salt}:choice`).slice(0, Math.ceil(limit / 2)).map((line) => {
     const alternatives = shuffled(
       usable.filter((other) => other.id !== line.id && other.zh !== line.zh),
-      `${unitId}:${line.id}:options`,
+      `${salt}:${line.id}:options`,
     ).slice(0, 3).map((item) => item.en);
     return {
       id: `${unitId}:meaning:${line.id}`,
@@ -45,18 +64,18 @@ export function buildNceExamQuestions(lines, unitId, limit = 10) {
       prompt: '根据课文，选出对应的英文原句',
       question: line.zh,
       answer: line.en,
-      options: shuffled([line.en, ...alternatives], `${unitId}:${line.id}:order`),
+      options: shuffled([line.en, ...alternatives], `${salt}:${line.id}:order`),
       source: line.en,
       translation: line.zh,
     };
   });
 
-  const blanks = shuffled(usable, `${unitId}:blank`).flatMap((line) => {
+  const blanks = shuffled(usable, `${salt}:blank`).flatMap((line) => {
     const words = line.en.match(/[A-Za-z][A-Za-z'-]*/g) || [];
     if (words.length < 2) return [];
     const answer = words.find((word) => word.length >= 3 && !FUNCTION_WORDS.has(word.toLowerCase()));
     if (!answer) return [];
-    const escaped = answer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = escapeRegExp(answer);
     return [{
       id: `${unitId}:blank:${line.id}`,
       type: 'fill',

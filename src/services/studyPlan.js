@@ -2,6 +2,23 @@ import { buildNceReviewQueue } from './nceReview.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Map a daily-plan task to the study-activity type used by the streak / weekly review.
+ *
+ * Ticking a plan checkbox is the user asserting they did the work, so it must feed the
+ * same activity stream as doing it inside the module — otherwise a fully ticked day still
+ * reports "0 天有学习" next to a 3/3 progress bar.
+ *
+ * @param {string} taskType one of 'vocab' | 'oral' | 'reader' | 'nce'
+ * @returns {'review'|'oral'|'reader'|'course'}
+ */
+export function activityTypeForTask(taskType) {
+  if (taskType === 'oral') return 'oral';
+  if (taskType === 'reader') return 'reader';
+  if (taskType === 'nce') return 'course';
+  return 'review';
+}
+
 export function getDateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');

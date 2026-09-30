@@ -374,10 +374,17 @@ export const StorageService = {
     //      due every single day forever, now it always advances by at least a day.
     const capInterval = (days) => Math.min(MAX_INTERVAL_DAYS, Math.max(1, Math.round(days)));
 
+    // "again" means the word is due for relearning *today*, not tomorrow. The UI promises
+    // exactly that ("已自动重置加入今日待复习闪卡队伍" / "重头复习"), and the product plan
+    // (P0_P1_IMPROVEMENT_PLAN 任务 3) required it; the previous code pushed the due date a
+    // full day out, so a forgotten word silently skipped the current session.
+    let dueNow = false;
+
     if (quality === 'again') {
       newStep = 0;
       newInterval = 1;
       newStatus = 'learning';
+      dueNow = true;
       // Penalize ease factor for forgotten word (floor at 1.3)
       newEase = Math.max(1.3, Number((newEase - 0.2).toFixed(2)));
     } else if (quality === 'hard') {
@@ -416,7 +423,9 @@ export const StorageService = {
       status: newStatus,
       reviewCount: (word.reviewCount || 0) + 1,
       lastReviewedAt: now,
-      nextReviewDate: now + newInterval * ONE_DAY_MS,
+      // dueNow keeps intervalDays as the "next interval to apply" while making the card
+      // immediately due again (it re-enters today's queue instead of disappearing).
+      nextReviewDate: dueNow ? now : now + newInterval * ONE_DAY_MS,
       tags: (() => {
         const tags = new Set(word.tags || []);
         if (quality === 'again' || quality === 'hard') tags.add('困难词');
@@ -439,6 +448,50 @@ export const StorageService = {
     words[index] = { ...words[index], ...updatedFields };
     this.saveVocabulary(words);
     return words[index];
+  },
+
+  /**
+   * Undo a single flashcard rating.
+   *
+   * Restores the word exactly as it was before the rating, puts the study counters back,
+   * and removes the review event that was recorded for it — otherwise "undo" would leave
+   * inflated stats/streak/calendar entries behind.
+   *
+   * @param {{ snapshot?: object, previousStats?: object, entityId?: string }} options
+   * @returns {boolean} whether the word itself was restored (the meaningful part)
+   */
+  revertReview({ snapshot, previousStats, entityId } = {}) {
+    let restoredWord = false;
+
+    if (snapshot && snapshot.id) {
+      const words = this.getVocabulary();
+      const index = words.findIndex((w) => w.id === snapshot.id);
+      if (index !== -1) {
+        words[index] = { ...snapshot };
+        restoredWord = this.saveVocabulary(words) === true;
+      }
+    }
+
+    if (previousStats && typeof previousStats === 'object') {
+      this.saveStudyStats(previousStats);
+    }
+
+    if (entityId) {
+      try {
+        const events = this.getStudyEvents({ limit: 2000 });
+        for (let i = events.length - 1; i >= 0; i -= 1) {
+          if (events[i].type === 'review' && events[i].entityId === entityId) {
+            events.splice(i, 1);
+            safeSetItem(STORAGE_KEYS.STUDY_EVENTS, JSON.stringify(events));
+            break;
+          }
+        }
+      } catch {
+        // Undoing the word is what matters; a stale event is not worth failing the undo.
+      }
+    }
+
+    return restoredWord;
   },
 
   // --- Study Habit & Streak Stats 2.0 (Multi-module activity tracker) ---

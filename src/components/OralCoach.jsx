@@ -22,6 +22,7 @@ import confetti from 'canvas-confetti';
 import { SCENARIOS } from '../data/scenarios';
 import { StorageService } from '../services/storage';
 import { getOralCoachResponseStream } from '../services/ai';
+import { containsTerm } from '../services/text';
 import { tts, stt } from '../services/speech';
 import StudyHeader from './StudyHeader';
 
@@ -154,14 +155,16 @@ export default function OralCoach({ onNavigateToVocab }) {
       return;
     }
 
-    setInputText('');
-
     const targetWords = getActiveTargetWords();
 
-    // Check if user hit any target words! (Wanted Words Mission)
-    const hitWords = targetWords.filter((w) =>
-      new RegExp(`\\b${w}\\b`, 'i').test(text)
-    );
+    // Check if the user hit any target words (Wanted Words Mission).
+    // This must run BEFORE the input is cleared and must never throw: `targetWords` comes
+    // from the user's own vocabulary book, so an entry such as `C++` or a whole collected
+    // sentence used to make `new RegExp` raise "Nothing to repeat" — the input had already
+    // been emptied and nothing surfaced the error, so the message silently disappeared.
+    const hitWords = targetWords.filter((word) => containsTerm(text, word));
+
+    setInputText('');
 
     if (hitWords.length > 0) {
       confetti({

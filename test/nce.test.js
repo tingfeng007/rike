@@ -22,6 +22,53 @@ test('parseLrc parses timestamps and bilingual text', () => {
   assert.equal(lines[1].zh, '这是你的手提包吗？');
 });
 
+// --- N-18: retaking a unit must not hand back the identical paper -------------
+
+const VARIANT_LRC = `[00:01.00]Excuse me, is this your handbag? | 打扰一下，这是你的手提包吗？
+[00:02.00]Yes, it is. Thank you very much. | 是的，非常感谢。
+[00:03.00]My coat and my umbrella please. | 请把我的大衣和伞给我。
+[00:04.00]Here is my ticket. | 这是我的票。
+[00:05.00]This is my umbrella and that is my coat. | 这是我的伞，那是我的大衣。
+[00:06.00]Sorry sir, but my dog is not well today. | 抱歉先生，我的狗今天不舒服。`;
+
+test('an exam built without a variant stays deterministic', () => {
+  const lines = parseLrc(VARIANT_LRC);
+  const first = buildNceExamQuestions(lines, 'unit-a');
+  const second = buildNceExamQuestions(lines, 'unit-a');
+
+  assert.deepEqual(
+    first.map((q) => q.id),
+    second.map((q) => q.id),
+    'omitting the variant must preserve the historical deterministic behaviour',
+  );
+  assert.deepEqual(first.map((q) => q.options), second.map((q) => q.options));
+});
+
+test('a new attempt variant produces a different paper for the same unit', () => {
+  const lines = parseLrc(VARIANT_LRC);
+  const attemptOne = buildNceExamQuestions(lines, 'unit-a', 10, 'attempt-1');
+  const attemptTwo = buildNceExamQuestions(lines, 'unit-a', 10, 'attempt-2');
+
+  assert.ok(attemptOne.length >= 3, 'precondition: enough questions to compare');
+  const sameOrder = JSON.stringify(attemptOne.map((q) => q.id)) === JSON.stringify(attemptTwo.map((q) => q.id));
+  const sameOptions = JSON.stringify(attemptOne.map((q) => q.options)) === JSON.stringify(attemptTwo.map((q) => q.options));
+  assert.ok(
+    !sameOrder || !sameOptions,
+    'a retake must differ in question order/selection or option order, otherwise it only measures answer recall',
+  );
+});
+
+test('the same variant is reproducible, and a variant does not leak across units', () => {
+  const lines = parseLrc(VARIANT_LRC);
+  const a1 = buildNceExamQuestions(lines, 'unit-a', 10, 'attempt-1');
+  const a1again = buildNceExamQuestions(lines, 'unit-a', 10, 'attempt-1');
+  assert.deepEqual(a1.map((q) => q.id), a1again.map((q) => q.id), 'same variant is stable');
+
+  const b1 = buildNceExamQuestions(lines, 'unit-b', 10, 'attempt-1');
+  const sameAsA = JSON.stringify(a1.map((q) => q.options)) === JSON.stringify(b1.map((q) => q.options));
+  assert.equal(sameAsA, false, 'unitId still participates in the seed');
+});
+
 test('buildExercises masks answers and distributes correct choice positions', () => {
   const lines = parseLrc(`${SAMPLE_LRC}\n[00:08.00]Listen to the tape then answer this question. | 听录音，然后回答问题。`);
   const exercises = buildExercises(lines, 5);

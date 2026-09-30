@@ -267,7 +267,7 @@ test('a difficult one-day card is no longer stuck due every day', () => {
   assert.ok(second.intervalDays > first.intervalDays, `${second.intervalDays} should exceed ${first.intervalDays}`);
 });
 
-test('"again" still resets a card to relearn tomorrow', () => {
+test('"again" resets step and interval and penalises ease', () => {
   StorageService.saveVocabulary([{
     id: 'w1', word: 'alpha', step: 6, intervalDays: 120, easeFactor: 2.8, status: 'mastered', tags: [],
   }]);
@@ -275,7 +275,80 @@ test('"again" still resets a card to relearn tomorrow', () => {
   const reset = StorageService.updateWordSRS('w1', 'again');
 
   assert.equal(reset.step, 0);
-  assert.equal(reset.intervalDays, 1, 'a forgotten card comes back tomorrow');
+  assert.equal(reset.intervalDays, 1, 'intervalDays carries the next interval to apply');
   assert.equal(reset.status, 'learning');
   assert.equal(reset.easeFactor, 2.6, 'ease is penalised but stays above the 1.3 floor');
+});
+
+// --- V-02: "again" must relearn TODAY, as the UI and the product plan promise ---
+
+test('"again" makes the card due immediately so it re-enters today\'s queue', () => {
+  StorageService.saveVocabulary([{
+    id: 'w1', word: 'alpha', step: 4, intervalDays: 22, easeFactor: 2.7, status: 'review', tags: [],
+  }]);
+
+  const before = Date.now();
+  const reset = StorageService.updateWordSRS('w1', 'again');
+
+  // Previously this was `now + 1 day`, so the card silently skipped the current session
+  // while the UI said "已自动重置加入今日待复习闪卡队伍".
+  assert.ok(reset.nextReviewDate <= before + 1000, 'forgotten card is due now');
+  assert.equal(reset.intervalDays, 1, 'intervalDays stays as the next interval to apply');
+  assert.equal(StorageService.getVocabulary().find((w) => w.id === 'w1').nextReviewDate <= Date.now(), true);
+});
+
+test('"good" and "hard" still schedule into the future', () => {
+  StorageService.saveVocabulary([{ id: 'w1', word: 'alpha', step: 1, intervalDays: 1, easeFactor: 2.5, tags: [] }]);
+  const good = StorageService.updateWordSRS('w1', 'good');
+  assert.ok(good.nextReviewDate > Date.now() + 60 * 1000, 'a success is not due again immediately');
+
+  StorageService.saveVocabulary([{ id: 'w2', word: 'beta', step: 1, intervalDays: 2, easeFactor: 2.5, tags: [] }]);
+  const hard = StorageService.updateWordSRS('w2', 'hard');
+  assert.ok(hard.nextReviewDate > Date.now() + 60 * 1000);
+});
+
+// --- V-03: undoing a rating must restore the word AND the recorded activity ---
+
+test('revertReview restores the word, the stats and the recorded event', () => {
+  StorageService.saveVocabulary([{
+    id: 'w1', word: 'alpha', step: 3, intervalDays: 8, easeFactor: 2.6, status: 'review', reviewCount: 5, tags: [],
+  }]);
+  const snapshot = StorageService.getVocabulary().find((w) => w.id === 'w1');
+  const statsBefore = StorageService.getStudyStats();
+
+  const rated = StorageService.updateWordSRS('w1', 'again');
+  StorageService.recordReviewActivity(1, { entityId: 'w1', durationMinutes: 1 });
+  assert.equal(StorageService.getStudyEvents().length, 1, 'the rating recorded an event');
+
+  const restored = StorageService.revertReview({ snapshot, previousStats: statsBefore, entityId: 'w1' });
+
+  assert.equal(restored, true);
+  const word = StorageService.getVocabulary().find((w) => w.id === 'w1');
+  assert.equal(word.step, 3, 'step is back');
+  assert.equal(word.intervalDays, 8, 'interval is back');
+  assert.equal(word.easeFactor, 2.6, 'ease is back');
+  assert.equal(word.reviewCount, 5, 'review count is back');
+  assert.notEqual(word.nextReviewDate, rated.nextReviewDate, 'the rating is gone');
+  assert.equal(StorageService.getStudyEvents().length, 0, 'the review event is removed');
+  assert.equal(StorageService.getStudyStats().todayReviewedCount, statsBefore.todayReviewedCount);
+});
+
+test('revertReview reports failure when the word no longer exists', () => {
+  StorageService.saveVocabulary([{ id: 'other', word: 'kept' }]);
+  const restored = StorageService.revertReview({ snapshot: { id: 'gone', word: 'ghost' } });
+  assert.equal(restored, false);
+  assert.deepEqual(StorageService.getVocabulary().map((w) => w.word), ['kept']);
+});
+
+test('revertReview only drops the event belonging to that word', () => {
+  StorageService.saveVocabulary([{ id: 'w1', word: 'alpha' }, { id: 'w2', word: 'beta' }]);
+  const snapshot = StorageService.getVocabulary().find((w) => w.id === 'w1');
+  StorageService.recordReviewActivity(1, { entityId: 'w1' });
+  StorageService.recordReviewActivity(1, { entityId: 'w2' });
+
+  StorageService.revertReview({ snapshot, entityId: 'w1' });
+
+  const remaining = StorageService.getStudyEvents();
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].entityId, 'w2', 'the other word\'s event is untouched');
 });

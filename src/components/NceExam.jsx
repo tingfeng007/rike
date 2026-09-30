@@ -97,7 +97,9 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
         });
       }
       if (controller.signal.aborted) return;
-      const questions = buildNceExamQuestions(parseLrc(lessonText), unit.filename);
+      // Salt the paper with the attempt time: without it every retake produced the exact
+      // same questions *and* option order, so retaking measured answer recall, not the text.
+      const questions = buildNceExamQuestions(parseLrc(lessonText), unit.filename, 10, Date.now());
       if (questions.length < 3) throw new Error('本单元可生成的试题不足，请选择另一单元');
       const startedAt = Date.now();
       const minutes = Math.max(5, Math.ceil(questions.length * 1.25));

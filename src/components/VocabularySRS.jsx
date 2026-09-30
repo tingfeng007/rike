@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Layers,
   ListFilter,
@@ -42,6 +42,11 @@ function shuffleArray(array) {
   return arr;
 }
 
+// The next card appears after 150ms, so ignore repeat taps on the same card inside this window.
+const RATING_LOCK_MS = 600;
+// How long the "撤销" affordance stays available after a rating.
+const UNDO_WINDOW_MS = 5000;
+
 export default function VocabularySRS() {
   const [activeTab, setActiveTab] = useState('flashcard'); // 'flashcard' | 'list' | 'quiz'
   const [vocabulary, setVocabulary] = useState([]);
@@ -54,6 +59,12 @@ export default function VocabularySRS() {
   const [isFlipped, setIsFlipped] = useState(false);
   const [reviewCompleted, setReviewCompleted] = useState(false);
   const [studyStats, setStudyStats] = useState(() => StorageService.getStudyStats());
+  // Last rating, kept briefly so a mis-tap can be undone (word state + stats + event).
+  const [undoState, setUndoState] = useState(null);
+  const [rateError, setRateError] = useState('');
+  const lastRatedRef = useRef({ id: '', at: 0 });
+  const requeuedRef = useRef(new Set());
+  const undoTimerRef = useRef(null);
 
   // Manual Add Modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -141,13 +152,50 @@ export default function VocabularySRS() {
   // Flashcard Rating: 'again' | 'hard' | 'good'
   const handleRateCard = (quality) => {
     if (dueCards.length === 0) return;
-
     const currentCard = dueCards[currentIndex];
-    StorageService.updateWordSRS(currentCard.id, quality);
+    if (!currentCard) return;
+
+    // Guard against a double tap: the next card is only shown after a 150ms delay, so a
+    // second tap used to rate the *same* card twice (reviewCount/step +2, one card skipped).
+    const lastRated = lastRatedRef.current;
+    if (lastRated.id === currentCard.id && Date.now() - lastRated.at < RATING_LOCK_MS) return;
+    lastRatedRef.current = { id: currentCard.id, at: Date.now() };
+
+    // Snapshot the stored state so this rating can be undone (see handleUndoRating).
+    const storedBefore = StorageService.getVocabulary().find((w) => w.id === currentCard.id) || null;
+    const statsBefore = StorageService.getStudyStats();
+
+    const updatedWord = StorageService.updateWordSRS(currentCard.id, quality);
+    if (!updatedWord) {
+      // The write failed (quota / blocked storage): keep the card and tell the user.
+      lastRatedRef.current = { id: '', at: 0 };
+      setRateError('这次评分没有保存成功（可能是浏览器存储已满）。请先导出备份再重试。');
+      return;
+    }
+    setRateError('');
     const updatedStats = StorageService.recordReviewActivity(1, { entityId: currentCard.id, durationMinutes: 1 });
     setStudyStats(updatedStats);
 
+    if (storedBefore) {
+      setUndoState({
+        wordId: currentCard.id,
+        snapshot: storedBefore,
+        statsBefore,
+        label: currentCard.word,
+        quality,
+      });
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = setTimeout(() => setUndoState(null), UNDO_WINDOW_MS);
+    }
+
     setIsFlipped(false);
+
+    // "again" means relearn today: put the card back at the end of this session's queue
+    // (bounded to one requeue per card so a forgotten word cannot loop forever).
+    if (quality === 'again' && !requeuedRef.current.has(currentCard.id)) {
+      requeuedRef.current.add(currentCard.id);
+      setDueCards((prev) => [...prev, { ...updatedWord }]);
+    }
 
     if (currentIndex + 1 < dueCards.length) {
       setTimeout(() => {
@@ -165,6 +213,39 @@ export default function VocabularySRS() {
       const words = StorageService.getVocabulary();
       setVocabulary(words);
     }
+  };
+
+  // Undo the most recent rating: restore the word's SRS state and roll back the review
+  // counters/event recorded for it, then put the card back in front of the user.
+  const handleUndoRating = () => {
+    if (!undoState) return;
+    const restored = StorageService.revertReview({
+      snapshot: undoState.snapshot,
+      previousStats: undoState.statsBefore,
+      entityId: undoState.wordId,
+    });
+    if (!restored) {
+      setRateError('撤销失败，未能恢复这条评分。');
+      return;
+    }
+    requeuedRef.current.delete(undoState.wordId);
+    lastRatedRef.current = { id: '', at: 0 };
+    const restoredCard = { ...undoState.snapshot };
+    // The rating had advanced the cursor by one, so put the card back where it was and
+    // step the cursor back to it — otherwise the card that was on screen gets skipped.
+    const insertAt = Math.max(0, currentIndex - 1);
+    setDueCards((prev) => {
+      const rest = prev.filter((card) => card.id !== restoredCard.id);
+      const at = Math.min(insertAt, rest.length);
+      return [...rest.slice(0, at), restoredCard, ...rest.slice(at)];
+    });
+    setCurrentIndex(insertAt);
+    setReviewCompleted(false);
+    setIsFlipped(true);
+    setVocabulary(StorageService.getVocabulary());
+    setStudyStats(StorageService.getStudyStats());
+    setUndoState(null);
+    setRateError('');
   };
 
   // Add new word manually with AI enhancement
@@ -500,6 +581,21 @@ export default function VocabularySRS() {
                   />
                 </div>
 
+                {/* Undo bar: a mis-tapped rating can be taken back for a few seconds */}
+                {undoState && (
+                  <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                    <span className="truncate">已给「{undoState.label}」评了分</span>
+                    <button type="button" onClick={handleUndoRating} className="flex-none font-semibold underline">
+                      撤销
+                    </button>
+                  </div>
+                )}
+                {rateError && (
+                  <output className="mb-3 block rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800">
+                    {rateError}
+                  </output>
+                )}
+
                 {/* 3D Flip Card Container */}
                 <div
                   onClick={() => setIsFlipped(!isFlipped)}
@@ -631,32 +727,41 @@ export default function VocabularySRS() {
                   </div>
                 </div>
 
-                {/* SRS Evaluation Buttons */}
+                {/* SRS Evaluation Buttons (only meaningful once the answer is visible) */}
                 <div className="mt-5 grid grid-cols-3 gap-2.5">
                   <button
-                    onClick={() => handleRateCard('again')}
-                    className="flex flex-col items-center py-2.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl transition-all active:scale-95"
+                    type="button"
+                    disabled={!isFlipped}
+                    onClick={(event) => { event.stopPropagation(); handleRateCard('again'); }}
+                    className="flex flex-col items-center py-2.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-sm font-semibold">❌ 遗忘</span>
-                    <span className="text-[10px] text-rose-600 mt-0.5">重头复习</span>
+                    <span className="text-[10px] text-rose-600 mt-0.5">今天再来一次</span>
                   </button>
 
                   <button
-                    onClick={() => handleRateCard('hard')}
-                    className="flex flex-col items-center py-2.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl transition-all active:scale-95"
+                    type="button"
+                    disabled={!isFlipped}
+                    onClick={(event) => { event.stopPropagation(); handleRateCard('hard'); }}
+                    className="flex flex-col items-center py-2.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-sm font-semibold">🤔 模糊</span>
                     <span className="text-[10px] text-amber-700 mt-0.5">+1~2 天</span>
                   </button>
 
                   <button
-                    onClick={() => handleRateCard('good')}
-                    className="flex flex-col items-center py-2.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl transition-all active:scale-95"
+                    type="button"
+                    disabled={!isFlipped}
+                    onClick={(event) => { event.stopPropagation(); handleRateCard('good'); }}
+                    className="flex flex-col items-center py-2.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-sm font-semibold">✅ 掌握</span>
                     <span className="text-[10px] text-emerald-700 mt-0.5">延长间隔</span>
                   </button>
                 </div>
+                {!isFlipped && (
+                  <p className="mt-2 text-center text-[11px] text-slate-400">先轻触卡片看释义，再选择掌握程度</p>
+                )}
               </>
             ) : (
               /* Review Finished / No Due Cards Celebration */

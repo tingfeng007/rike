@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { buildNceReviewQueue } from '../services/nceReview';
-import { buildDailyPlan, getWeeklyReview, saveDailyTaskState } from '../services/studyPlan';
+import { buildDailyPlan, getWeeklyReview, saveDailyTaskState, activityTypeForTask } from '../services/studyPlan';
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -107,6 +107,11 @@ export default function HomeDashboard({ onNavigate }) {
 
   const remainingTasks = plan.tasks.filter((task) => !task.done && !task.deferred).length;
   const completedCount = plan.tasks.filter((task) => task.done).length;
+  const deferredCount = plan.tasks.filter((task) => task.deferred && !task.done).length;
+  // "Done" must mean done: deferring every task used to fall through to the same
+  // remainingTasks === 0 branch and announce the day as finished while the progress bar
+  // still read 0/3.
+  const dayIsFinished = remainingTasks === 0 && deferredCount === 0 && plan.totalCount > 0;
 
   const refresh = () => setSnapshot(readSnapshot());
 
@@ -117,10 +122,22 @@ export default function HomeDashboard({ onNavigate }) {
     setShowDuration(false);
   };
 
+  // Ticking a plan item is a real study action, so it must also feed the activity stream
+  // that drives the streak, the weekly review and the activity calendar. Previously the
+  // checkbox only wrote plan state, so a fully ticked day still showed "0 天有学习".
   const markTask = (task, status) => {
     const nextStudyPlan = saveDailyTaskState(snapshot.studyPlan, plan.dateKey, task.id, { status });
     StorageService.saveStudyPlan(nextStudyPlan);
-    setSnapshot((current) => ({ ...current, studyPlan: nextStudyPlan }));
+    if (status === 'completed' && !task.done) {
+      StorageService.recordStudyActivity({
+        type: activityTypeForTask(task.type),
+        count: 1,
+        source: 'daily-plan',
+        entityId: task.id,
+        label: task.title,
+      });
+    }
+    setSnapshot((current) => ({ ...current, studyPlan: nextStudyPlan, stats: StorageService.getStudyStats() }));
   };
 
   const openTask = (task) => {
@@ -142,7 +159,13 @@ export default function HomeDashboard({ onNavigate }) {
           <button onClick={() => onNavigate('settings')} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-slate-200" aria-label="打开设置"><Settings className="w-4 h-4" /></button>
         </div>
         <h1 className="editorial-serif relative mt-3 text-[29px] leading-tight font-bold tracking-tight">{getGreeting()}</h1>
-        <p className="relative mt-2 text-sm text-slate-300">{remainingTasks > 0 ? `还剩 ${remainingTasks} 个学习动作，按顺序完成就好。` : '今天的学习闭环已完成，可以安心收工。'}</p>
+        <p className="relative mt-2 text-sm text-slate-300">
+          {remainingTasks > 0
+            ? `还剩 ${remainingTasks} 个学习动作，按顺序完成就好。${deferredCount ? `另有 ${deferredCount} 项已推迟。` : ''}`
+            : deferredCount > 0
+              ? `今天还有 ${deferredCount} 项被推迟到明天，已完成 ${completedCount}/${plan.totalCount} 项。`
+              : '今天的学习闭环已完成，可以安心收工。'}
+        </p>
         <div className="relative grid grid-cols-3 gap-2 mt-5">
           <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><Flame className="w-4 h-4 text-amber-300 mb-2" /><p className="text-xl font-bold">{snapshot.stats.streakDays || 0}</p><p className="text-[10px] text-slate-300">连续学习天</p></div>
           <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><Layers className="w-4 h-4 text-sky-300 mb-2" /><p className="text-xl font-bold">{snapshot.dueWords}</p><p className="text-[10px] text-slate-300">今日到期词</p></div>
@@ -153,7 +176,7 @@ export default function HomeDashboard({ onNavigate }) {
       <div className="px-4 -mt-3 relative z-10 space-y-4">
         <div className="study-card paper-grain rounded-[24px] p-4">
           <div className="flex items-start justify-between gap-3 mb-3">
-            <div><p className="text-xs font-semibold tracking-wide text-slate-400">今日学习计划 · {plan.dailyMinutes} 分钟</p><h2 className="font-bold text-slate-900 mt-0.5">{remainingTasks ? '先做最重要的一步' : '今天已经完成'}</h2></div>
+            <div><p className="text-xs font-semibold tracking-wide text-slate-400">今日学习计划 · {plan.dailyMinutes} 分钟</p><h2 className="font-bold text-slate-900 mt-0.5">{remainingTasks ? '先做最重要的一步' : dayIsFinished ? '今天已经完成' : '今天还有推迟的项'}</h2></div>
             <div className="relative"><button type="button" onClick={() => setShowDuration((value) => !value)} className="inline-flex items-center gap-1 rounded-xl bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800"><Timer className="w-3.5 h-3.5" />时长<ChevronDown className="w-3 h-3" /></button>{showDuration && <div className="absolute right-0 top-9 z-20 flex gap-1 rounded-xl border border-amber-100 bg-white p-1.5 shadow-xl">{[10, 20, 30].map((minutes) => <button type="button" key={minutes} onClick={() => updateDuration(minutes)} className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${plan.dailyMinutes === minutes ? 'bg-[#102a43] text-white' : 'text-slate-500 hover:bg-slate-50'}`}>{minutes}分</button>)}</div>}</div>
           </div>
           <div className="mb-3 flex items-center gap-2" aria-label={`今日计划已完成 ${completedCount} 项，共 ${plan.totalCount} 项`}><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${plan.totalCount ? completedCount / plan.totalCount * 100 : 100}%` }} /></div><span className="text-[10px] font-semibold tabular-nums text-slate-400">{completedCount}/{plan.totalCount}</span></div>
