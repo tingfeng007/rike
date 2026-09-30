@@ -148,7 +148,7 @@ export default function SmartReader() {
   // Restore scroll position when article changes
   useEffect(() => {
     if (!currentArticle?.id || !scrollContainerRef.current) return;
-    const savedTop = localStorage.getItem(`lingoflow_read_pos_${currentArticle.id}`);
+    const savedTop = StorageService.getReadingPosition(currentArticle.id);
     if (savedTop) {
       setTimeout(() => {
         scrollContainerRef.current?.scrollTo({ top: Number(savedTop), behavior: 'smooth' });
@@ -159,7 +159,7 @@ export default function SmartReader() {
   const handleScroll = (e) => {
     if (!currentArticle?.id) return;
     const element = e.currentTarget;
-    localStorage.setItem(`lingoflow_read_pos_${currentArticle.id}`, element.scrollTop);
+    StorageService.saveReadingPosition(currentArticle.id, element.scrollTop);
     const maxScroll = Math.max(1, element.scrollHeight - element.clientHeight);
     setReadingProgress(Math.min(100, Math.round(element.scrollTop / maxScroll * 100)));
   };
@@ -255,7 +255,8 @@ export default function SmartReader() {
 
   const persistAnnotations = (next) => {
     setAnnotations(next);
-    localStorage.setItem('lingoflow_reading_annotations', JSON.stringify(next));
+    // Route through the storage service so quota failures are handled like everywhere else.
+    StorageService.saveReadingAnnotations(next);
   };
 
   const openAnnotationEditor = (sentence) => {

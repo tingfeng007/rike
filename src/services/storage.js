@@ -13,17 +13,71 @@ const STORAGE_KEYS = {
   STUDY_EVENTS: 'lingoflow_study_events_v1',
   STUDY_PLAN: 'lingoflow_study_plan_v1',
   SCHEMA_VERSION: 'lingoflow_schema_version',
+  VOCABULARY_LEGACY_BACKUP: 'lingoflow_vocabulary_legacy_backup',
+  SAMPLE_MIGRATION: 'lingoflow_sample_migration_v2',
 };
 
+// Reading scroll position is stored per article under this prefix.
+const READ_POSITION_PREFIX = 'lingoflow_read_pos_';
+
 const STORAGE_SCHEMA_VERSION = 3;
+
+// Reason of the most recent failed write. Surfaced through getStorageDiagnostics /
+// getLastWriteError so a full disk or blocked storage is never silent.
+let lastWriteError = null;
+
+// Monotonic failure counter. importAllData is fully synchronous, so comparing this
+// before/after a run reliably detects that some write was dropped (and triggers rollback).
+let writeFailureCount = 0;
 
 function safeSetItem(key, value) {
   try {
     localStorage.setItem(key, value);
+    lastWriteError = null;
     return true;
-  } catch {
+  } catch (error) {
+    writeFailureCount += 1;
+    lastWriteError = {
+      key,
+      name: error?.name || 'Error',
+      quotaExceeded: error?.name === 'QuotaExceededError',
+      message: error?.message || '本地存储写入失败',
+    };
     return false;
   }
+}
+
+// Shape guards. A corrupted stored value ("null", a bare string, an object where an
+// array is expected) must never reach component render code as null/undefined:
+// App.jsx calls these getters inside useState initializers, outside the ErrorBoundary.
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function asObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function readJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed === null || parsed === undefined ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+// The sample decks are module-level constants. Never hand them out by reference:
+// callers do `words.unshift(...)` / `list.unshift(...)`, which would corrupt the
+// seed data for the rest of the session.
+function copySampleWords() {
+  return DEFAULT_SAMPLE_WORDS.map((word) => ({ ...word }));
+}
+
+function copySampleArticles() {
+  return DEFAULT_SAMPLE_ARTICLES.map((article) => ({ ...article }));
 }
 
 function getLocalDateKey(date = new Date()) {
@@ -110,17 +164,69 @@ export const DEFAULT_SETTINGS = {
 export const StorageService = {
   ensureSchema() {
     try {
-      const current = Number(localStorage.getItem(STORAGE_KEYS.SCHEMA_VERSION) || 0);
+      const rawVersion = localStorage.getItem(STORAGE_KEYS.SCHEMA_VERSION);
+      const parsedVersion = Number(rawVersion);
+      // A non-numeric marker ("abc") previously made every comparison false, which
+      // permanently blocked migrations while still reporting the newest version.
+      const current = Number.isFinite(parsedVersion) ? parsedVersion : 0;
       if (current < 1) {
         if (localStorage.getItem(STORAGE_KEYS.STUDY_EVENTS) == null) safeSetItem(STORAGE_KEYS.STUDY_EVENTS, '[]');
         if (localStorage.getItem(STORAGE_KEYS.STUDY_PLAN) == null) safeSetItem(STORAGE_KEYS.STUDY_PLAN, '{}');
       }
+      // Explicit, one-time data migration. This used to run inside the getVocabulary()
+      // read path, where it could silently overwrite a user's own words.
+      this.migrateLegacySampleData();
       if (current < STORAGE_SCHEMA_VERSION) {
         safeSetItem(STORAGE_KEYS.SCHEMA_VERSION, String(STORAGE_SCHEMA_VERSION));
       }
       return STORAGE_SCHEMA_VERSION;
     } catch {
       return 0;
+    }
+  },
+
+  /**
+   * One-time upgrade of the legacy demo decks (3 words / 2 articles) to the enriched
+   * samples. Guard rails, in contrast to the previous read-path behaviour:
+   *  - runs once, marked by STORAGE_KEYS.SAMPLE_MIGRATION;
+   *  - only touches a deck that consists *entirely* of legacy sample entries,
+   *    so any user-created word makes the migration a no-op;
+   *  - copies the replaced value to STORAGE_KEYS.VOCABULARY_LEGACY_BACKUP first;
+   *  - never runs from a getter.
+   * @returns {boolean} whether a replacement happened
+   */
+  migrateLegacySampleData() {
+    try {
+      if (localStorage.getItem(STORAGE_KEYS.SAMPLE_MIGRATION)) return false;
+      let migrated = false;
+
+      const rawVocabulary = localStorage.getItem(STORAGE_KEYS.VOCABULARY);
+      if (rawVocabulary) {
+        const parsed = JSON.parse(rawVocabulary);
+        const onlyLegacySamples = Array.isArray(parsed) && parsed.length > 0
+          && parsed.every((word) => word && typeof word.id === 'string' && /^sample_\d+$/.test(word.id));
+        if (onlyLegacySamples && parsed.length < DEFAULT_SAMPLE_WORDS.length) {
+          safeSetItem(STORAGE_KEYS.VOCABULARY_LEGACY_BACKUP, rawVocabulary);
+          this.saveVocabulary(copySampleWords());
+          migrated = true;
+        }
+      }
+
+      const rawArticles = localStorage.getItem(STORAGE_KEYS.ARTICLES);
+      if (rawArticles) {
+        const parsed = JSON.parse(rawArticles);
+        const onlyLegacySamples = Array.isArray(parsed) && parsed.length > 0
+          && parsed.every((article) => article && typeof article.id === 'string' && /^art_\d+$/.test(article.id));
+        if (onlyLegacySamples && parsed.length < DEFAULT_SAMPLE_ARTICLES.length) {
+          this.saveArticles(copySampleArticles());
+          migrated = true;
+        }
+      }
+
+      safeSetItem(STORAGE_KEYS.SAMPLE_MIGRATION, 'done');
+      return migrated;
+    } catch {
+      return false;
     }
   },
 
@@ -134,11 +240,7 @@ export const StorageService = {
 
   // --- App navigation state ---
   getAppState() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEYS.APP_STATE) || '{}');
-    } catch {
-      return {};
-    }
+    return asObject(readJson(STORAGE_KEYS.APP_STATE, {}));
   },
 
   saveAppState(state) {
@@ -147,32 +249,36 @@ export const StorageService = {
 
   // --- Settings ---
   getSettings() {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
-    } catch {
-      return DEFAULT_SETTINGS;
-    }
+    // Always merge onto a fresh copy: callers must not be able to mutate DEFAULT_SETTINGS.
+    return { ...DEFAULT_SETTINGS, ...asObject(readJson(STORAGE_KEYS.SETTINGS, {})) };
   },
 
   saveSettings(settings) {
     return safeSetItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
   },
 
+  // --- Last write failure (quota / blocked storage) ---
+  getLastWriteError() {
+    return lastWriteError ? { ...lastWriteError } : null;
+  },
+
   // --- Vocabulary ---
   getVocabulary() {
+    let raw = null;
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.VOCABULARY);
-      if (!data) return DEFAULT_SAMPLE_WORDS;
-      const parsed = JSON.parse(data);
-      // Auto upgrade if user only had the 3 legacy sample words
-      if (Array.isArray(parsed) && parsed.length <= 3 && parsed.some((w) => w.id === 'sample_1')) {
-        this.saveVocabulary(DEFAULT_SAMPLE_WORDS);
-        return DEFAULT_SAMPLE_WORDS;
-      }
-      return parsed;
+      raw = localStorage.getItem(STORAGE_KEYS.VOCABULARY);
     } catch {
-      return DEFAULT_SAMPLE_WORDS;
+      return [];
+    }
+    // Key absent = first run: hand back a copy of the demo deck, but do not persist it.
+    if (raw === null) return copySampleWords();
+    try {
+      const parsed = JSON.parse(raw);
+      // Pure read: a corrupted or wrongly-shaped value returns an empty deck and is
+      // left untouched on disk (never overwritten by the demo deck).
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
     }
   },
 
@@ -181,9 +287,11 @@ export const StorageService = {
   },
 
   addWord(wordObj) {
+    const word = typeof wordObj?.word === 'string' ? wordObj.word.trim() : '';
+    if (!word) return null;
     const words = this.getVocabulary();
     const existingIndex = words.findIndex(
-      (w) => w.word.toLowerCase() === wordObj.word.trim().toLowerCase()
+      (w) => typeof w?.word === 'string' && w.word.toLowerCase() === word.toLowerCase()
     );
 
     const now = Date.now();
@@ -251,7 +359,10 @@ export const StorageService = {
     let newEase = word.easeFactor || 2.5;
     let newStatus = 'learning';
 
-    // Standard SuperMemo SM-2 Adaptive Ease Factor Adjustment
+    // Three-grade adaptive interval heuristic (again / hard / good).
+    // NOTE: this is *not* the standard SuperMemo SM-2 EF formula
+    // (EF' = EF + (0.1 - (5-q)*(0.08 + (5-q)*0.02))); the deltas below are fixed steps.
+    // Kept as-is deliberately: changing scheduling changes real learning behaviour.
     if (quality === 'again') {
       newStep = 0;
       newInterval = 1;
@@ -302,8 +413,10 @@ export const StorageService = {
     };
 
     words[index] = updated;
-    this.saveVocabulary(words);
-    return updated;
+    // Do not report a scheduling advance that never reached disk: a failed write used
+    // to be swallowed, so the UI showed "reviewed" while storage kept the old card.
+    const saved = this.saveVocabulary(words);
+    return saved ? updated : null;
   },
 
   updateWord(wordId, updatedFields) {
@@ -334,7 +447,7 @@ export const StorageService = {
       const data = localStorage.getItem(STORAGE_KEYS.STUDY_STATS);
       if (!data) return defaultStats;
 
-      const stats = { ...defaultStats, ...JSON.parse(data) };
+      const stats = { ...defaultStats, ...asObject(readJson(STORAGE_KEYS.STUDY_STATS, {})) };
 
       // If opening on a new day, reset today's counters
       if (stats.lastActiveDate !== todayStr) {
@@ -397,12 +510,7 @@ export const StorageService = {
   },
 
   getStudyPlan() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.STUDY_PLAN) || '{}');
-      return saved && typeof saved === 'object' ? saved : {};
-    } catch {
-      return {};
-    }
+    return asObject(readJson(STORAGE_KEYS.STUDY_PLAN, {}));
   },
 
   saveStudyPlan(plan) {
@@ -456,6 +564,8 @@ export const StorageService = {
       nceLessonCacheCount: Object.keys(cache.lessons || {}).length,
       hasCourseBookCache: Boolean(cache.book?.units?.length),
       cacheUpdatedAt: cache.updatedAt || 0,
+      // A previous write may have failed (full disk / blocked storage): surface it.
+      lastWriteError: this.getLastWriteError(),
     };
   },
 
@@ -527,12 +637,7 @@ export const StorageService = {
 
   // --- Chat Messages ---
   getChatMessages(scenarioId) {
-    try {
-      const data = localStorage.getItem(`${STORAGE_KEYS.CHAT_MESSAGES}_${scenarioId}`);
-      return data ? JSON.parse(data) : [];
-    } catch {
-      return [];
-    }
+    return asArray(readJson(`${STORAGE_KEYS.CHAT_MESSAGES}_${scenarioId}`, []));
   },
 
   saveChatMessages(scenarioId, messages) {
@@ -545,18 +650,19 @@ export const StorageService = {
 
   // --- Articles (Reader) ---
   getArticles() {
+    let raw = null;
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.ARTICLES);
-      if (!data) return DEFAULT_SAMPLE_ARTICLES;
-      const parsed = JSON.parse(data);
-      // Auto upgrade if user only had the 2 legacy sample articles
-      if (Array.isArray(parsed) && parsed.length <= 2 && parsed.some((a) => a.id === 'art_1')) {
-        this.saveArticles(DEFAULT_SAMPLE_ARTICLES);
-        return DEFAULT_SAMPLE_ARTICLES;
-      }
-      return parsed;
+      raw = localStorage.getItem(STORAGE_KEYS.ARTICLES);
     } catch {
-      return DEFAULT_SAMPLE_ARTICLES;
+      return [];
+    }
+    if (raw === null) return copySampleArticles();
+    try {
+      const parsed = JSON.parse(raw);
+      // Pure read (the legacy demo upgrade now lives in migrateLegacySampleData).
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
     }
   },
 
@@ -587,7 +693,7 @@ export const StorageService = {
         delete annotations[String(id)];
         this.saveReadingAnnotations(annotations);
       }
-      localStorage.removeItem(`lingoflow_read_pos_${id}`);
+      localStorage.removeItem(`${READ_POSITION_PREFIX}${id}`);
     } catch {
       // ignore
     }
@@ -597,12 +703,7 @@ export const StorageService = {
 
   // --- Reading Annotations ---
   getReadingAnnotations() {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.READING_ANNOTATIONS);
-      return data ? JSON.parse(data) : {};
-    } catch {
-      return {};
-    }
+    return asObject(readJson(STORAGE_KEYS.READING_ANNOTATIONS, {}));
   },
 
   saveReadingAnnotations(annotations) {
@@ -610,12 +711,26 @@ export const StorageService = {
   },
 
   // --- Reading Scroll Positions ---
+  // Components must use these instead of touching localStorage directly, so the key
+  // format stays in one place and writes go through safeSetItem (quota-safe).
+  getReadingPosition(articleId) {
+    try {
+      return localStorage.getItem(`${READ_POSITION_PREFIX}${articleId}`);
+    } catch {
+      return null;
+    }
+  },
+
+  saveReadingPosition(articleId, position) {
+    return safeSetItem(`${READ_POSITION_PREFIX}${articleId}`, String(position));
+  },
+
   getAllReadingPositions() {
     const positions = {};
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith('lingoflow_read_pos_')) {
+        if (key && key.startsWith(READ_POSITION_PREFIX)) {
           positions[key] = localStorage.getItem(key);
         }
       }
@@ -629,7 +744,7 @@ export const StorageService = {
     if (!positions || typeof positions !== 'object') return;
     try {
       Object.entries(positions).forEach(([key, val]) => {
-        if (key.startsWith('lingoflow_read_pos_') && val != null) {
+        if (key.startsWith(READ_POSITION_PREFIX) && val != null) {
           safeSetItem(key, String(val));
         }
       });
@@ -647,7 +762,7 @@ export const StorageService = {
         if (key && key.startsWith(`${STORAGE_KEYS.CHAT_MESSAGES}_`)) {
           const scenarioId = key.replace(`${STORAGE_KEYS.CHAT_MESSAGES}_`, '');
           try {
-            chats[scenarioId] = JSON.parse(localStorage.getItem(key));
+            chats[scenarioId] = asArray(JSON.parse(localStorage.getItem(key)));
           } catch {
             chats[scenarioId] = [];
           }
@@ -674,11 +789,7 @@ export const StorageService = {
 
   // --- New Concept English Book 1 ---
   getNceProgress() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEYS.NCE_PROGRESS) || '{}');
-    } catch {
-      return {};
-    }
+    return asObject(readJson(STORAGE_KEYS.NCE_PROGRESS, {}));
   },
 
   saveNceProgress(progress) {
@@ -686,11 +797,7 @@ export const StorageService = {
   },
 
   getNceCache() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEYS.NCE_CACHE) || '{}');
-    } catch {
-      return {};
-    }
+    return asObject(readJson(STORAGE_KEYS.NCE_CACHE, {}));
   },
 
   saveNceCache(cache) {
@@ -785,8 +892,12 @@ export const StorageService = {
   parseBackupPreview(jsonString) {
     try {
       const data = JSON.parse(jsonString);
-      if (!data || typeof data !== 'object') {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
         return { valid: false, error: '备份文件格式不正确，不是有效的 JSON 数据' };
+      }
+      // Reject other apps' JSON here too, so the UI never offers to merge a foreign file.
+      if (data.app && data.app !== 'LingoFlow') {
+        return { valid: false, error: `这不是 LingoFlow 的备份文件（app=${String(data.app)}）` };
       }
 
       const vocabCount = Array.isArray(data.vocabulary) ? data.vocabulary.length : 0;
@@ -803,6 +914,7 @@ export const StorageService = {
           : 0;
 
       const hasApiKey = Boolean(data.settings?.apiKey?.trim());
+      const hasSpeechApiKey = Boolean(data.settings?.speechApiKey?.trim());
       const nceProgressCount = data.nceProgress && typeof data.nceProgress === 'object'
         ? Object.keys(data.nceProgress).length
         : 0;
@@ -826,28 +938,104 @@ export const StorageService = {
         hasNceDraft,
         studyEventCount,
         hasApiKey,
+        hasSpeechApiKey,
       };
     } catch (err) {
       return { valid: false, error: `解析失败: ${err.message}` };
     }
   },
 
-  importAllData(jsonString) {
-    try {
-      const data = JSON.parse(jsonString);
-      if (!data || typeof data !== 'object') {
-        throw new Error('备份文件格式不正确');
+  /**
+   * Snapshot the raw value of every key importAllData may write, so a failed import
+   * can be rolled back to the exact previous state.
+   */
+  snapshotImportTargets(data) {
+    const keys = new Set([
+      STORAGE_KEYS.SETTINGS,
+      STORAGE_KEYS.VOCABULARY,
+      STORAGE_KEYS.ARTICLES,
+      STORAGE_KEYS.READING_ANNOTATIONS,
+      STORAGE_KEYS.STUDY_STATS,
+      STORAGE_KEYS.NCE_PROGRESS,
+      STORAGE_KEYS.NCE_EXAMS,
+      STORAGE_KEYS.APP_STATE,
+      STORAGE_KEYS.STUDY_EVENTS,
+      STORAGE_KEYS.STUDY_PLAN,
+    ]);
+    if (data?.chatMessages && typeof data.chatMessages === 'object') {
+      Object.keys(data.chatMessages).forEach((scenarioId) => {
+        keys.add(`${STORAGE_KEYS.CHAT_MESSAGES}_${scenarioId}`);
+      });
+    }
+    if (data?.readingPositions && typeof data.readingPositions === 'object') {
+      Object.keys(data.readingPositions).forEach((key) => {
+        if (key.startsWith(READ_POSITION_PREFIX)) keys.add(key);
+      });
+    }
+    const snapshot = new Map();
+    keys.forEach((key) => {
+      try {
+        snapshot.set(key, localStorage.getItem(key));
+      } catch {
+        snapshot.set(key, null);
       }
+    });
+    return snapshot;
+  },
 
-      // 1. Settings Merge: keep existing API Key if imported is empty
-      if (data.settings) {
+  restoreSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot.forEach !== 'function') return false;
+    try {
+      snapshot.forEach((value, key) => {
+        if (value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  importAllData(jsonString) {
+    let data;
+    try {
+      data = JSON.parse(jsonString);
+    } catch {
+      return { success: false, error: '备份文件不是有效的 JSON，无法解析' };
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return { success: false, error: '备份文件格式不正确：顶层应为一个 JSON 对象' };
+    }
+    if (data.app && data.app !== 'LingoFlow') {
+      return { success: false, error: `这不是 LingoFlow 的备份文件（app=${String(data.app)}）` };
+    }
+    const incomingVersion = Number(data.version ?? data.schemaVersion ?? 1);
+    if (Number.isFinite(incomingVersion) && incomingVersion > STORAGE_SCHEMA_VERSION) {
+      return { success: false, error: `备份来自更新的版本（v${incomingVersion}），请先升级应用再导入` };
+    }
+
+    // Nothing above this line writes. The snapshot plus the failure counter below let a
+    // failed import roll back, instead of leaving settings half-applied (the old code
+    // wrote settings first and could then throw during the vocabulary merge).
+    const snapshot = this.snapshotImportTargets(data);
+    const failuresBefore = writeFailureCount;
+
+    try {
+      // 1. Settings Merge: keep existing secrets when the backup carries none.
+      //    speechApiKey used to be wiped here because only apiKey was protected.
+      if (data.settings && typeof data.settings === 'object') {
         const currentSettings = this.getSettings();
-        const mergedSettings = {
-          ...currentSettings,
-          ...data.settings,
-          apiKey: data.settings.apiKey?.trim() || currentSettings.apiKey || '',
+        const incomingSettings = asObject(data.settings);
+        const keepSecret = (field) => {
+          const next = typeof incomingSettings[field] === 'string' ? incomingSettings[field].trim() : '';
+          return next || currentSettings[field] || '';
         };
-        this.saveSettings(mergedSettings);
+        this.saveSettings({
+          ...currentSettings,
+          ...incomingSettings,
+          apiKey: keepSecret('apiKey'),
+          speechApiKey: keepSecret('speechApiKey'),
+        });
       }
 
       let addedWords = 0;
@@ -859,24 +1047,40 @@ export const StorageService = {
         const mergedMap = new Map();
 
         localWords.forEach((w) => {
-          if (w.word) mergedMap.set(w.word.toLowerCase().trim(), w);
+          if (w && typeof w.word === 'string' && w.word.trim()) {
+            mergedMap.set(w.word.toLowerCase().trim(), w);
+          }
         });
 
         data.vocabulary.forEach((imp) => {
-          if (!imp.word) return;
+          if (!imp || typeof imp !== 'object') return;
+          // Defensive: a non-string "word" used to throw a TypeError mid-import.
+          if (typeof imp.word !== 'string' || !imp.word.trim()) return;
           const key = imp.word.toLowerCase().trim();
           if (mergedMap.has(key)) {
             const existing = mergedMap.get(key);
+            const existingCreated = Number(existing.createdAt) || 0;
+            const incomingCreated = Number(imp.createdAt) || 0;
+            const existingNext = Number(existing.nextReviewDate) || 0;
+            const incomingNext = Number(imp.nextReviewDate) || 0;
             const merged = {
               ...existing,
               ...imp,
+              // Identity and creation stay local; only genuinely newer scheduling wins.
+              // Previously intervalDays / easeFactor / nextReviewDate came wholesale from
+              // the backup, so restoring an old file reset mastered words to "due today".
+              id: existing.id || imp.id,
+              createdAt: existingCreated ? existingCreated : incomingCreated,
               userNote: imp.userNote || existing.userNote || '',
               reviewCount: Math.max(existing.reviewCount || 0, imp.reviewCount || 0),
               step: Math.max(existing.step || 0, imp.step || 0),
+              intervalDays: Math.max(Number(existing.intervalDays) || 1, Number(imp.intervalDays) || 1),
+              easeFactor: Math.max(Number(existing.easeFactor) || 2.5, Number(imp.easeFactor) || 2.5),
+              nextReviewDate: incomingNext > existingNext ? incomingNext : (existingNext || Date.now()),
               status:
                 existing.status === 'mastered' || imp.status === 'mastered'
                   ? 'mastered'
-                  : imp.status,
+                  : (imp.status || existing.status || 'learning'),
             };
             mergedMap.set(key, merged);
             updatedWords += 1;
@@ -942,15 +1146,24 @@ export const StorageService = {
         this.saveReadingAnnotations(mergedAnnotations);
       }
 
-      // 5. Chat Messages Merge
+      // 5. Chat Messages Merge: keep the local conversation order, append unseen
+      //    incoming messages. The previous rule only restored a chat when the local one
+      //    had <= 1 message, so a longer local chat silently dropped the whole backup.
       if (data.chatMessages && typeof data.chatMessages === 'object') {
         const localChats = this.getAllChatMessages();
         Object.entries(data.chatMessages).forEach(([scenarioId, msgs]) => {
           if (!Array.isArray(msgs) || msgs.length === 0) return;
-          // If local has no chat messages or only initial, restore incoming
-          if (!localChats[scenarioId] || localChats[scenarioId].length <= 1) {
+          const local = Array.isArray(localChats[scenarioId]) ? localChats[scenarioId] : [];
+          if (local.length === 0) {
             this.saveChatMessages(scenarioId, msgs);
+            return;
           }
+          const seen = new Set(local.map((message) => message?.id).filter(Boolean));
+          const appended = msgs.filter((message) => message && message.id && !seen.has(message.id));
+          if (appended.length === 0) return;
+          const mergedMessages = [...local, ...appended]
+            .sort((a, b) => (Number(a?.timestamp) || 0) - (Number(b?.timestamp) || 0));
+          this.saveChatMessages(scenarioId, mergedMessages);
         });
       }
 
@@ -959,24 +1172,33 @@ export const StorageService = {
         this.saveAllReadingPositions(data.readingPositions);
       }
 
-      // 7. Study Stats Merge: take max streak and combined total count
+      // 7. Study Stats Merge
       if (data.studyStats && typeof data.studyStats === 'object') {
         const currentStats = this.getStudyStats();
+        const incomingStats = asObject(data.studyStats);
+        const todayKey = getLocalDateKey();
+        const incomingIsToday = incomingStats.lastActiveDate === todayKey;
+        // Today's counters may only be merged when the backup was taken today; otherwise a
+        // months-old backup would inject its "today" numbers into the current day.
+        const pickToday = (field) => (incomingIsToday
+          ? Math.max(currentStats[field] || 0, incomingStats[field] || 0)
+          : (currentStats[field] || 0));
         const mergedStats = {
-          streakDays: Math.max(currentStats.streakDays || 1, data.studyStats.streakDays || 1),
-          lastActiveDate: currentStats.lastActiveDate || data.studyStats.lastActiveDate || '',
-          todayReviewedCount: Math.max(
-            currentStats.todayReviewedCount || 0,
-            data.studyStats.todayReviewedCount || 0
-          ),
-          todayOralCount: Math.max(currentStats.todayOralCount || 0, data.studyStats.todayOralCount || 0),
-          todayAnnotationCount: Math.max(currentStats.todayAnnotationCount || 0, data.studyStats.todayAnnotationCount || 0),
-          todayCourseCount: Math.max(currentStats.todayCourseCount || 0, data.studyStats.todayCourseCount || 0),
-          todayVocabCount: Math.max(currentStats.todayVocabCount || 0, data.studyStats.todayVocabCount || 0),
-          todayTotalActions: Math.max(currentStats.todayTotalActions || 0, data.studyStats.todayTotalActions || 0),
+          // `|| 1` used to turn a genuine 0-day streak into 1.
+          streakDays: Math.max(currentStats.streakDays || 0, incomingStats.streakDays || 0),
+          lastActiveDate: [currentStats.lastActiveDate, incomingStats.lastActiveDate]
+            .filter(Boolean)
+            .sort()
+            .at(-1) || '',
+          todayReviewedCount: pickToday('todayReviewedCount'),
+          todayOralCount: pickToday('todayOralCount'),
+          todayAnnotationCount: pickToday('todayAnnotationCount'),
+          todayCourseCount: pickToday('todayCourseCount'),
+          todayVocabCount: pickToday('todayVocabCount'),
+          todayTotalActions: pickToday('todayTotalActions'),
           totalReviewedCount: Math.max(
             currentStats.totalReviewedCount || 0,
-            data.studyStats.totalReviewedCount || 0
+            incomingStats.totalReviewedCount || 0
           ),
         };
         this.saveStudyStats(mergedStats);
@@ -1031,6 +1253,13 @@ export const StorageService = {
         this.saveStudyPlan({ ...this.getStudyPlan(), ...data.studyPlan });
       }
 
+      // Any dropped write during this run (quota / blocked storage) invalidates the whole
+      // import: roll back rather than reporting success on a half-applied merge.
+      // importAllData is synchronous, so this counter cannot be disturbed by other code.
+      if (writeFailureCount > failuresBefore) {
+        throw new Error(`部分数据写入失败（${lastWriteError?.name || '写入错误'}）`);
+      }
+
       this.ensureSchema();
 
       return {
@@ -1042,7 +1271,12 @@ export const StorageService = {
         addedAnnotations,
       };
     } catch (e) {
-      return { success: false, error: e.message };
+      const rolledBack = this.restoreSnapshot(snapshot);
+      return {
+        success: false,
+        error: `${e.message}${rolledBack ? '（已回滚，本地数据未改变）' : '（回滚失败，请检查浏览器存储空间）'}`,
+        rolledBack,
+      };
     }
   },
 };

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Headphones, RotateCcw, Volume2 } from 'lucide-react';
 import { tts } from '../services/speech';
 import { buildNceReviewQueue, gradeNceReview } from '../services/nceReview';
+import { onEnterSubmit } from '../services/keyboard';
 
 export default function NceReview({ progress, units, initialUnitFilename = '', onResolve, onOpenLesson, onBack }) {
   const [unitId, setUnitId] = useState(initialUnitFilename);
@@ -85,7 +86,7 @@ export default function NceReview({ progress, units, initialUnitFilename = '', o
           <h2 className="editorial-serif mt-5 text-xl font-bold leading-8 text-[#102a43]">{current.kind === 'dictation' ? '听音，写出这句英文' : current.kind === 'exercise' ? '补全课文句子' : '重新作答这道试题'}</h2>
           {current.kind === 'dictation' ? <div className="mt-4 rounded-2xl bg-sky-50 p-4"><button type="button" onClick={() => tts.speak(current.answer, { channel: 'course', mode: 'system' })} className="inline-flex items-center gap-2 rounded-xl bg-[#102a43] px-4 py-3 text-sm font-semibold text-white"><Volume2 className="w-4 h-4" />播放句子</button><p className="mt-2 text-xs text-sky-800/70">使用课程设备语音朗读，可反复播放；语音不可用时可返回原课文。</p></div> : <p className="mt-4 rounded-2xl bg-[#f7f5ef] p-4 text-[17px] leading-8 text-slate-800 editorial-serif">{current.prompt || '请回想本课内容并写出正确答案。'}</p>}
           <label htmlFor="nce-review-answer" className="mt-5 block text-xs font-semibold text-slate-600">{current.answer.trim().includes(' ') ? '写出完整英文句子' : '写出缺少的英文单词'}</label>
-          <input key={current.id} id="nce-review-answer" value={answer} onChange={(event) => { setAnswer(event.target.value); setResult(null); }} onKeyDown={(event) => { if (event.key === 'Enter') checkAnswer(); }} autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="先凭记忆输入，再检查" className="allow-select mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-500" />
+          <input key={current.id} id="nce-review-answer" value={answer} onChange={(event) => { setAnswer(event.target.value); setResult(null); }} onKeyDown={onEnterSubmit(checkAnswer)} autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="先凭记忆输入，再检查" className="allow-select mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-500" />
           <button type="button" onClick={checkAnswer} disabled={!answer.trim()} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-sm font-bold text-[#102a43] disabled:opacity-40">检查并完成复习<ArrowRight className="w-4 h-4" /></button>
           {result && <div role="status" className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-800"><p className="font-semibold">还差一点 · 匹配 {result.score}%</p>{result.missingWords.length > 0 && <p className="mt-1 text-xs">再想想这些词：{result.missingWords.join('、')}</p>}<button type="button" onClick={() => setRevealed((value) => !value)} className="mt-2 text-xs font-bold underline">{revealed ? '收起参考答案' : '查看参考答案'}</button>{revealed && <p className="mt-2 rounded-lg bg-white p-2 text-sm text-slate-800">{current.answer}</p>}</div>}
           {current.lastAttempt && <p className="mt-3 text-xs text-slate-400">上次作答：{current.lastAttempt}</p>}

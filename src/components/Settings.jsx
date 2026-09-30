@@ -33,6 +33,7 @@ export default function Settings() {
   const [settings, setSettings] = useState(() => StorageService.getSettings());
   const [showKey, setShowKey] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [testStatus, setTestStatus] = useState({ state: 'idle', message: '' }); // 'idle' | 'testing' | 'success' | 'error'
   const [showPwaGuide, setShowPwaGuide] = useState(false);
   const [availableVoices, setAvailableVoices] = useState(() => tts.getAvailableFemaleVoices());
@@ -42,7 +43,7 @@ export default function Settings() {
   const [includeApiKeyInExport, setIncludeApiKeyInExport] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
   const [showResetModal, setShowResetModal] = useState(false);
-  const [localSummary] = useState(() => StorageService.getLocalDataSummary());
+  const [localSummary, setLocalSummary] = useState(() => StorageService.getLocalDataSummary());
   const [storageDiagnostics, setStorageDiagnostics] = useState(() => StorageService.getStorageDiagnostics());
   const [audioCacheCount, setAudioCacheCount] = useState(0);
 
@@ -72,12 +73,20 @@ export default function Settings() {
   const updateSetting = (key, value) => {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
-    StorageService.saveSettings(updated);
+    const saved = StorageService.saveSettings(updated);
     setSpeechStatus(tts.getSpeechStatus(updated));
-    triggerSavedToast();
+    triggerSavedToast(saved);
   };
 
-  const triggerSavedToast = () => {
+  const triggerSavedToast = (saved) => {
+    // A failed write (quota / blocked storage) used to still show "已保存".
+    if (saved === false) {
+      setSavedSuccess(false);
+      setSaveError(true);
+      setTimeout(() => setSaveError(false), 4000);
+      return;
+    }
+    setSaveError(false);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
   };
@@ -93,8 +102,7 @@ export default function Settings() {
         model: preset.defaultModel,
       };
       setSettings(updated);
-      StorageService.saveSettings(updated);
-      triggerSavedToast();
+      triggerSavedToast(StorageService.saveSettings(updated));
     }
   };
 
@@ -145,11 +153,17 @@ export default function Settings() {
 
   const handleClearCourseCache = () => {
     if (!confirm('清除课程缓存后，学习进度和生词不会删除；下次打开课程会重新联网下载。确定继续吗？')) return;
-    Promise.all([clearCourseCaches(), Promise.resolve(StorageService.clearNceCache())]).then(() => {
-      setAudioCacheCount(0);
-      setStorageDiagnostics(StorageService.getStorageDiagnostics());
-      alert('课程缓存已清除，学习记录仍然保留。');
-    });
+    Promise.all([clearCourseCaches(), Promise.resolve(StorageService.clearNceCache())])
+      .then(() => {
+        setAudioCacheCount(0);
+        setStorageDiagnostics(StorageService.getStorageDiagnostics());
+        setLocalSummary(StorageService.getLocalDataSummary());
+        alert('课程缓存已清除，学习记录仍然保留。');
+      })
+      .catch(() => {
+        getCourseCacheCount().then(setAudioCacheCount).catch(() => {});
+        alert('清理课程缓存时出错，可能有缓存仍在使用。请稍后重试。');
+      });
   };
 
   // Select File & Parse Preview
@@ -226,7 +240,13 @@ export default function Settings() {
         description="先保证学习记录安全，再按需连接 AI 与调整语音。所有设置自动保存在当前浏览器。"
         icon={<SettingsIcon className="w-4 h-4" />}
         status="本地优先"
-        actions={savedSuccess ? <span className="flex items-center gap-1 rounded-xl bg-emerald-400/15 px-2.5 py-2 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-300/20 animate-fade-in"><CheckCircle2 className="w-3.5 h-3.5" />已保存</span> : null}
+        actions={
+          saveError
+            ? <span className="flex items-center gap-1 rounded-xl bg-rose-400/20 px-2.5 py-2 text-[11px] font-semibold text-rose-100 ring-1 ring-rose-300/30 animate-fade-in"><AlertCircle className="w-3.5 h-3.5" />未能保存</span>
+            : savedSuccess
+              ? <span className="flex items-center gap-1 rounded-xl bg-emerald-400/15 px-2.5 py-2 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-300/20 animate-fade-in"><CheckCircle2 className="w-3.5 h-3.5" />已保存</span>
+              : null
+        }
       />
 
       {/* Main Form Content */}

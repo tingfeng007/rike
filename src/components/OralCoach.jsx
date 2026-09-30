@@ -76,7 +76,6 @@ function loadScenarioMessages(scenario) {
 }
 
 export default function OralCoach({ onNavigateToVocab }) {
-  const [scenarios] = useState(SCENARIOS);
   const [currentScenario, setCurrentScenario] = useState(() => {
     const saved = StorageService.getSettings().currentScenarioId;
     return SCENARIOS.find((s) => s.id === saved) || SCENARIOS[0];
@@ -105,6 +104,7 @@ export default function OralCoach({ onNavigateToVocab }) {
   };
 
   const messagesEndRef = useRef(null);
+  const streamAbortRef = useRef(null);
   const isSttSupported = stt.isSupported();
 
   // Scroll to bottom when messages update
@@ -112,8 +112,17 @@ export default function OralCoach({ onNavigateToVocab }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // Cancel an in-flight AI stream and release the microphone when leaving the page.
+  // Previously neither was cleaned up, so switching tabs left the request running and
+  // its result could be applied to an unmounted component.
+  useEffect(() => () => {
+    streamAbortRef.current?.abort();
+    stt.stop();
+  }, []);
+
   // Save current scenario selection to settings
   const handleSelectScenario = (scenario) => {
+    streamAbortRef.current?.abort();
     setCurrentScenario(scenario);
     setMessages(loadScenarioMessages(scenario));
     setWantedWordsList(pickWantedWords());
@@ -215,6 +224,12 @@ export default function OralCoach({ onNavigateToVocab }) {
     setMessages(messagesWithStreaming);
     setIsLoading(true);
 
+    // Abort any previous stream, then track this one so leaving the page or switching
+    // scenarios can cancel it. Declared outside try so `finally` can clear it.
+    streamAbortRef.current?.abort();
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+
     try {
       const targetWords = getActiveTargetWords();
       const aiResponse = await getOralCoachResponseStream({
@@ -222,7 +237,9 @@ export default function OralCoach({ onNavigateToVocab }) {
         userMessage: text,
         scenarioPrompt: currentScenario.prompt,
         targetWords,
+        signal: controller.signal,
         onStreamText: (streamedText) => {
+          if (controller.signal.aborted) return;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === tempAiId ? { ...m, replyText: streamedText } : m
@@ -230,6 +247,8 @@ export default function OralCoach({ onNavigateToVocab }) {
           );
         },
       });
+      // A cancelled request must not write its result into the conversation.
+      if (controller.signal.aborted) return;
 
       const finalAssistantMsg = {
         id: tempAiId,
@@ -253,6 +272,8 @@ export default function OralCoach({ onNavigateToVocab }) {
         playAudio(finalAssistantMsg.id, finalAssistantMsg.replyText);
       }
     } catch (err) {
+      // A deliberate cancellation (tab switch / scenario switch) is not an error state.
+      if (err?.name === 'AbortError') return;
       console.error(err);
       const diag = diagnoseErrorMessage(err.message);
       const errorMsg = {
@@ -270,6 +291,7 @@ export default function OralCoach({ onNavigateToVocab }) {
         prev.map((m) => (m.id === tempAiId ? errorMsg : m))
       );
     } finally {
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
       setIsLoading(false);
     }
   };
@@ -413,7 +435,7 @@ export default function OralCoach({ onNavigateToVocab }) {
         )}
       >
         <div className="flex space-x-2 overflow-x-auto pb-1 no-scrollbar text-xs" aria-label="口语练习场景">
-          {scenarios.map((sc) => {
+          {SCENARIOS.map((sc) => {
             const isActive = sc.id === currentScenario.id;
             return (
               <button

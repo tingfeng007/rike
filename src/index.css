@@ -52,6 +52,14 @@
   }
 }
 
+/* Keyboard focus visibility.
+   Migrated from the unused Vite template src/App.css (which referenced an
+   undefined --accent variable and was never imported). Uses the real token. */
+:focus-visible {
+  outline: 2px solid var(--sky);
+  outline-offset: 2px;
+}
+
 /* Glassmorphism & High-craft UI Utilities */
 .glass-panel {
   backdrop-filter: blur(20px);
@@ -156,6 +164,11 @@
   .tap-lift {
     transition: none;
   }
+
+  .animate-fade-in,
+  .animate-in {
+    animation: none;
+  }
 }
 
 /* 3D Flashcard flip animation */
@@ -174,6 +187,24 @@
 
 .rotate-y-180 {
   transform: rotateY(180deg);
+}
+
+/* Utility helpers used across components but not provided by Tailwind 3.
+   Kept as plain CSS (not @layer) so they sit after @tailwind utilities and can
+   win over shorthand utilities such as p-3 on the same element. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.pb-safe {
+  padding-bottom: max(0.75rem, var(--safe-area-inset-bottom, 0px));
 }
 
 /* Custom scrollbars */

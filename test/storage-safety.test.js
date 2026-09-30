@@ -1,0 +1,237 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { StorageService, DEFAULT_SAMPLE_WORDS } from '../src/services/storage.js';
+
+/**
+ * Regression tests for the data-safety defects found in the optimisation audit
+ * (docs/OPTIMIZATION_DIAGNOSIS_REPORT.md, findings D-01 / D-03 / D-05 / D-06 / D-07 / D-08).
+ *
+ * Each test pins the behaviour that was previously broken, so the defect cannot come back
+ * silently.
+ */
+
+function createMemoryStorage({ failKeys = new Set(), maxValueLength = Infinity } = {}) {
+  const data = new Map();
+  const quotaError = (key) => {
+    const error = new Error(`cannot write ${key}`);
+    error.name = 'QuotaExceededError';
+    return error;
+  };
+  return {
+    failKeys,
+    getItem: (key) => (data.has(key) ? data.get(key) : null),
+    setItem: (key, value) => {
+      if (failKeys.has(key)) throw quotaError(key);
+      // Models a real quota: only oversized values are rejected, so a rollback of the
+      // small keys can still succeed.
+      if (String(value).length > maxValueLength) throw quotaError(key);
+      data.set(key, String(value));
+    },
+    removeItem: (key) => data.delete(key),
+    clear: () => data.clear(),
+    key: (index) => Array.from(data.keys())[index] ?? null,
+    get length() { return data.size; },
+  };
+}
+
+let storage;
+
+test.beforeEach(() => {
+  storage = createMemoryStorage();
+  globalThis.localStorage = storage;
+});
+
+// --- D-01: the read path must never replace the user's deck -------------------
+
+test('reading the vocabulary never replaces a small deck that contains a sample word', () => {
+  const mine = { id: 'mine_1', word: 'myownword', translation: '我自己的词' };
+  StorageService.saveVocabulary([{ id: 'sample_1', word: 'ubiquitous', translation: '无处不在的' }, mine]);
+  const rawBefore = storage.getItem('lingoflow_vocabulary');
+
+  const words = StorageService.getVocabulary();
+
+  assert.equal(words.length, 2, 'deck must not be inflated to the 30 demo words');
+  assert.ok(words.some((word) => word.word === 'myownword'), 'user word must survive');
+  assert.equal(storage.getItem('lingoflow_vocabulary'), rawBefore, 'a getter must not write');
+});
+
+test('reading the vocabulary returns a copy so callers cannot corrupt the sample deck', () => {
+  const lengthBefore = DEFAULT_SAMPLE_WORDS.length;
+  const firstWordBefore = DEFAULT_SAMPLE_WORDS[0].word;
+
+  const words = StorageService.getVocabulary(); // key absent → demo deck
+  words.unshift({ id: 'injected', word: 'brandnewword' });
+
+  assert.equal(DEFAULT_SAMPLE_WORDS.length, lengthBefore, 'the exported constant must not grow');
+  assert.equal(DEFAULT_SAMPLE_WORDS[0].word, firstWordBefore, 'the constant must not be mutated');
+  assert.ok(!StorageService.getVocabulary().some((word) => word.id === 'injected'));
+});
+
+// --- D-06: corrupted values must degrade, never crash the render ---------------
+
+test('corrupted stored values degrade to safe shapes instead of throwing', () => {
+  storage.setItem('lingoflow_vocabulary', 'null');
+  storage.setItem('lingoflow_app_state', 'null');
+  storage.setItem('lingoflow_articles', 'null');
+  storage.setItem('lingoflow_nce1_cache_v1', 'null');
+  storage.setItem('lingoflow_nce1_progress', 'null');
+  storage.setItem('lingoflow_study_plan', 'null');
+  storage.setItem('lingoflow_study_stats', '"not-an-object"');
+  storage.setItem('lingoflow_chat_messages_daily_chat', 'null');
+
+  assert.deepEqual(StorageService.getVocabulary(), []);
+  assert.deepEqual(StorageService.getAppState(), {});
+  assert.deepEqual(StorageService.getArticles(), []);
+  assert.deepEqual(StorageService.getNceCache(), {});
+  assert.deepEqual(StorageService.getNceProgress(), {});
+  assert.deepEqual(StorageService.getStudyPlan(), {});
+  assert.deepEqual(StorageService.getChatMessages('daily_chat'), []);
+  assert.equal(StorageService.getStudyStats().streakDays, 0);
+
+  // The call sites that run inside App's useState initializers must be total.
+  assert.doesNotThrow(() => StorageService.getVocabulary().filter(Boolean));
+  assert.doesNotThrow(() => StorageService.getAppState().activeTab);
+  assert.doesNotThrow(() => StorageService.getLocalDataSummary());
+  assert.doesNotThrow(() => StorageService.getStorageDiagnostics());
+});
+
+// --- D-05: a failed write must not be reported as success ---------------------
+
+test('a failed write is reported instead of returning an advanced SRS card', () => {
+  StorageService.saveVocabulary([{ id: 'w1', word: 'alpha', step: 0, intervalDays: 1, easeFactor: 2.5, tags: [] }]);
+  const rawBefore = storage.getItem('lingoflow_vocabulary');
+
+  storage.failKeys.add('lingoflow_vocabulary');
+  const result = StorageService.updateWordSRS('w1', 'good');
+
+  assert.equal(result, null, 'a scheduling advance that never reached disk must not be reported');
+  assert.equal(storage.getItem('lingoflow_vocabulary'), rawBefore, 'stored card must be untouched');
+  assert.equal(StorageService.getLastWriteError()?.quotaExceeded, true);
+  assert.equal(StorageService.getStorageDiagnostics().lastWriteError?.quotaExceeded, true);
+});
+
+// --- D-03 / D-08: import validation, key protection and atomicity -------------
+
+test('import keeps the local speech key when the backup carries none', () => {
+  StorageService.saveSettings({ apiKey: 'LOCAL_KEY', speechApiKey: 'LOCAL_SPEECH_KEY', speechModel: 'gpt-4o-mini-tts' });
+
+  const result = StorageService.importAllData(JSON.stringify({
+    app: 'LingoFlow',
+    version: 3,
+    settings: { provider: 'openai', speechApiKey: '' },
+  }));
+
+  assert.equal(result.success, true);
+  const settings = StorageService.getSettings();
+  assert.equal(settings.speechApiKey, 'LOCAL_SPEECH_KEY', 'speech key must survive a safe export');
+  assert.equal(settings.apiKey, 'LOCAL_KEY');
+  assert.equal(settings.provider, 'openai', 'non-secret settings still merge');
+});
+
+test('import rejects another app backup without touching local data', () => {
+  StorageService.saveVocabulary([{ id: 'keep', word: 'keepme', translation: '保留' }]);
+  const foreign = JSON.stringify({ app: 'SomeOtherApp', version: 9, vocabulary: [{ word: 'intruder' }] });
+
+  const preview = StorageService.parseBackupPreview(foreign);
+  assert.equal(preview.valid, false);
+
+  const result = StorageService.importAllData(foreign);
+  assert.equal(result.success, false);
+  assert.match(result.error, /LingoFlow/);
+  assert.deepEqual(StorageService.getVocabulary().map((word) => word.word), ['keepme']);
+});
+
+test('import does not regress SRS scheduling of an already mastered word', () => {
+  StorageService.saveVocabulary([{
+    id: 'w1',
+    word: 'handbag',
+    translation: '手提包',
+    step: 6,
+    intervalDays: 30,
+    easeFactor: 2.8,
+    status: 'mastered',
+    nextReviewDate: 999999999999,
+    createdAt: 100,
+    reviewCount: 12,
+  }]);
+
+  const result = StorageService.importAllData(JSON.stringify({
+    app: 'LingoFlow',
+    version: 3,
+    vocabulary: [{
+      id: 'imp1',
+      word: 'handbag',
+      step: 2,
+      intervalDays: 1,
+      easeFactor: 2.5,
+      nextReviewDate: 111,
+      createdAt: 999,
+      tags: ['旧备份'],
+    }],
+  }));
+
+  assert.equal(result.success, true);
+  const [word] = StorageService.getVocabulary();
+  assert.equal(word.id, 'w1', 'identity stays local');
+  assert.equal(word.createdAt, 100, 'creation time stays local');
+  assert.equal(word.intervalDays, 30, 'interval must not shrink back to 1 day');
+  assert.equal(word.easeFactor, 2.8);
+  assert.equal(word.nextReviewDate, 999999999999, 'a mastered word must not become due today');
+  assert.equal(word.status, 'mastered');
+});
+
+test('a failed import rolls back partial writes', () => {
+  // Quota is exceeded only by the oversized merged vocabulary, so the earlier settings
+  // write succeeds and the rollback must undo it.
+  globalThis.localStorage = createMemoryStorage({ maxValueLength: 400 });
+  StorageService.saveSettings({ provider: 'deepseek', apiKey: 'LOCAL_KEY' });
+  StorageService.saveVocabulary([{ id: 'keep', word: 'keepme' }]);
+
+  const result = StorageService.importAllData(JSON.stringify({
+    app: 'LingoFlow',
+    version: 3,
+    settings: { provider: 'openai' },
+    vocabulary: [{ word: 'x'.repeat(600) }],
+  }));
+
+  assert.equal(result.success, false);
+  assert.equal(result.rolledBack, true);
+  assert.equal(StorageService.getSettings().provider, 'deepseek', 'settings must be rolled back');
+  assert.deepEqual(StorageService.getVocabulary().map((word) => word.word), ['keepme']);
+});
+
+// --- migration + schema marker ------------------------------------------------
+
+test('legacy sample decks are upgraded once and user words are never replaced', () => {
+  StorageService.saveVocabulary([
+    { id: 'sample_1', word: 'legacy-one' },
+    { id: 'sample_2', word: 'legacy-two' },
+  ]);
+
+  StorageService.ensureSchema();
+
+  assert.equal(StorageService.getVocabulary().length, DEFAULT_SAMPLE_WORDS.length);
+  assert.ok(storage.getItem('lingoflow_vocabulary_legacy_backup'), 'replaced value is backed up');
+  assert.equal(storage.getItem('lingoflow_sample_migration_v2'), 'done');
+
+  // A deck that contains any user-created word must be left completely alone.
+  const freshStorage = createMemoryStorage();
+  globalThis.localStorage = freshStorage;
+  StorageService.saveVocabulary([{ id: 'sample_1', word: 'legacy-one' }, { id: 'mine', word: 'myownword' }]);
+
+  StorageService.ensureSchema();
+
+  assert.deepEqual(
+    StorageService.getVocabulary().map((word) => word.word).sort(),
+    ['legacy-one', 'myownword'],
+    'a deck with a user word must never be replaced',
+  );
+});
+
+test('a non numeric schema marker is repaired', () => {
+  storage.setItem('lingoflow_schema_version', 'abc');
+
+  assert.equal(StorageService.ensureSchema(), 3);
+  assert.equal(storage.getItem('lingoflow_schema_version'), '3', 'garbage marker must be rewritten');
+  assert.equal(StorageService.getSchemaVersion(), 3);
+});

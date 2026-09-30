@@ -1,12 +1,90 @@
 import { StorageService } from './storage';
 
 /**
+ * Request timeouts. The audit found that AI calls had no timeout and no way to cancel,
+ * so a stalled provider (weak mobile network, long "thinking" models) left the UI in a
+ * loading state forever with no recovery other than reloading the PWA.
+ */
+export const AI_REQUEST_TIMEOUT_MS = 60000;
+// Streaming: abort only if the provider goes quiet for this long (a long answer is fine,
+// a stalled socket is not).
+export const AI_STREAM_IDLE_TIMEOUT_MS = 30000;
+
+/**
  * Clean and format the base URL
  */
 function cleanBaseUrl(url) {
   if (!url) return 'https://api.deepseek.com';
   let cleaned = url.trim().replace(/\/+$/, '');
   return cleaned;
+}
+
+/**
+ * Build an AbortSignal that fires on timeout and also forwards any caller-provided signal.
+ * @returns {{ signal: AbortSignal, arm: Function, cleanup: Function }}
+ *   arm(ms) re-arms the idle timer (used between stream chunks), cleanup() must run in finally.
+ */
+function createRequestSignal(externalSignal, timeoutMs) {
+  const controller = new AbortController();
+  let timer = null;
+
+  const arm = (ms = timeoutMs) => {
+    if (timer) clearTimeout(timer);
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    timer = setTimeout(() => {
+      try {
+        controller.abort(new DOMException(`AI 请求超过 ${Math.round(ms / 1000)} 秒未响应`, 'TimeoutError'));
+      } catch {
+        controller.abort();
+      }
+    }, ms);
+  };
+
+  const forwardAbort = () => {
+    try {
+      controller.abort(externalSignal?.reason);
+    } catch {
+      controller.abort();
+    }
+  };
+
+  if (externalSignal) {
+    if (externalSignal.aborted) forwardAbort();
+    else externalSignal.addEventListener('abort', forwardAbort, { once: true });
+  }
+  arm();
+
+  return {
+    signal: controller.signal,
+    arm,
+    cleanup() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (externalSignal) externalSignal.removeEventListener('abort', forwardAbort);
+    },
+  };
+}
+
+/**
+ * Turn an abort/timeout into a readable Chinese error instead of a bare "AbortError".
+ * The original `name` is preserved so callers can distinguish cancellation from failure.
+ */
+function toReadableRequestError(error) {
+  const name = error?.name;
+  if (name === 'TimeoutError') {
+    const timedOut = new Error(error?.message || 'AI 请求超时，请检查网络后重试');
+    timedOut.name = 'TimeoutError';
+    return timedOut;
+  }
+  if (name === 'AbortError') {
+    const cancelled = new Error('AI 请求已取消');
+    cancelled.name = 'AbortError';
+    return cancelled;
+  }
+  if (error instanceof TypeError) {
+    return new Error('无法连接 AI 服务：请检查网络连接或设置中的接口地址');
+  }
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 /**
@@ -54,12 +132,17 @@ function extractJson(text) {
 
 /**
  * Universal Chat Completion Stream Caller (Server-Sent Events)
+ * @param {object} options
+ * @param {AbortSignal} [options.signal] caller-provided cancellation
+ * @param {number} [options.idleTimeoutMs] abort if the stream goes quiet this long
  */
 export async function callAICompletionStream({
   messages,
   temperature = 0.7,
   responseFormatJson = false,
   onChunk,
+  signal,
+  idleTimeoutMs = AI_STREAM_IDLE_TIMEOUT_MS,
 }) {
   const settings = StorageService.getSettings();
   const apiKey = settings.apiKey?.trim();
@@ -83,16 +166,26 @@ export async function callAICompletionStream({
     bodyPayload.response_format = { type: 'json_object' };
   }
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(bodyPayload),
-  });
+  const request = createRequestSignal(signal, idleTimeoutMs);
+
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(bodyPayload),
+      signal: request.signal,
+    });
+  } catch (error) {
+    request.cleanup();
+    throw toReadableRequestError(error);
+  }
 
   if (!res.ok) {
+    request.cleanup();
     const errorText = await res.text();
     let errorDetail = errorText;
     try {
@@ -105,6 +198,7 @@ export async function callAICompletionStream({
   }
 
   if (!res.body) {
+    request.cleanup();
     throw new Error('当前环境不支持流式响应');
   }
 
@@ -112,38 +206,60 @@ export async function callAICompletionStream({
   const decoder = new TextDecoder('utf-8');
   let fullText = '';
   let buffer = '';
+  let sawDone = false;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (!sawDone) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      // Any traffic proves the socket is alive: re-arm the idle timer.
+      request.arm(idleTimeoutMs);
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith(':')) continue;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-      if (trimmed.startsWith('data: ')) {
-        const dataStr = trimmed.slice(6).trim();
-        if (dataStr === '[DONE]') {
-          break;
-        }
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(':')) continue;
 
-        try {
-          const parsed = JSON.parse(dataStr);
-          const chunk = parsed.choices?.[0]?.delta?.content || '';
-          if (chunk) {
-            fullText += chunk;
-            if (onChunk) {
-              onChunk(chunk, fullText);
-            }
+        if (trimmed.startsWith('data: ')) {
+          const dataStr = trimmed.slice(6).trim();
+          if (dataStr === '[DONE]') {
+            // Previously a bare `break` only exited this inner for-loop, so the outer
+            // while kept waiting on reader.read() until the socket closed on its own.
+            sawDone = true;
+            break;
           }
-        } catch {
-          // ignore chunk parse failure
+
+          try {
+            const parsed = JSON.parse(dataStr);
+            const chunk = parsed.choices?.[0]?.delta?.content || '';
+            if (chunk) {
+              fullText += chunk;
+              if (onChunk) {
+                onChunk(chunk, fullText);
+              }
+            }
+          } catch {
+            // ignore chunk parse failure
+          }
         }
       }
+    }
+  } catch (error) {
+    const readable = toReadableRequestError(error);
+    // Keep whatever the user has already read — unless the caller cancelled on purpose
+    // (scenario switch / leaving the page), in which case the result must not be applied.
+    if (fullText && !signal?.aborted) return fullText;
+    throw readable;
+  } finally {
+    request.cleanup();
+    try {
+      await reader.cancel();
+    } catch {
+      // already closed
     }
   }
 
@@ -186,11 +302,16 @@ export function extractPartialReplyText(text) {
 
 /**
  * Universal Chat Completion Caller
+ * @param {object} options
+ * @param {AbortSignal} [options.signal] caller-provided cancellation
+ * @param {number} [options.timeoutMs] abort if the provider does not answer in time
  */
 export async function callAICompletion({
   messages,
   temperature = 0.7,
   responseFormatJson = false,
+  signal,
+  timeoutMs = AI_REQUEST_TIMEOUT_MS,
 }) {
   const settings = StorageService.getSettings();
   const apiKey = settings.apiKey?.trim();
@@ -214,30 +335,46 @@ export async function callAICompletion({
     bodyPayload.response_format = { type: 'json_object' };
   }
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(bodyPayload),
-  });
+  const request = createRequestSignal(signal, timeoutMs);
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    let errorDetail = errorText;
-    try {
-      const errJson = JSON.parse(errorText);
-      errorDetail = errJson.error?.message || errJson.message || errorText;
-    } catch {
-      // ignore
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(bodyPayload),
+      signal: request.signal,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      let errorDetail = errorText;
+      try {
+        const errJson = JSON.parse(errorText);
+        errorDetail = errJson.error?.message || errJson.message || errorText;
+      } catch {
+        // ignore
+      }
+      throw new Error(`AI请求失败 (${res.status}): ${errorDetail}`);
     }
-    throw new Error(`AI请求失败 (${res.status}): ${errorDetail}`);
-  }
 
-  const data = await res.json();
-  const rawContent = data.choices?.[0]?.message?.content || '';
-  return rawContent;
+    // A captive portal can answer 200 with HTML; surface that as a readable error
+    // instead of a raw "Unexpected token <" from JSON.parse.
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error('AI 服务返回了无法解析的内容（可能被网络登录页拦截），请稍后重试');
+    }
+    const rawContent = data.choices?.[0]?.message?.content || '';
+    return rawContent;
+  } catch (error) {
+    throw toReadableRequestError(error);
+  } finally {
+    request.cleanup();
+  }
 }
 
 /**
@@ -352,6 +489,7 @@ export async function getOralCoachResponseStream({
   scenarioPrompt = '',
   targetWords = [],
   onStreamText,
+  signal,
 }) {
   const targetWordsPrompt =
     targetWords.length > 0
@@ -400,6 +538,7 @@ CRITICAL: You must return your response in strictly valid JSON format matching t
     messages: formattedMessages,
     temperature: 0.7,
     responseFormatJson: true,
+    signal,
     onChunk: (_chunk, accumulated) => {
       if (onStreamText) {
         const partial = extractPartialReplyText(accumulated);
