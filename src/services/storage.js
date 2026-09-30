@@ -1,4 +1,6 @@
 // LocalStorage keys
+import { applyGrammarAnswer } from './grammar.js';
+
 const STORAGE_KEYS = {
   SETTINGS: 'lingoflow_settings',
   VOCABULARY: 'lingoflow_vocabulary',
@@ -8,6 +10,7 @@ const STORAGE_KEYS = {
   READING_ANNOTATIONS: 'lingoflow_reading_annotations',
   ARTICLE_READ_STATE: 'lingoflow_article_read_state_v1',
   ONBOARDING: 'lingoflow_onboarding_v1',
+  GRAMMAR: 'lingoflow_grammar_v1',
   NCE_PROGRESS: 'lingoflow_nce1_progress',
   NCE_CACHE: 'lingoflow_nce1_cache_v1',
   NCE_EXAMS: 'lingoflow_nce1_exams_v1',
@@ -319,6 +322,31 @@ export const StorageService = {
   hasSeenOnboarding(key) {
     if (!key) return false;
     return Boolean(this.getOnboardingState()[key]);
+  },
+
+  // --- Grammar (语法) ---
+  // Shape: { answers: { [patternId]: { correct, total } }, missed: [...], accuracy, ... }
+  // The progression maths lives in services/grammar.js (pure, unit-tested); this only persists.
+  getGrammarProgress() {
+    const stored = asObject(readJson(STORAGE_KEYS.GRAMMAR, {}));
+    return {
+      answers: asObject(stored.answers),
+      missed: Array.isArray(stored.missed) ? stored.missed : [],
+      totalAnswered: Number(stored.totalAnswered) || 0,
+      totalCorrect: Number(stored.totalCorrect) || 0,
+      accuracy: Number(stored.accuracy) || 0,
+      updatedAt: Number(stored.updatedAt) || 0,
+    };
+  },
+
+  saveGrammarProgress(progress) {
+    return safeSetItem(STORAGE_KEYS.GRAMMAR, JSON.stringify(asObject(progress) || {}));
+  },
+
+  /** Merge one answered question into the stored progress. Returns null when the write failed. */
+  recordGrammarAnswer(entry) {
+    const next = applyGrammarAnswer(this.getGrammarProgress(), entry);
+    return this.saveGrammarProgress(next) ? next : null;
   },
 
   // --- Vocabulary ---

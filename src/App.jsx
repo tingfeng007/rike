@@ -5,6 +5,7 @@ import {
   BookOpen,
   Layers,
   GraduationCap,
+  SpellCheck,
 } from 'lucide-react';
 import HomeDashboard from './components/HomeDashboard';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -16,8 +17,9 @@ const SmartReader = lazy(() => import('./components/SmartReader'));
 const VocabularySRS = lazy(() => import('./components/VocabularySRS'));
 const Settings = lazy(() => import('./components/Settings'));
 const NewConcept = lazy(() => import('./components/NewConcept'));
+const GrammarLab = lazy(() => import('./components/GrammarLab'));
 
-const VALID_TABS = new Set(['home', 'oral', 'reader', 'nce', 'vocab', 'settings']);
+const VALID_TABS = new Set(['home', 'oral', 'reader', 'nce', 'grammar', 'vocab', 'settings']);
 
 function PageFallback() {
   return (
@@ -145,6 +147,7 @@ export default function App() {
           )}
           {activeTab === 'reader' && <SmartReader intent={readerIntent} />}
           {activeTab === 'nce' && <NewConcept intent={nceIntent} />}
+          {activeTab === 'grammar' && <GrammarLab onOpenSettings={() => navigate('settings')} />}
           {activeTab === 'vocab' && <VocabularySRS onOpenSource={openSourceFromVocab} />}
           {activeTab === 'settings' && <Settings />}
         </Suspense>
@@ -213,6 +216,21 @@ export default function App() {
           >
             <GraduationCap className="w-4.5 h-4.5 mb-1" />
             <span className="text-[10px] leading-none tracking-tight">新概念</span>
+          </button>
+
+          {/* Tab: Grammar Lab */}
+          <button
+            type="button"
+            aria-current={activeTab === 'grammar' ? 'page' : undefined}
+            onClick={() => navigate('grammar')}
+            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
+              activeTab === 'grammar'
+                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <SpellCheck className="w-4.5 h-4.5 mb-1" />
+            <span className="text-[10px] leading-none tracking-tight">语法</span>
           </button>
 
           {/* Tab 4: Vocabulary & SRS */}
