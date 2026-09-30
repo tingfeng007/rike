@@ -1,4 +1,5 @@
 import { VOCABULARY_CATEGORIES, sampleCategoryWords } from '../data/categoryVocabulary';
+import { fillCategoryPhonetics } from '../data/categoryPhonetics';
 import { dueVocabulary, selectReviewSession } from '../services/reviewSession';
 import { useStudyClock } from '../hooks/useStudyClock';
 import React, { useState, useEffect, useRef } from 'react';
@@ -188,7 +189,11 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   // Reload vocabulary from storage with randomized shuffling
   const reloadVocabulary = (forcePractice = false) => {
     if (forcePractice) planTargetsRef.current = null;
-    const words = StorageService.getVocabulary();
+    const storedWords = StorageService.getVocabulary();
+    const words = fillCategoryPhonetics(storedWords);
+    if (words.some((word, index) => word !== storedWords[index]) && !StorageService.saveVocabulary(words)) {
+      setDataError('音标已显示，但补全结果未能保存。请检查浏览器存储空间后重试。');
+    }
     setVocabulary(words);
     setStudyStats(StorageService.getStudyStats());
 
@@ -844,6 +849,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                             <span className="text-xl font-bold font-serif text-slate-900">
                               {currentCard.word}
                             </span>
+                            {currentCard.phonetic && <p className="mt-1 text-xs font-mono text-sky-700">{currentCard.phonetic}</p>}
                           </div>
                           <button
                             onClick={(e) => {

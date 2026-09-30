@@ -1,3 +1,4 @@
+import { categoryPhonetic } from './categoryPhonetics.js';
 // Curated starter decks. Examples describe the selected sense, not every possible meaning.
 const decks = [
   ['business', '商务英语', '💼', [
@@ -149,7 +150,7 @@ const decks = [
 export const VOCABULARY_CATEGORIES = decks.map(([id, label, icon, rows]) => ({
   id, label, icon,
   words: rows.map(([word, pos, translation, contextSentence, contextSentenceCn]) => ({
-    word, pos, translation, contextSentence, contextSentenceCn,
+    word, pos, translation, contextSentence, contextSentenceCn, phonetic: categoryPhonetic(word),
     tags: [label],
     sources: [{ type: 'category', id, key: `category:${id}`, label: `分类词库 · ${label}` }],
   })),
