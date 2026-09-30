@@ -102,6 +102,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   const [showQuickKeyModal, setShowQuickKeyModal] = useState(false);
   const [quickKeyInput, setQuickKeyInput] = useState('');
   const [showMicHelp, setShowMicHelp] = useState(false);
+  const [showPracticeOptions, setShowPracticeOptions] = useState(false);
   const [micHelpReason, setMicHelpReason] = useState('unsupported');
 
   // Randomly refresh wanted words
@@ -425,13 +426,18 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   };
 
   return (
-    <div className="study-page flex flex-col h-full">
+    <div className="study-page oral-page flex flex-col h-full min-h-0">
+      <header className="oral-compact-header flex-none flex items-center justify-between gap-3 border-b border-stone-200 bg-[#fffdf8] px-4 py-2.5" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}>
+        <div className="min-w-0"><h1 className="truncate text-base font-bold text-[#102a43]"><span className="mr-2" aria-hidden="true">{currentScenario.icon}</span>{currentScenario.name}</h1><p className="mt-1 text-[11px] text-slate-500">{!hasApiKey ? '先配置 API Key，即可开始对话' : practiceWithVocab && wantedWordsList.length ? `目标词 ${wantedWordsList.filter((item) => activatedWords[item.word.toLowerCase()]).length}/${wantedWordsList.length} · 用英语聊一聊` : '用英语聊一聊'}</p></div>
+        <button type="button" onClick={() => setShowPracticeOptions(true)} aria-haspopup="dialog" className="shrink-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700">场景与目标</button>
+      </header>
+      <BottomSheet open={showPracticeOptions} onClose={() => setShowPracticeOptions(false)} title="口语练习设置" bodyClassName="!p-0" footer={<button type="button" onClick={() => setShowPracticeOptions(false)} className="w-full rounded-xl bg-[#102a43] py-3 text-sm font-semibold text-white">返回对话</button>}>
       <StudyHeader
         eyebrow="SPEAK · ACTIVE ENGLISH"
         title={currentScenario.name}
         description={`${currentScenario.desc} · 让今天记住的词真正说出口。`}
         icon={<span className="text-base">{currentScenario.icon}</span>}
-        status={hasApiKey ? 'AI 已连接' : '待连接 AI'}
+        status={hasApiKey ? 'Key 已配置' : '待配置 Key'}
         actions={(
           <>
             <button
@@ -459,14 +465,14 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
           </>
         )}
       >
-        <div className="flex space-x-2 overflow-x-auto pb-1 no-scrollbar text-xs" aria-label="口语练习场景">
+        <div className="grid grid-cols-2 gap-2 text-xs" aria-label="口语练习场景">
           {SCENARIOS.map((sc) => {
             const isActive = sc.id === currentScenario.id;
             return (
               <button
                 type="button"
                 key={sc.id}
-                onClick={() => handleSelectScenario(sc)}
+                onClick={() => { handleSelectScenario(sc); setShowPracticeOptions(false); }}
                 aria-pressed={isActive}
                 className="study-pill tap-lift flex-none flex items-center space-x-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition-all"
               >
@@ -488,7 +494,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
                 const isHit = activatedWords[item.word.toLowerCase()];
                 return (
                   <button
-                    key={item.id}
+                    key={item.id || item.word}
                     onClick={() => tts.speak(item.word)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 flex-none transition-all active:scale-95 ${
                       isHit
@@ -514,6 +520,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
           </div>
         )}
       </StudyHeader>
+      </BottomSheet>
 
       {/* Floating Mission Success Toast */}
       {missionToast && (
@@ -524,7 +531,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
       )}
 
       {/* Chat Messages List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="oral-chat flex-1 min-h-0 overflow-y-auto p-4 space-y-4" aria-label="口语对话记录">
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
           const isSpeaking = isSpeakingId === msg.id;
@@ -751,21 +758,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
       <footer className="flex-none glass-floating-bar border-t border-white/80 p-3 pb-safe z-20">
         {/* Newbie Onboarding Banner when no key is set */}
         {!hasApiKey && (
-          <div className="mb-2.5 p-2.5 bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200/80 rounded-2xl flex items-center justify-between shadow-2xs animate-fade-in">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">👋</span>
-              <div>
-                <h4 className="font-bold text-slate-900 text-xs">欢迎来到 LingoFlow！开启你的专属外教</h4>
-                <p className="text-[10.5px] text-slate-500">API Key 与历史记录保存在本机；消息由你选择的 AI 服务商处理</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowQuickKeyModal(true)}
-              className="px-2.5 py-1 bg-gradient-to-r from-sky-600 to-blue-600 text-white text-[11px] font-bold rounded-xl shadow-xs active:scale-95 flex-none"
-            >
-              一键开启
-            </button>
-          </div>
+          <button type="button" onClick={() => setShowQuickKeyModal(true)} className="mb-2 flex w-full items-center justify-between gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800"><span>配置 AI 后即可对练</span><span className="font-semibold">去配置 →</span></button>
         )}
 
         {isRecording && (
@@ -814,6 +807,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
                 }
               }}
               placeholder="用英语回复或点麦克风说话..."
+              aria-label="输入英语回复"
               className="w-full bg-transparent resize-none outline-hidden text-sm text-slate-800 placeholder-slate-400 max-h-24 py-1.5"
             />
           </div>
