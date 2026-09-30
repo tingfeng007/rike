@@ -49,6 +49,7 @@ export default function Settings() {
   const [localSummary, setLocalSummary] = useState(() => StorageService.getLocalDataSummary());
   const [storageDiagnostics, setStorageDiagnostics] = useState(() => StorageService.getStorageDiagnostics());
   const [audioCacheCount, setAudioCacheCount] = useState(0);
+  const [lastExportAt, setLastExportAt] = useState(() => StorageService.getAppState().lastExportAt || 0);
 
   // Reload voices when speech system initializes
   useEffect(() => {
@@ -152,6 +153,9 @@ export default function Settings() {
     a.download = `lingoflow_backup_${new Date().toISOString().slice(0, 10)}${keyTag}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    const exportedAt = Date.now();
+    StorageService.saveAppState({ ...StorageService.getAppState(), lastExportAt: exportedAt });
+    setLastExportAt(exportedAt);
   };
 
   const handleClearCourseCache = () => {
@@ -720,6 +724,7 @@ export default function Settings() {
             />
           </div>
 
+          <p className="text-xs text-slate-500">{lastExportAt ? `最近发起导出：${new Date(lastExportAt).toLocaleString()}。请确认备份文件已保存。` : '还没有导出过备份，建议定期保存学习记录。'}</p>
           {/* Export & Import Buttons */}
           <div className="grid grid-cols-2 gap-2 pt-0.5">
             <button

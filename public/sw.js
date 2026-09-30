@@ -9,6 +9,7 @@
  */
 
 const CACHE_NAME = 'lingoflow-offline-v11';
+const SHELL_ASSETS = /* BUILD_SHELL */ [];
 
 // Caches owned by other parts of the app. The previous activate handler deleted every
 // cache that was not its own, which silently destroyed the user's deliberately
@@ -17,8 +18,10 @@ const CACHE_NAME = 'lingoflow-offline-v11';
 const APP_CACHE_NAMES = ['lingoflow-nce-audio-v1', 'lingoflow-tts-v1'];
 const MANAGED_PREFIX = 'lingoflow-offline-';
 
-self.addEventListener('install', () => {
-  self.skipWaiting();
+self.addEventListener('install', (event) => {
+  // Let existing tabs finish with their current worker and chunks. Taking over here
+  // and deleting the old shell can break a lazy import in an already-open lesson.
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));
 });
 
 self.addEventListener('activate', (event) => {
@@ -46,6 +49,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
+        if (!response || response.status >= 400) throw new Error('Resource unavailable');
         if (response && response.status === 200) {
           const copy = response.clone();
           // Tie the write to the event lifetime: the previous fire-and-forget
@@ -59,11 +63,15 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(async () => {
-        const cached = await caches.match(request);
+        const cache = await caches.open(CACHE_NAME);
+        // Vite serves static files with Vary: Origin. Precache requests do not carry
+        // the module-loader Origin header; these immutable same-origin assets are
+        // identical for both requests, so that header must not defeat offline lookup.
+        const cached = await cache.match(request, { ignoreVary: true });
         if (cached) return cached;
 
         if (request.mode === 'navigate') {
-          const fallback = await caches.match('./index.html') || await caches.match('./');
+          const fallback = await cache.match('./index.html') || await cache.match('./');
           if (fallback) return fallback;
         }
 

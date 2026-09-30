@@ -280,7 +280,8 @@ test('review queue combines exam, dictation and exercise mistakes without exposi
   assert.equal(buildNceReviewQueue(progress, '001&002.Excuse Me').length, 3);
   const resolved = resolveNceReviewMistake(progress, queue.find((item) => item.kind === 'exercise'));
   assert.equal(buildNceReviewQueue(resolved).length, 3);
-  assert.equal(resolved['001&002.Excuse Me'].exerciseMistakes.length, 0);
+  assert.equal(resolved['001&002.Excuse Me'].exerciseMistakes.length, 1);
+  assert.ok(resolved['001&002.Excuse Me'].exerciseMistakes[0].recheckAt > Date.now());
   assert.equal(resolved['001&002.Excuse Me'].dictationMistakes.length, 1);
   assert.equal(progress['001&002.Excuse Me'].exerciseMistakes.length, 1);
   assert.equal(resolveNceReviewMistake(resolved, queue.find((item) => item.kind === 'exercise')), resolved);
@@ -291,4 +292,19 @@ test('review grading requires recalled words while ignoring punctuation and case
   assert.equal(gradeNceReview(item, 'is this your handbag').correct, true);
   assert.equal(gradeNceReview(item, 'is this handbag').correct, false);
   assert.equal(gradeNceReview(item, '').correct, false);
+});
+
+
+test('a corrected mistake is recalled tomorrow and again three days later', () => {
+  const item = { unitId: 'unit', field: 'exerciseMistakes', mistakeId: 'm' };
+  const progress = { unit: { exerciseMistakes: [{ id: 'm', answer: 'bag' }] } };
+  const day = 86400000;
+  const first = resolveNceReviewMistake(progress, item, 100);
+  assert.equal(buildNceReviewQueue(first, '', 101).length, 0);
+  assert.equal(buildNceReviewQueue(first, '', 100 + day).length, 1);
+  const second = resolveNceReviewMistake(first, item, 100 + day);
+  assert.equal(buildNceReviewQueue(second, '', 100 + day * 2).length, 0);
+  assert.equal(buildNceReviewQueue(second, '', 100 + day * 4).length, 1);
+  const third = resolveNceReviewMistake(second, item, 100 + day * 4);
+  assert.equal(third.unit.exerciseMistakes.length, 0);
 });

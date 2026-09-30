@@ -1,3 +1,4 @@
+import { useStudyClock } from '../hooks/useStudyClock';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   BookOpen,
@@ -31,6 +32,7 @@ import {
   describeAIError,
   hasApiKey,
 } from '../services/ai';
+import { createLatestRequest } from '../services/latestRequest';
 import { tts } from '../services/speech';
 import { containsTerm } from '../services/text';
 import { useToast } from './ui/toastContext';
@@ -101,14 +103,18 @@ function pickRandomOtherArticle(articles, currentId) {
 
 export default function SmartReader({ intent = null }) {
   const toast = useToast();
+  const studyClock = useStudyClock();
   const [articles, setArticles] = useState(() => StorageService.getArticles());
   const [currentArticle, setCurrentArticle] = useState(() => {
     const list = StorageService.getArticles();
     const savedId = StorageService.getAppState().lastReaderArticleId;
     return list.find((article) => article.id === savedId) || list[0] || null;
   });
-  const [fontSize, setFontSize] = useState('text-base'); // 'text-sm' | 'text-base' | 'text-lg'
+  const [fontSize, setFontSize] = useState(() => StorageService.getAppState().readerFontSize || 'text-base');
+  const [focusReading, setFocusReading] = useState(false); // 'text-sm' | 'text-base' | 'text-lg'
   const [readingProgress, setReadingProgress] = useState(0);
+
+  useEffect(() => { StorageService.saveAppState({ ...StorageService.getAppState(), readerFontSize: fontSize }); }, [fontSize]);
 
   // Modal / Drawer states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -121,6 +127,12 @@ export default function SmartReader({ intent = null }) {
   const [wordAnalysis, setWordAnalysis] = useState(null);
   const [isAnalyzingWord, setIsAnalyzingWord] = useState(false);
   const [isWordSaved, setIsWordSaved] = useState(false);
+  const lookupGate = useRef(createLatestRequest());
+  const dismissWordTimer = useRef(null);
+  useEffect(() => {
+    if (!selectedWord) lookupGate.current.cancel();
+  }, [selectedWord]);
+  useEffect(() => () => { lookupGate.current.cancel(); clearTimeout(dismissWordTimer.current); }, []);
 
   // Selected sentence modal state
   const [selectedSentence, setSelectedSentence] = useState(null);
@@ -217,20 +229,20 @@ export default function SmartReader({ intent = null }) {
 
     return () => {
       const session = readingSessionRef.current;
-      const elapsedMinutes = (Date.now() - session.startedAt) / 60000;
+      const elapsedMinutes = studyClock.takeMinutes();
       const meaningful = elapsedMinutes >= 1 || (session.scrolled && elapsedMinutes >= 0.4);
       if (!meaningful || !session.articleId) return;
       if (StorageService.hasStudyEventToday({ type: 'reader', entityId: session.articleId })) return;
       StorageService.recordStudyActivity({
         type: 'reader',
         count: 1,
-        durationMinutes: Math.max(1, Math.round(elapsedMinutes)),
+        durationMinutes: elapsedMinutes,
         source: 'reader-session',
         entityId: session.articleId,
         label: '静读一篇文章',
       });
     };
-  }, [currentArticle?.id]);
+  }, [currentArticle?.id, studyClock]);
 
   // While the whole article is being read aloud, keep the current paragraph in view.
   useEffect(() => {
@@ -393,8 +405,7 @@ export default function SmartReader({ intent = null }) {
       setParagraphSpeechIndex(cleanSentences.length);
       setIsParagraphSpeaking(false);
       setIsParagraphPaused(false);
-      const paragraphMinutes = getReadingMetrics(cleanSentences.join(' ')).minutes;
-      StorageService.recordStudyActivity({ type: 'reader', count: 1, durationMinutes: paragraphMinutes, source: 'reader-session', entityId: currentArticle?.id, label: '完成精读段落朗读', metadata: { paragraphIndex } });
+      StorageService.recordStudyActivity({ type: 'reader', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'reader-session', entityId: currentArticle?.id, label: '完成精读段落朗读', metadata: { paragraphIndex } });
 
       // Continuous "read the whole article" mode: move on to the next non-empty paragraph.
       if (articleSpeechActiveRef.current) {
@@ -466,7 +477,7 @@ export default function SmartReader({ intent = null }) {
       ? articleNotes.map((item) => item.id === savedNote.id ? savedNote : item)
       : [...articleNotes, savedNote];
     persistAnnotations({ ...annotations, [articleKey]: nextNotes });
-    StorageService.recordStudyActivity({ type: 'annotation', count: 1, durationMinutes: 2, source: 'reader-annotation', entityId: articleKey, label: '收藏精读句子' });
+    StorageService.recordStudyActivity({ type: 'annotation', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'reader-annotation', entityId: articleKey, label: '收藏精读句子' });
     setEditingAnnotation(null);
     setAnnotationDraft('');
   };
@@ -541,6 +552,7 @@ export default function SmartReader({ intent = null }) {
       };
 
       const updated = StorageService.saveArticle(newArt);
+      if (!updated) throw new Error('文章没有保存成功，请先导出备份并检查存储空间。');
       setArticles(updated);
       selectArticle(updated[0]);
       setShowRefreshModal(false);
@@ -658,6 +670,7 @@ export default function SmartReader({ intent = null }) {
       tags: ['自主录入'],
     };
     const updated = StorageService.saveArticle(newArt);
+    if (!updated) { toast.error('文章没有保存成功，草稿已保留，请重试。'); return; }
     setArticles(updated);
     selectArticle(updated[0]);
     setShowAddModal(false);
@@ -674,6 +687,7 @@ export default function SmartReader({ intent = null }) {
     }
     if (confirm('确认删除这篇文章吗？（该篇的阅读位置记忆与划线批注手记将一并安全清理）')) {
       const updated = StorageService.deleteArticle(id);
+      if (!updated) { toast.error('删除没有保存成功，请重试。'); return; }
       setArticles(updated);
       // Also sync local annotations state
       setAnnotations(StorageService.getReadingAnnotations());
@@ -695,72 +709,43 @@ export default function SmartReader({ intent = null }) {
     return match ? match.trim() : '';
   };
 
-  // Handle word click
-  const handleWordClick = async (rawWord, enclosingSentence = '') => {
-    // Clean word: remove trailing punctuation
-    const clean = rawWord.replace(/^[^\w]+|[^\w]+$/g, '');
-    if (!clean || clean.length < 2) return;
-
-    // Keep the sentence position: looking a word up while listening used to reset the
-    // paragraph to sentence 1, so resuming replayed what the learner had already heard.
-    stopParagraphSpeech(false);
-    const sentence = (enclosingSentence || '').trim()
-      || findEnclosingSentence(currentArticle.content, clean);
-    setSelectedWord({ word: clean, sentence });
+  const lookupWord = async (word, sentence) => {
+    clearTimeout(dismissWordTimer.current);
+    const request = lookupGate.current.start();
+    setSelectedWord({ word, sentence });
     setWordAnalysis(null);
     setIsAnalyzingWord(true);
     setIsWordSaved(false);
-
-    // Play quick pronunciation
-    tts.speak(clean);
-
     try {
-      const analysis = await analyzeWordWithAI(clean, sentence);
-      setWordAnalysis(analysis);
+      const cached = StorageService.getVocabulary().find((entry) => entry.word.toLowerCase() === word.toLowerCase() && entry.translation && entry.contextSentence === sentence);
+      const analysis = cached || await analyzeWordWithAI(word, sentence, { signal: request.signal });
+      if (request.isCurrent()) setWordAnalysis(analysis);
     } catch (error) {
-      // Say what actually went wrong. The old single string blamed "网络波动或未配置 API Key"
-      // for every failure, so people checked their Wi-Fi when the key was simply missing.
-      const described = describeAIError(error, { fallback: '释义解析未成功' });
-      setWordAnalysis({
-        word: clean,
-        phonetic: '',
-        pos: '',
-        isError: true,
-        // Deliberately NOT stored as a meaning: the save-to-vocab button is disabled while
-        // isError is set, so this text never becomes the card's translation.
-        translation: described.message,
-        contextSentence: sentence,
-      });
+      if (!request.isCurrent()) return;
+      const described = describeAIError(error, { fallback: '查词失败，请重试。' });
+      setWordAnalysis({ word, phonetic: '', pos: '', isError: true, translation: described.message, contextSentence: sentence });
     } finally {
-      setIsAnalyzingWord(false);
+      if (request.isCurrent()) setIsAnalyzingWord(false);
     }
   };
 
-  // Retry word analysis
-  const handleRetryWordAnalysis = async () => {
-    if (!selectedWord?.word) return;
-    setIsAnalyzingWord(true);
-    try {
-      const analysis = await analyzeWordWithAI(selectedWord.word, selectedWord.sentence || '');
-      setWordAnalysis(analysis);
-    } catch {
-      setWordAnalysis({
-        word: selectedWord.word,
-        phonetic: '',
-        pos: '',
-        isError: true,
-        translation: '再次尝试未成功，请检查设置中的 API Key 或网络',
-        contextSentence: selectedWord.sentence || '',
-      });
-    } finally {
-      setIsAnalyzingWord(false);
-    }
+  const handleWordClick = (rawWord, enclosingSentence = '') => {
+    const clean = rawWord.replace(/^[^\w]+|[^\w]+$/g, '');
+    if (!clean || clean.length < 2) return;
+    stopParagraphSpeech(false);
+    const sentence = enclosingSentence.trim() || findEnclosingSentence(currentArticle.content, clean);
+    tts.speak(clean);
+    return lookupWord(clean, sentence);
+  };
+
+  const handleRetryWordAnalysis = () => {
+    if (selectedWord) return lookupWord(selectedWord.word, selectedWord.sentence || '');
   };
 
   // Save clicked word to vocabulary
   const handleSaveToVocab = () => {
     if (!selectedWord) return;
-    StorageService.addWord({
+    const saved = StorageService.addWord({
       word: wordAnalysis?.word || selectedWord.word,
       phonetic: wordAnalysis?.phonetic || '',
       pos: wordAnalysis?.pos || '',
@@ -771,9 +756,10 @@ export default function SmartReader({ intent = null }) {
       tags: ['精读摘录', currentArticle?.title || '自主精读'],
       sources: [{ type: 'reader', id: currentArticle?.id, key: `reader:${currentArticle?.id}`, label: currentArticle?.title || '精读文章' }],
     });
+    if (!saved) { toast.error('生词没有保存成功，请检查存储空间。'); return; }
     setIsWordSaved(true);
     // Auto dismiss after 1.1s so reading flow continues seamlessly!
-    setTimeout(() => {
+    dismissWordTimer.current = setTimeout(() => {
       setSelectedWord(null);
     }, 1100);
   };
@@ -815,6 +801,7 @@ export default function SmartReader({ intent = null }) {
         status={currentArticle ? `${currentWordCount} 词 · 约 ${readingMinutes} 分钟` : `${articles.length} 篇文章`}
         actions={(
           <>
+            <button type="button" onClick={() => setFocusReading((value) => !value)} aria-pressed={focusReading} className="rounded-xl bg-white/10 px-2.5 py-2 text-xs text-white">{focusReading ? '退出专注' : '专注阅读'}</button>
             <button
               type="button"
               onClick={() => setShowNotesModal(true)}
@@ -831,6 +818,7 @@ export default function SmartReader({ intent = null }) {
           </>
         )}
       >
+        {!focusReading && <>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-xl bg-white/10 p-0.5 text-[11px] text-slate-300 ring-1 ring-white/10" aria-label="正文字号">
@@ -972,6 +960,7 @@ export default function SmartReader({ intent = null }) {
             );
           })}
         </div>
+        </>}
       </StudyHeader>
 
       {/* Reading Body with Scroll Tracking */}
@@ -1080,8 +1069,9 @@ export default function SmartReader({ intent = null }) {
                               const vocabHit = cleanWord && savedVocabMap[cleanWord];
 
                               return (
-                                <span
-                                  key={wIdx}
+                                <button
+                                  type="button"
+                                  key={`${sentence}-${wIdx}`}
                                   onClick={() => handleWordClick(word, sentence)}
                                   className={`cursor-pointer rounded px-0.5 py-0.5 transition-all active:bg-sky-200 ${
                                     vocabHit
@@ -1091,7 +1081,7 @@ export default function SmartReader({ intent = null }) {
                                   title={vocabHit ? `✨ 生词本已收录: ${vocabHit.translation || ''}` : '点击查词释义'}
                                 >
                                   {word}{' '}
-                                </span>
+                                </button>
                               );
                             })}
 

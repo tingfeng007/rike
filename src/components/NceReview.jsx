@@ -4,14 +4,14 @@ import { tts } from '../services/speech';
 import { buildNceReviewQueue, gradeNceReview } from '../services/nceReview';
 import { onEnterSubmit } from '../services/keyboard';
 
-export default function NceReview({ progress, units, initialUnitFilename = '', onResolve, onOpenLesson, onBack }) {
+export default function NceReview({ progress, units, initialUnitFilename = '', reviewIds = null, onResolve, onOpenLesson, onBack }) {
   const [unitId, setUnitId] = useState(initialUnitFilename);
   const [activeId, setActiveId] = useState('');
   const [answer, setAnswer] = useState('');
   const [result, setResult] = useState(null);
   const [revealed, setRevealed] = useState(false);
   const [notice, setNotice] = useState('');
-  const queue = useMemo(() => buildNceReviewQueue(progress, unitId), [progress, unitId]);
+  const queue = useMemo(() => buildNceReviewQueue(progress, unitId).filter((item) => !reviewIds?.length || reviewIds.includes(item.id)), [progress, unitId, reviewIds]);
   const allCount = useMemo(() => buildNceReviewQueue(progress).length, [progress]);
   const unitIds = useMemo(() => [...new Set(buildNceReviewQueue(progress).map((item) => item.unitId))], [progress]);
   const current = queue.find((item) => item.id === activeId) || queue[0];

@@ -6,14 +6,14 @@ const SOURCES = [
   ['examMistakes', 'exam', '单元试题'],
 ];
 
-export function buildNceReviewQueue(progress, unitId = '') {
+export function buildNceReviewQueue(progress, unitId = '', now = Date.now()) {
   const queue = [];
   Object.entries(progress || {}).forEach(([filename, record]) => {
     if (!record || typeof record !== 'object' || (unitId && filename !== unitId)) return;
     SOURCES.forEach(([field, kind, label]) => {
       if (!Array.isArray(record[field])) return;
       record[field].forEach((mistake) => {
-        if (!mistake?.id) return;
+        if (!mistake?.id || mistake.recheckAt > now) return;
         const answer = kind === 'dictation' ? mistake.text : mistake.answer;
         if (!answer) return;
         queue.push({
@@ -45,16 +45,22 @@ export function gradeNceReview(item, attempt) {
   return { ...result, correct: Boolean(result.attemptWords.length) && result.score >= 90 };
 }
 
-export function resolveNceReviewMistake(progress, item) {
+export function resolveNceReviewMistake(progress, item, now = Date.now()) {
   if (!SOURCES.some(([field]) => field === item?.field)) return progress;
   const record = progress?.[item.unitId];
   const mistakes = record?.[item.field];
   if (!Array.isArray(mistakes) || !mistakes.some((mistake) => mistake.id === item.mistakeId)) return progress;
+  if (mistakes.find((mistake) => mistake.id === item.mistakeId)?.recheckAt > now) return progress;
   return {
     ...progress,
     [item.unitId]: {
       ...record,
-      [item.field]: mistakes.filter((mistake) => mistake.id !== item.mistakeId),
+      [item.field]: mistakes.flatMap((mistake) => {
+        if (mistake.id !== item.mistakeId) return [mistake];
+        const successes = (mistake.recallSuccesses || 0) + 1;
+        if (successes >= 3) return [];
+        return [{ ...mistake, recallSuccesses: successes, resolvedAt: now, recheckAt: now + (successes === 1 ? 1 : 3) * 86400000 }];
+      }),
       lastStudiedAt: Date.now(),
     },
   };

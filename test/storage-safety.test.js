@@ -37,6 +37,26 @@ function createMemoryStorage({ failKeys = new Set(), maxValueLength = Infinity }
 
 let storage;
 
+test('a failed activity event does not leave inflated study counters', () => {
+  StorageService.recordStudyActivity({ type: 'review', count: 1 });
+  const before = StorageService.getStudyStats();
+  const eventsBefore = StorageService.getStudyEvents();
+  storage.failKeys.add('lingoflow_study_events_v1');
+  assert.equal(StorageService.recordStudyActivity({ type: 'review', count: 8 }), null);
+  assert.deepEqual(StorageService.getStudyStats(), before);
+  assert.deepEqual(StorageService.getStudyEvents(), eventsBefore);
+});
+
+test('article writes report failure and preserve article annotations on failed deletion', () => {
+  StorageService.saveArticles([{ id: 'a', title: 'Keep me', content: 'Text' }]);
+  StorageService.saveReadingAnnotations({ a: [{ sentence: 'Text' }] });
+  storage.failKeys.add('lingoflow_articles');
+  assert.equal(StorageService.saveArticle({ id: 'b', content: 'New' }), null);
+  assert.equal(StorageService.deleteArticle('a'), null);
+  assert.equal(StorageService.getArticles()[0].id, 'a');
+  assert.equal(StorageService.getReadingAnnotations().a.length, 1);
+});
+
 test.beforeEach(() => {
   storage = createMemoryStorage();
   globalThis.localStorage = storage;

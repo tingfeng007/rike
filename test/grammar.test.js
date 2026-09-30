@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GRAMMAR_PATTERNS, GRAMMAR_COMPARISONS, getAllGrammarExamples } from '../src/data/grammar.js';
+import { GRAMMAR_LESSONS } from '../src/data/grammarLessons.js';
 import {
   buildGrammarQuiz,
   detectSentencePattern,
@@ -170,7 +171,7 @@ test('进度汇总给出每个句型的掌握标签', () => {
   progress = applyGrammarAnswer(progress, { patternId: 'svo', correct: false });
 
   const summary = summarizeGrammarProgress(progress);
-  assert.equal(summary.length, GRAMMAR_PATTERNS.length);
+  assert.equal(summary.length, GRAMMAR_PATTERNS.length + GRAMMAR_LESSONS.length);
   assert.equal(summary.find((item) => item.patternId === 'sv').label, '熟练');
   assert.equal(summary.find((item) => item.patternId === 'svo').label, '需加强');
   assert.equal(summary.find((item) => item.patternId === 'svoc').label, '未练习');

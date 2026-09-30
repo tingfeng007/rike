@@ -1,3 +1,4 @@
+import { useStudyClock } from '../hooks/useStudyClock';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   SpellCheck,
@@ -14,12 +15,15 @@ import {
   Search,
 } from 'lucide-react';
 import StudyHeader from './StudyHeader';
+import GrammarWorkbench from './GrammarWorkbench';
 import { useToast } from './ui/toastContext';
 import { ApiKeyNotice } from './ui/ApiKeyNotice';
 import { IconButton } from './ui/IconButton';
 import { StorageService } from '../services/storage';
 import { analyzeSentenceWithAI, describeAIError, hasApiKey } from '../services/ai';
 import { GRAMMAR_COMPARISONS, GRAMMAR_PATTERNS } from '../data/grammar';
+import { GRAMMAR_LESSONS } from '../data/grammarLessons';
+import { buildGrammarLessonQuiz } from '../services/grammarLessons';
 import {
   buildGrammarQuiz,
   detectSentencePattern,
@@ -41,7 +45,7 @@ const ROLE_STYLES = {
   引导词: 'bg-indigo-50 text-indigo-800 ring-indigo-200',
 };
 
-const PATTERN_NAMES = Object.fromEntries(GRAMMAR_PATTERNS.map((pattern) => [pattern.id, pattern.name]));
+const PATTERN_NAMES = Object.fromEntries([...GRAMMAR_PATTERNS, ...GRAMMAR_LESSONS].map((pattern) => [pattern.id, pattern.name]));
 
 function roleChipClass(role) {
   return ROLE_STYLES[role] || 'bg-slate-100 text-slate-600 ring-slate-200';
@@ -67,7 +71,8 @@ function PartedSentence({ parts, highlight }) {
 
 export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState('explain'); // 'explain' | 'practice' | 'analyze'
+  const studyClock = useStudyClock();
+  const [activeTab, setActiveTab] = useState('workbench');
   const [selectedPatternId, setSelectedPatternId] = useState(GRAMMAR_PATTERNS[0].id);
   const progress = useMemo(() => StorageService.getGrammarProgress(), []);
   const [summary, setSummary] = useState(() => summarizeGrammarProgress(progress));
@@ -96,10 +101,10 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
 
   const startQuiz = (options = {}) => {
     practiceRunRef.current += 1;
-    const next = options.questions || buildGrammarQuiz({
-      count: 5,
-      seed: `${Date.now()}-${practiceRunRef.current}`,
-    });
+    const seed = `${Date.now()}-${practiceRunRef.current}`;
+    const next = options.questions || (options.topicId
+      ? buildGrammarLessonQuiz({ topicIds: [options.topicId], count: 5, seed })
+      : [...buildGrammarQuiz({ count: 3, seed }), ...buildGrammarLessonQuiz({ count: 2, seed })]);
     if (!next.length) {
       toast.error('暂时无法生成练习，请稍后重试。');
       return;
@@ -118,7 +123,7 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
     StorageService.recordStudyActivity({
       type: 'grammar',
       count: quizQuestions.length,
-      durationMinutes: 1,
+      durationMinutes: studyClock.takeMinutes(),
       source: 'grammar-quiz',
       label: '完成语法句型练习',
     });
@@ -129,15 +134,15 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
     if (!currentQuestion || isAnswered) return;
     const correct = gradeGrammarAnswer(currentQuestion, value);
     const nextAnswers = { ...answers, [currentQuestion.id]: value };
-    setAnswers(nextAnswers);
-
     const saved = StorageService.recordGrammarAnswer({
       patternId: currentQuestion.patternId,
       correct,
       questionId: currentQuestion.id,
       sentence: currentQuestion.prompt,
     });
-    if (saved) setSummary(summarizeGrammarProgress(saved));
+    if (!saved) { toast.error('答案没有保存成功，请检查存储空间后重试。'); return; }
+    setAnswers(nextAnswers);
+    setSummary(summarizeGrammarProgress(saved));
   };
 
   // 答题后手动进入下一题（给出解析阅读时间，而不是自动跳走）
@@ -157,9 +162,11 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
     }
     // 从错题所在句型重新抽题，避免"背原题"。
     const seed = `missed-${Date.now()}`;
-    const rebuilt = buildGrammarQuiz({ count: Math.min(5, missed.length), seed })
+    const rebuilt = [...buildGrammarQuiz({ count: 100, seed }), ...buildGrammarLessonQuiz({ count: 100, seed })]
       .filter((question) => missed.some((item) => item.patternId === question.patternId));
-    startQuiz({ questions: rebuilt.length ? rebuilt : undefined });
+    const unique = [...new Map(rebuilt.map((question) => [question.id, question])).values()].slice(0, 5);
+    if (!unique.length) { toast.info('旧错题暂时没有对应练习，请先做综合练习。'); return; }
+    startQuiz({ questions: unique });
   };
 
   const runDetect = () => {
@@ -193,21 +200,22 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
     : 0;
 
   return (
-    <div className="study-page flex flex-col h-full">
+    <div className="study-page grammar-page flex flex-col h-full">
       <StudyHeader
         eyebrow="GRAMMAR · PATTERNS & PRACTICE"
         title="语法实验室"
-        description="先用公式和例句看懂 5 大基本句型，再用练习与拆句把结构真正吃透。"
+        description="句子骨架 → 补充信息 → 完整表达"
         icon={<SpellCheck className="w-4 h-4" />}
         status={practicedTotal ? `已练 ${practicedTotal} 题 · 正确率 ${practicedAccuracy}%` : '尚未开始练习'}
       >
         {sectionSwitch && <div className="mb-2">{sectionSwitch}</div>}
         <div className="mt-3 flex rounded-xl bg-white/10 p-1 text-[11px] ring-1 ring-white/10">
-          {[['explain', '句型讲解', BookOpen], ['practice', '句型练习', Target], ['analyze', 'AI 拆句', Wand2]].map(([value, label, Icon]) => (
+          {[['workbench', '句子拓展', Lightbulb], ['explain', '基本骨架', BookOpen], ['practice', '巩固练习', Target], ['analyze', 'AI 拆句', Wand2]].map(([value, label, Icon]) => (
             <button
               key={value}
               type="button"
               onClick={() => setActiveTab(value)}
+              aria-pressed={activeTab === value}
               className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
                 activeTab === value ? 'bg-white text-[#102a43] font-semibold shadow-xs' : 'text-slate-300 hover:text-white'
               }`}
@@ -219,7 +227,8 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
         </div>
       </StudyHeader>
 
-      <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
+      <div className="grammar-scroll flex-1 min-h-0 overflow-y-auto p-4 pb-8 space-y-4">
+        {activeTab === 'workbench' && <GrammarWorkbench onPractice={(topicId) => startQuiz({ topicId })} onShowPatterns={() => setActiveTab('explain')} />}
         {/* ============ 句型讲解 ============ */}
         {activeTab === 'explain' && (
           <>
@@ -401,9 +410,9 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
             {questions.length === 0 && (
               <div className="study-card paper-grain rounded-[24px] p-5 text-center space-y-3">
                 <Target className="mx-auto h-8 w-8 text-sky-500" />
-                <h2 className="text-sm font-bold text-slate-900">5 道题，覆盖判断句型 / 找成分 / 改错</h2>
+                <h2 className="text-sm font-bold text-slate-900">5 道题，练骨架，也练完整表达</h2>
                 <p className="text-[11.5px] leading-relaxed text-slate-500">
-                  每题都会给出成分拆解与解析；答错的题会进入错题本，可以只练错题。
+                  综合练习包含句型、成分、改错与词序应用。也可以在讲解里只练当前一节；每题作答后都有解析。
                 </p>
                 <button
                   type="button"
@@ -425,7 +434,7 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
             {currentQuestion && !finished && (
               <div className="study-card paper-grain rounded-[24px] p-4 space-y-3">
                 <div className="flex items-center justify-between text-[11px] text-slate-500">
-                  <span>{PATTERN_NAMES[currentQuestion.patternId] || '语法'} · {currentQuestion.type === 'pattern' ? '判断句型' : currentQuestion.type === 'role' ? '找成分' : '改错'}</span>
+                  <span>{PATTERN_NAMES[currentQuestion.patternId] || '语法'} · {currentQuestion.type === 'pattern' ? '判断句型' : currentQuestion.type === 'role' ? '找成分' : currentQuestion.type === 'application' ? '结构应用' : '改错'}</span>
                   <span className="font-mono">{questionIndex + 1} / {questions.length}</span>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-slate-200/80">

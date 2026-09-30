@@ -80,12 +80,22 @@ test('NCE mastery combines four learning steps with exam bonus and due review', 
     vocabViewed: true,
     exercisesCompleted: true,
     examBest: 86,
+    dictationBest: 100,
+    exerciseScore: 5,
+    exerciseTotal: 5,
     nextReviewAt: 100,
   };
   const mastery = getNceMastery(progress);
   assert.equal(mastery.score, 100);
   assert.equal(mastery.label, '掌握稳定');
   assert.equal(isNceReviewDue(progress, 101), true);
+});
+
+test('zero-score work and merely viewing vocabulary do not establish mastery', () => {
+  const mastery = getNceMastery({ listenCompleted: true, vocabViewed: true, dictationCompleted: true, dictationBest: 0, exercisesCompleted: true, exerciseScore: 0, exerciseTotal: 5 });
+  assert.equal(mastery.score, 0);
+  assert.equal(mastery.progressPercent, 100);
+  assert.ok(mastery.weakAreas.includes('dictationCompleted'));
 });
 
 test('weekly review exposes real event buckets and an actionable recommendation', () => {
@@ -116,4 +126,16 @@ test('activity calendar fills quiet days and marks the current day', () => {
   assert.equal(calendar[1].level, 0);
   assert.equal(calendar[2].isToday, true);
   assert.equal(calendar[2].minutes, 12);
+});
+
+
+test('frozen daily tasks keep completed work and ignore unrelated course events', () => {
+  const now = new Date('2026-09-30T09:00:00');
+  const first = buildDailyPlan({ now, vocabulary: [{ id: 'w1', nextReviewDate: 1 }], hasAiKey: false });
+  const state = { days: { [first.dateKey]: { tasks: first.tasks, createdAt: now.getTime(), completedTaskIds: [], deferredTaskIds: [] } } };
+  const after = buildDailyPlan({ now, vocabulary: [], studyPlan: state, events: [{ type: 'review', entityId: 'w1', at: now.getTime()+1, metadata: {quality:'good'} }] });
+  assert.equal(after.tasks[0].id, 'vocab-review');
+  assert.equal(after.tasks[0].done, true);
+  assert.equal(after.totalCount, first.totalCount);
+  assert.ok(!first.tasks.some((task) => task.type === 'oral'));
 });

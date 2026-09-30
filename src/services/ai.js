@@ -594,7 +594,7 @@ export async function callAICompletion({
 /**
  * 1. Smart Word Lookup & Contextual Analysis
  */
-export async function analyzeWordWithAI(word, contextSentence = '') {
+export async function analyzeWordWithAI(word, contextSentence = '', { signal } = {}) {
   const prompt = `你是一位顶尖的英语语言学专家与中英双语词典编纂者。
 请详细分析英文单词或词组: "${word}"。
 ${contextSentence ? `该词出现在以下上下文中: "${contextSentence}"` : ''}
@@ -617,7 +617,7 @@ ${contextSentence ? `该词出现在以下上下文中: "${contextSentence}"` : 
     { role: 'user', content: prompt },
   ];
 
-  const raw = await callAICompletion({ messages, temperature: 0.3, responseFormatJson: true });
+  const raw = await callAICompletion({ messages, temperature: 0.3, responseFormatJson: true, signal });
   return normalizeWordAnalysis(extractJson(raw), { word, sentence: contextSentence });
 }
 

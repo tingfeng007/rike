@@ -45,6 +45,8 @@ export function Modal({
   const restoreFocusRef = useRef(null);
   const titleId = useId();
   const descriptionId = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -52,9 +54,18 @@ export function Modal({
     restoreFocusRef.current = typeof document !== 'undefined' ? document.activeElement : null;
 
     const handleKeyDown = (event) => {
+      if (event.key === 'Tab') {
+        const panel = panelRef.current;
+        const targets = Array.from(panel?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]') || []).filter((node) => node.getClientRects().length);
+        const first = targets[0];
+        const last = targets.at(-1);
+        if (!first) { event.preventDefault(); panel?.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || document.activeElement === panel || !panel.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel || !panel.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      }
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -72,7 +83,7 @@ export function Modal({
       document.body.style.overflow = previousOverflow;
       restoreFocusRef.current?.focus?.({ preventScroll: true });
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

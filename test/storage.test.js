@@ -93,7 +93,9 @@ test('backup restores the review queue after resolving one mistake', () => {
   localStorage.clear();
   assert.equal(StorageService.importAllData(backup).success, true);
   const restored = StorageService.getNceProgress()['001&002.Excuse Me'];
-  assert.deepEqual(restored.examMistakes.map((item) => item.id), ['q-2']);
+  assert.deepEqual(restored.examMistakes.map((item) => item.id), ['q-1', 'q-2']);
+  assert.equal(restored.examMistakes[0].recallSuccesses, 1);
+  assert.ok(restored.examMistakes[0].recheckAt > Date.now());
   assert.equal(restored.dictationMistakes[0].id, 'd-1');
 });
 

@@ -90,13 +90,14 @@ export default function App() {
         lessonId: options.lesson || (options.resume ? (StorageService.getAppState().lastNceLesson || '') : ''),
         entry: options.entry === 'review' || options.entry === 'exam' ? options.entry : '',
         lineId: options.lineId || '',
+        reviewIds: options.reviewIds,
       });
     } else if (tab === 'reader') {
       setReaderIntent({ token, articleId: options.articleId || '' });
     } else if (tab === 'oral') {
-      setOralIntent({ token, scenarioId: options.scenarioId || '' });
-    } else if (tab === 'vocab' && (options.section === 'vocab' || options.section === 'grammar')) {
-      setWordGrammarIntent({ token, section: options.section });
+      setOralIntent({ token, scenarioId: options.scenarioId || '', practiceWords: options.practiceWords });
+    } else if (tab === 'vocab') {
+      setWordGrammarIntent({ token, section: options.section || 'vocab', wordIds: options.wordIds, taskId: options.taskId });
     }
 
     setActiveTab(tab);
@@ -118,12 +119,13 @@ export default function App() {
 
   useEffect(() => {
     const interval = setInterval(updateDueCount, 30000);
-    return () => clearInterval(interval);
+    window.addEventListener('lingoflow:storage', updateDueCount);
+    return () => { clearInterval(interval); window.removeEventListener('lingoflow:storage', updateDueCount); };
   }, []);
 
   return (
     <ToastProvider>
-    <div className="study-page flex flex-col h-[100dvh] w-full max-w-md mx-auto overflow-hidden font-sans shadow-2xl relative">
+    <div className="app-shell study-page flex flex-col h-[100dvh] w-full mx-auto overflow-hidden font-sans relative">
       {/* Background Subtle Gradient Atmosphere */}
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
         <div className="absolute -top-24 -left-24 w-72 h-72 bg-sky-200/25 rounded-full blur-3xl" />
@@ -139,7 +141,7 @@ export default function App() {
       )}
       {showOnlineToast && !isOffline && (
         <div className="flex-none bg-emerald-600 text-white text-[11px] font-medium py-1 px-3 flex items-center justify-center gap-1.5 shadow-xs z-50 animate-fade-in select-none">
-          <span>🌐 网络已恢复连接，AI 能力已就绪</span>
+          <span>🌐 网络已恢复，可继续使用联网功能</span>
         </div>
       )}
 
@@ -152,7 +154,7 @@ export default function App() {
             <OralCoach intent={oralIntent} onNavigateToVocab={() => navigate('vocab')} />
           )}
           {activeTab === 'reader' && <SmartReader intent={readerIntent} />}
-          {activeTab === 'nce' && <NewConcept intent={nceIntent} />}
+          {activeTab === 'nce' && <NewConcept intent={nceIntent} onNavigate={navigate} />}
           {activeTab === 'vocab' && (
             <WordGrammarHub
               onOpenSource={openSourceFromVocab}
@@ -170,7 +172,7 @@ export default function App() {
         className="flex-none bg-[#fffdf8]/95 backdrop-blur-2xl border-t border-[#e7e0d4] px-3 pt-1.5 select-none z-30 shadow-[0_-12px_30px_-24px_rgba(15,23,42,0.5)]"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
       >
-        <div className="grid grid-cols-5 gap-1">
+        <div className="app-navigation grid grid-cols-5 gap-1">
           <button
             type="button"
             aria-current={activeTab === 'home' ? 'page' : undefined}
@@ -246,7 +248,7 @@ export default function App() {
             <div className="relative">
               <Layers className="w-4.5 h-4.5 mb-1" />
               {dueVocabCount > 0 && (
-                <span className="absolute -top-1 -right-2 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-[9px] font-bold px-1 rounded-full min-w-[14px] h-[14px] flex items-center justify-center leading-none shadow-xs animate-pulse">
+                <span className="absolute -top-1 -right-2 bg-rose-600 text-white text-[9px] font-bold px-1 rounded-full min-w-[14px] h-[14px] flex items-center justify-center leading-none shadow-xs">
                   {dueVocabCount}
                 </span>
               )}

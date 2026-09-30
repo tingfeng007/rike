@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -39,13 +39,22 @@ function readSnapshot() {
     .filter(([, value]) => value && typeof value === 'object')
     .sort((a, b) => (b[1].lastStudiedAt || 0) - (a[1].lastStudiedAt || 0));
   const now = Date.now();
+  const studyPlan = StorageService.getStudyPlan();
+  const planInput = { vocabulary, nceProgress: progress, nceExams: StorageService.getNceExams(), appState: StorageService.getAppState(), stats, articles, studyPlan, dailyMinutes: studyPlan.dailyMinutes || 20, hasAiKey: hasApiKey(), courseUnits: StorageService.getNceCache().book?.units || [], events: StorageService.getStudyEvents() };
+  const generated = buildDailyPlan(planInput);
+  if (!Array.isArray(studyPlan.days?.[generated.dateKey]?.tasks)) {
+    const state = { ...generated.state, tasks: generated.tasks, createdAt: Date.now() };
+    const frozen = { ...studyPlan, days: { ...(studyPlan.days || {}), [generated.dateKey]: state } };
+    if (StorageService.saveStudyPlan(frozen)) Object.assign(studyPlan, frozen);
+  }
   return {
     vocabulary,
     progress,
     stats,
     articles,
     appState: StorageService.getAppState(),
-    studyPlan: StorageService.getStudyPlan(),
+    studyPlan,
+    events: StorageService.getStudyEvents(),
     dueWords: vocabulary.filter((word) => !word.nextReviewDate || word.nextReviewDate <= now + 60 * 60 * 1000).length,
     totalWords: vocabulary.length,
     course: {
@@ -100,6 +109,9 @@ export default function HomeDashboard({ onNavigate }) {
     articles: snapshot.articles,
     appState: snapshot.appState,
     studyPlan: snapshot.studyPlan,
+    events: snapshot.events,
+    hasAiKey: hasApiKey(),
+    courseUnits: StorageService.getNceCache().book?.units || [],
   }), [snapshot]);
 
   const weekly = useMemo(() => getWeeklyReview({
@@ -125,6 +137,12 @@ export default function HomeDashboard({ onNavigate }) {
   const hasKey = hasApiKey();
 
   const refresh = () => setSnapshot(readSnapshot());
+  useEffect(() => {
+    const refreshView = () => setSnapshot(readSnapshot());
+    window.addEventListener('lingoflow:storage', refreshView);
+    const timer = setInterval(refreshView, 30000);
+    return () => { window.removeEventListener('lingoflow:storage', refreshView); clearInterval(timer); };
+  }, []);
 
   const dismissDemoNotice = () => {
     StorageService.markOnboardingSeen('demoNoticeSeen');
@@ -147,8 +165,10 @@ export default function HomeDashboard({ onNavigate }) {
 
   const updateDuration = (minutes) => {
     const nextPlan = { ...snapshot.studyPlan, dailyMinutes: minutes };
-    StorageService.saveStudyPlan(nextPlan);
-    setSnapshot((current) => ({ ...current, studyPlan: nextPlan }));
+    const dayKey = plan.dateKey;
+    nextPlan.days = { ...nextPlan.days, [dayKey]: { ...nextPlan.days?.[dayKey], tasks: undefined } };
+    if (!StorageService.saveStudyPlan(nextPlan)) { toast.error('学习时长没有保存成功。'); return; }
+    refresh();
     setShowDuration(false);
   };
 
@@ -157,10 +177,11 @@ export default function HomeDashboard({ onNavigate }) {
   // checkbox only wrote plan state, so a fully ticked day still showed "0 天有学习".
   const markTask = (task, status) => {
     const nextStudyPlan = saveDailyTaskState(snapshot.studyPlan, plan.dateKey, task.id, { status });
-    StorageService.saveStudyPlan(nextStudyPlan);
+    if (!StorageService.saveStudyPlan(nextStudyPlan)) { toast.error('任务状态没有保存成功，请重试。'); return; }
     if (status === 'completed' && !task.done) {
       StorageService.recordStudyActivity({
-        type: activityTypeForTask(task.type),
+        type: 'manual',
+        metadata: { taskType: activityTypeForTask(task.type), selfReported: true },
         count: 1,
         source: 'daily-plan',
         entityId: task.id,
@@ -171,11 +192,11 @@ export default function HomeDashboard({ onNavigate }) {
   };
 
   const openTask = (task) => {
-    if (task.target === 'vocab') onNavigate('vocab');
+    if (task.target === 'vocab') onNavigate('vocab', { section: 'vocab', wordIds: task.wordIds, taskId: task.id });
     else if (task.target === 'oral') onNavigate('oral');
-    else if (task.target === 'reader') onNavigate('reader');
+    else if (task.target === 'reader') onNavigate('reader', { articleId: task.entityId });
     else if (task.target === 'nce-exam') onNavigate('nce', { entry: 'exam' });
-    else if (task.target === 'nce-review') onNavigate('nce', { entry: 'review' });
+    else if (task.target === 'nce-review') onNavigate('nce', { entry: 'review', reviewIds: task.reviewIds });
     // Pass the lesson the plan actually picked: without it the module fell back to
     // `lastNceLesson` (written whenever a lesson is merely opened), so the card could say
     // "继续：第 9–10 课" and open a different lesson.
@@ -183,7 +204,7 @@ export default function HomeDashboard({ onNavigate }) {
   };
 
   return (
-    <section className="study-page h-full overflow-y-auto pb-28">
+    <section className="study-page h-full overflow-y-auto pb-8">
       <div className="relative overflow-hidden px-5 pt-6 pb-8 bg-[#102a43] text-white">
         <div className="absolute -top-16 -right-12 w-48 h-48 rounded-full bg-sky-400/20 blur-3xl" />
         <div className="absolute bottom-0 left-0 w-40 h-24 bg-amber-300/10 blur-2xl" />
@@ -206,11 +227,11 @@ export default function HomeDashboard({ onNavigate }) {
         </div>
       </div>
 
-      <div className="px-4 -mt-3 relative z-10 space-y-4">
+      <div className="home-content px-4 -mt-3 relative z-10 space-y-4">
         {/* First run: the deck is demo content, so say so instead of presenting 30 due cards as
             the learner's own progress. */}
         {showDemoNotice && usingSampleData && (
-          <div className="study-card paper-grain rounded-[24px] border border-amber-200 bg-amber-50/70 p-4">
+          <div className="home-notice study-card paper-grain rounded-[24px] border border-amber-200 bg-amber-50/70 p-4">
             <p className="text-xs font-bold text-amber-900">👋 你现在看到的是示例内容</p>
             <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
               内置换好了 <strong>30 个演示生词</strong> 与 <strong>8 篇示例文章</strong>，方便你先体验流程——它们不是你的学习记录。
@@ -237,8 +258,8 @@ export default function HomeDashboard({ onNavigate }) {
 
         {/* The very first plan item is usually an AI task, so ask for the key up front instead of
             letting each module fail in its own way. */}
-        {!hasKey && <ApiKeyNotice onOpenSettings={() => onNavigate('settings')} />}
-        <div className="study-card paper-grain rounded-[24px] p-4">
+        {!hasKey && <ApiKeyNotice className="home-notice" onOpenSettings={() => onNavigate('settings')} />}
+        <div className="home-plan study-card paper-grain rounded-[24px] p-5">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div><p className="text-xs font-semibold tracking-wide text-slate-400">今日学习计划 · {plan.dailyMinutes} 分钟</p><h2 className="font-bold text-slate-900 mt-0.5">{remainingTasks ? '先做最重要的一步' : dayIsFinished ? '今天已经完成' : '今天还有推迟的项'}</h2></div>
             <div className="relative"><button type="button" onClick={() => setShowDuration((value) => !value)} className="inline-flex items-center gap-1 rounded-xl bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800"><Timer className="w-3.5 h-3.5" />时长<ChevronDown className="w-3 h-3" /></button>{showDuration && <div className="absolute right-0 top-9 z-20 flex gap-1 rounded-xl border border-amber-100 bg-white p-1.5 shadow-xl">{[10, 20, 30].map((minutes) => <button type="button" key={minutes} onClick={() => updateDuration(minutes)} className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${plan.dailyMinutes === minutes ? 'bg-[#102a43] text-white' : 'text-slate-500 hover:bg-slate-50'}`}>{minutes}分</button>)}</div>}</div>
@@ -246,9 +267,9 @@ export default function HomeDashboard({ onNavigate }) {
           <div className="mb-3 flex items-center gap-2" aria-label={`今日计划已完成 ${completedCount} 项，共 ${plan.totalCount} 项`}><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${plan.totalCount ? completedCount / plan.totalCount * 100 : 100}%` }} /></div><span className="text-[10px] font-semibold tabular-nums text-slate-400">{completedCount}/{plan.totalCount}</span></div>
           <div className="space-y-1">
             {plan.tasks.map((task) => (
-              <div key={task.id} className={`flex items-center gap-3 rounded-2xl px-2 py-2.5 transition-colors ${task.done ? 'bg-emerald-50/60' : task.deferred ? 'bg-slate-50 opacity-60' : 'hover:bg-slate-50'}`}>
-                <button type="button" onClick={() => openTask(task)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><span className={`flex h-9 w-9 flex-none items-center justify-center rounded-xl ${task.done ? 'bg-emerald-100 text-emerald-700' : taskTone(task)}`}>{task.done ? <Check className="w-4 h-4" /> : taskIcon(task)}</span><span className="min-w-0 flex-1"><span className={`block truncate text-sm font-semibold ${task.done ? 'text-emerald-800 line-through decoration-emerald-300' : 'text-slate-800'}`}>{task.title}</span><span className="mt-0.5 block truncate text-xs text-slate-400">{task.description} · {task.minutes} 分钟</span></span></button>
-                {task.done ? <span className="px-1 text-xs font-semibold text-emerald-600">完成</span> : <div className="flex flex-none items-center gap-1"><button type="button" onClick={() => markTask(task, 'completed')} className="rounded-lg px-1.5 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50">完成</button><button type="button" onClick={() => markTask(task, 'deferred')} className="rounded-lg px-1.5 py-1 text-[10px] font-semibold text-slate-400 hover:bg-slate-100">稍后</button><ArrowRight className="w-4 h-4 text-slate-300" /></div>}
+              <div key={task.id} className={`home-task ${task.done ? 'opacity-75' : task.deferred ? 'opacity-60' : ''}`}>
+                <button type="button" onClick={() => openTask(task)} className="flex min-w-0 items-start gap-3 text-left"><span className={`mt-0.5 flex h-10 w-10 flex-none items-center justify-center rounded-xl ${task.done ? 'bg-emerald-100 text-emerald-700' : taskTone(task)}`}>{task.done ? <Check className="w-4 h-4" /> : taskIcon(task)}</span><span className="min-w-0 flex-1"><span className={`block text-sm font-semibold leading-6 ${task.done ? 'text-emerald-800' : 'text-slate-800'}`}>{task.title}</span><span className="home-task-description mt-1 block text-xs text-slate-500">{task.description}</span><span className="mt-2 block text-[11px] font-medium text-stone-500">约 {task.minutes} 分钟</span></span></button>
+                {task.done ? <span className="text-xs font-semibold text-emerald-700">已完成</span> : <div className="flex flex-col items-end gap-2"><button type="button" onClick={() => openTask(task)} aria-label={`开始：${task.title}`} className="flex items-center gap-1 rounded-lg bg-[#102a43] px-3 py-2 text-xs font-semibold text-white">开始<ArrowRight className="w-3 h-3" /></button><button type="button" onClick={() => markTask(task, 'deferred')} aria-label={`稍后：${task.title}`} className="px-2 py-1.5 text-xs text-slate-500">稍后</button><button type="button" onClick={() => markTask(task, 'completed')} aria-label={`手动完成：${task.title}`} className="px-2 py-1.5 text-[11px] text-teal-700">手动完成</button></div>}
               </div>
             ))}
           </div>
@@ -290,7 +311,9 @@ export default function HomeDashboard({ onNavigate }) {
         </div>
 
         <div><p className="px-1 text-xs font-semibold tracking-wide text-slate-400 mb-2">快速进入</p><div className="grid grid-cols-2 gap-3"><button onClick={() => onNavigate('reader')} className="rounded-2xl bg-[#fffaf0] border border-amber-100 p-4 text-left"><BookOpen className="w-5 h-5 text-amber-600" /><p className="font-semibold text-slate-800 mt-3">精读文库</p><p className="text-xs text-slate-400 mt-1">{snapshot.articles.length} 篇文章</p></button><button onClick={() => onNavigate('vocab')} className="rounded-2xl bg-[#f2f8ff] border border-sky-100 p-4 text-left"><Layers className="w-5 h-5 text-sky-600" /><p className="font-semibold text-slate-800 mt-3">我的词库</p><p className="text-xs text-slate-400 mt-1">{snapshot.totalWords} 个词</p></button></div></div>
+        <button type="button" onClick={() => onNavigate('vocab', { section: 'grammar' })} className="study-card flex items-center gap-3 rounded-2xl p-4 text-left"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-800"><Sparkles className="h-5 w-5" /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-slate-800">语法实验室</strong><span className="mt-1 block text-xs leading-5 text-slate-500">从句子骨架，到方式、地点和时间的完整表达</span></span><ArrowRight className="h-4 w-4 shrink-0 text-slate-400" /></button>
         <p className="text-center text-[11px] text-slate-400 pb-2">所有学习记录默认保存在这台设备上 · {weekly.reviewItems ? `还有 ${weekly.reviewItems} 项课程复盘` : '学习状态正常'}</p>
+        {snapshot.events.filter((event) => event.at > (snapshot.appState.lastExportAt || 0)).length >= 20 && <button type="button" onClick={() => onNavigate('settings')} className="block w-full rounded-xl bg-amber-50 p-3 text-xs text-amber-800">最近积累了新的学习记录，点此导出备份。</button>}
         <button type="button" onClick={refresh} className="mx-auto block text-[11px] text-slate-400 underline">刷新今日计划</button>
       </div>
     </section>

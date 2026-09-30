@@ -16,6 +16,7 @@ import {
   getAllGrammarPitfalls,
   getGrammarPattern,
 } from '../data/grammar.js';
+import { GRAMMAR_LESSONS } from '../data/grammarLessons.js';
 
 // --- 词表 -----------------------------------------------------------------------------
 
@@ -435,7 +436,7 @@ export function applyGrammarAnswer(progress, { patternId, correct, questionId = 
  */
 export function summarizeGrammarProgress(progress) {
   const answers = (progress && progress.answers) || {};
-  return GRAMMAR_PATTERNS.map((pattern) => {
+  return [...GRAMMAR_PATTERNS, ...GRAMMAR_LESSONS].map((pattern) => {
     const item = answers[pattern.id] || { correct: 0, total: 0 };
     const accuracy = item.total ? Math.round((item.correct / item.total) * 100) : 0;
     let label = '未练习';

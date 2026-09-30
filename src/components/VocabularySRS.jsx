@@ -1,3 +1,5 @@
+import { dueVocabulary, selectReviewSession } from '../services/reviewSession';
+import { useStudyClock } from '../hooks/useStudyClock';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Layers,
@@ -61,8 +63,9 @@ function readSessionSize() {
   return [10, 20, 50].includes(numeric) ? numeric : DEFAULT_SESSION_SIZE;
 }
 
-export default function VocabularySRS({ onOpenSource = null, sectionSwitch = null }) {
+export default function VocabularySRS({ onOpenSource = null, sectionSwitch = null, intent = null }) {
   const toast = useToast();
+  const studyClock = useStudyClock();
   const [activeTab, setActiveTab] = useState('flashcard'); // 'flashcard' | 'list' | 'quiz'
   const [vocabulary, setVocabulary] = useState([]);
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'learning' | 'review' | 'mastered'
@@ -85,6 +88,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   const [dueTotal, setDueTotal] = useState(0);
   const lastRatedRef = useRef({ id: '', at: 0 });
   const requeuedRef = useRef(new Set());
+  const planTargetsRef = useRef(intent?.wordIds);
   const undoTimerRef = useRef(null);
 
   // Manual Add Modal state
@@ -141,6 +145,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
   // Reload vocabulary from storage with randomized shuffling
   const reloadVocabulary = (forcePractice = false) => {
+    if (forcePractice) planTargetsRef.current = null;
     const words = StorageService.getVocabulary();
     setVocabulary(words);
     setStudyStats(StorageService.getStudyStats());
@@ -150,7 +155,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
     // effects and event handlers (never during render), so the purity heuristic does not apply.
     // oxlint-disable-next-line react/purity
     const now = Date.now();
-    const due = words.filter((w) => !w.nextReviewDate || w.nextReviewDate <= now + 60 * 60 * 1000);
+    const due = dueVocabulary(words, now);
     setDueTotal(due.length);
 
     if (forcePractice) {
@@ -160,13 +165,13 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       setCurrentIndex(0);
       setIsFlipped(false);
       setReviewCompleted(false);
-    } else if (due.length > 0) {
+    } else if (planTargetsRef.current?.length || due.length > 0) {
       // Shuffle due cards to eliminate predictable position memory, then cap the session.
       // Without a cap, coming back after a week off meant being handed a 200+ card queue
       // with no way to say "I'll do 20 today" — the classic reason learners quit a streak.
-      const shuffled = shuffleArray(due);
       const size = readSessionSize();
-      setDueCards(size === 'all' ? shuffled : shuffled.slice(0, size));
+      setDueCards(selectReviewSession(words, { size, wordIds: planTargetsRef.current, now }));
+      requeuedRef.current.clear();
       setCurrentIndex(0);
       setIsFlipped(false);
       setReviewCompleted(false);
@@ -180,6 +185,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   };
 
   const changeSessionSize = (size) => {
+    planTargetsRef.current = null;
     setSessionSize(size);
     const state = StorageService.getAppState();
     StorageService.saveAppState({ ...state, vocabSessionSize: size });
@@ -189,8 +195,10 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   };
 
   useEffect(() => {
+    planTargetsRef.current = intent?.wordIds;
     reloadVocabulary();
-  }, []);
+    setActiveTab('flashcard');
+  }, [intent?.token]);
 
   // Flashcard Rating: 'again' | 'hard' | 'good'
   const handleRateCard = (quality) => {
@@ -215,8 +223,14 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       setDataError('这次评分没有保存成功（可能是浏览器存储已满）。请先导出备份再重试。');
       return;
     }
+    setDueTotal(dueVocabulary(StorageService.getVocabulary()).length);
     setDataError('');
-    const updatedStats = StorageService.recordReviewActivity(1, { entityId: currentCard.id, durationMinutes: 1 });
+    const updatedStats = StorageService.recordReviewActivity(1, { entityId: currentCard.id, durationMinutes: studyClock.takeMinutes(), metadata: { quality, taskId: intent?.taskId || '' } });
+    if (!updatedStats) {
+      if (storedBefore) StorageService.updateWord(currentCard.id, storedBefore);
+      setDataError('学习记录没有保存成功，本次评分已撤回，请重试。');
+      return;
+    }
     setStudyStats(updatedStats);
 
     if (storedBefore) {
@@ -235,12 +249,13 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
     // "again" means relearn today: put the card back at the end of this session's queue
     // (bounded to one requeue per card so a forgotten word cannot loop forever).
-    if (quality === 'again' && !requeuedRef.current.has(currentCard.id)) {
+    const willRequeue = quality === 'again' && !requeuedRef.current.has(currentCard.id);
+    if (willRequeue) {
       requeuedRef.current.add(currentCard.id);
       setDueCards((prev) => [...prev, { ...updatedWord }]);
     }
 
-    if (currentIndex + 1 < dueCards.length) {
+    if (willRequeue || currentIndex + 1 < dueCards.length) {
       setTimeout(() => {
         setCurrentIndex((prev) => prev + 1);
       }, 150);
@@ -412,12 +427,13 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   const handleSaveStoryToReader = () => {
     if (!generatedStory) return;
     const plainContent = generatedStory.storyEn.replace(/\*\*/g, '');
-    StorageService.saveArticle({
+    const saved = StorageService.saveArticle({
       title: `${generatedStory.title} (${generatedStory.titleCn || '微剧场'})`,
       level: 'AI 生词微剧场',
       content: plainContent,
       tags: ['生词微剧场', storyGenre],
     });
+    if (!saved) { toast.error('故事没有保存成功，请检查存储空间。'); return; }
     setIsSavedToReader(true);
   };
 
@@ -490,7 +506,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
         label: '完成 AI 词汇测验',
         metadata: { correct, total: quizQuestions.length },
       });
-      setStudyStats(updatedStats);
+      if (updatedStats) setStudyStats(updatedStats);
 
       if (correct === quizQuestions.length) {
         confetti({
@@ -681,6 +697,10 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
                 {/* 3D Flip Card Container */}
                 <div
+                  role="group"
+                  tabIndex={0}
+                  aria-label="翻转词卡，按回车或空格查看答案"
+                  onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setIsFlipped((value) => !value); } }}
                   onClick={() => setIsFlipped(!isFlipped)}
                   className="w-full flex-1 min-h-[360px] cursor-pointer perspective-1000 relative select-none"
                 >
@@ -872,7 +892,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 <div className="mt-6 flex flex-col w-full max-w-xs space-y-2">
                   {dueTotal > 0 && (
                     <button
-                      onClick={() => reloadVocabulary()}
+                      onClick={() => { planTargetsRef.current = null; reloadVocabulary(); }}
                       className="w-full py-2.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
                     >
                       <Clock className="w-3.5 h-3.5" />

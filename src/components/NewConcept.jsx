@@ -1,3 +1,4 @@
+import { useStudyClock } from '../hooks/useStudyClock';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -28,7 +29,7 @@ import { StorageService } from '../services/storage';
 import { buildDictationItems, buildExercises, buildNceWordPayload, extractWords, parseLrc, safeAssetName } from '../services/nce';
 import { buildNceReviewQueue, resolveNceReviewMistake } from '../services/nceReview';
 import { getNceMastery, getNceNextReviewAt, isNceReviewDue } from '../services/nceMastery';
-import { cacheCourseAudio, getCachedCourseAudioUrl, supportsCourseCache } from '../services/offline';
+import { cacheCourseAudio, getCachedCourseAudioUrl, supportsCourseCache, isCoursePackageReady } from '../services/offline';
 import { onEnterSubmit } from '../services/keyboard';
 import { analyzeWordWithAI, describeAIError } from '../services/ai';
 import { useToast } from './ui/toastContext';
@@ -61,13 +62,13 @@ function progressLabel(item) {
 }
 
 function pendingReviewCount(item) {
-  return (item?.exerciseMistakes?.length || 0)
-    + (item?.dictationMistakes?.length || 0)
-    + (item?.examMistakes?.length || 0);
+  return buildNceReviewQueue({ lesson: item }).length;
 }
 
-export default function NewConcept({ intent = null }) {
+export default function NewConcept({ intent = null, onNavigate = null }) {
+  const [reviewTargets, setReviewTargets] = useState(intent?.reviewIds || null);
   const toast = useToast();
+  const studyClock = useStudyClock();
   const [units, setUnits] = useState([]);
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [lines, setLines] = useState([]);
@@ -104,6 +105,7 @@ export default function NewConcept({ intent = null }) {
   const [usingOfflineCopy, setUsingOfflineCopy] = useState(false);
   const [audioSourceUrl, setAudioSourceUrl] = useState('');
   const [audioCacheState, setAudioCacheState] = useState('idle');
+  const downloadAbortRef = useRef(null);
   const audioRef = useRef(null);
   const lineRefs = useRef({});
   const progressRef = useRef(progress);
@@ -160,6 +162,7 @@ export default function NewConcept({ intent = null }) {
 
   useEffect(() => () => {
     requestAbortRef.current?.abort();
+    downloadAbortRef.current?.abort();
     audioRef.current?.pause();
     ttsLoopRef.current += 1;
     sentenceLoopRef.current = { lineIndex: -1, remaining: 0 };
@@ -252,6 +255,7 @@ export default function NewConcept({ intent = null }) {
   const openUnit = async (unit, { lineId = '' } = {}) => {
     // Remember which line to highlight once the subtitles arrive (used by the review page's
     // "回到该句" action). The existing activeLine effect scrolls it into view.
+    downloadAbortRef.current?.abort();
     pendingLineIdRef.current = lineId || '';
     const requestId = requestSeqRef.current + 1;
     requestSeqRef.current = requestId;
@@ -327,6 +331,7 @@ export default function NewConcept({ intent = null }) {
   // the course map instead of the lesson.
   useEffect(() => {
     if (!intent?.token || units.length === 0) return;
+    setReviewTargets(intent.reviewIds || null);
     if (intent.entry) setView(intent.entry === 'exam' ? 'exam' : 'review');
 
     if (!intent.lessonId) return;
@@ -382,6 +387,7 @@ export default function NewConcept({ intent = null }) {
   };
 
   const openReview = (unit = null) => {
+    setReviewTargets(null);
     requestSeqRef.current += 1;
     requestAbortRef.current?.abort();
     audioRef.current?.pause();
@@ -398,7 +404,7 @@ export default function NewConcept({ intent = null }) {
     if (!StorageService.saveNceProgress(next)) return false;
     progressRef.current = next;
     setProgress(next);
-    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 2, source: 'nce-review', entityId: item.unitId, label: '新概念错题复盘' });
+    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-review', entityId: item.unitId, label: '新概念错题复盘' });
     return true;
   };
 
@@ -425,7 +431,7 @@ export default function NewConcept({ intent = null }) {
     setAudioSourceUrl('');
     setAudioCacheState('idle');
     if (!audioUrl) return undefined;
-    getCachedCourseAudioUrl(audioUrl).then((cachedUrl) => {
+    getCachedCourseAudioUrl(audioUrl).then(async (cachedUrl) => {
       if (disposed) {
         if (cachedUrl) URL.revokeObjectURL(cachedUrl);
         return;
@@ -433,7 +439,8 @@ export default function NewConcept({ intent = null }) {
       if (cachedUrl) {
         objectUrl = cachedUrl;
         setAudioSourceUrl(cachedUrl);
-        setAudioCacheState('cached');
+        const ready = await isCoursePackageReady(selectedUnit, StorageService.getNceCache());
+        if (!disposed) setAudioCacheState(ready ? 'cached' : 'idle');
       }
     }).catch(() => {});
     return () => {
@@ -443,17 +450,28 @@ export default function NewConcept({ intent = null }) {
   }, [audioUrl]);
 
   const handleCacheAudio = async () => {
-    if (!audioUrl || !supportsCourseCache()) {
-      setAudioCacheState('unsupported');
-      return;
-    }
+    if (!audioUrl || !selectedUnit || !supportsCourseCache()) { setAudioCacheState('unsupported'); return; }
+    downloadAbortRef.current?.abort();
+    const controller = new AbortController();
+    downloadAbortRef.current = controller;
+    const unit = selectedUnit;
     setAudioCacheState('caching');
     try {
-      await cacheCourseAudio(audioUrl);
-      setAudioCacheState('cached');
-    } catch {
-      setAudioCacheState('error');
-    }
+      const response = await fetch(`${NCE1_BASE}/${safeAssetName(unit.filename)}.lrc`, { signal: controller.signal });
+      if (!response.ok) throw new Error('课文字幕下载失败。');
+      const text = await response.text();
+      if (!parseLrc(text).length) throw new Error('课文字幕格式无效。');
+      const cache = StorageService.getNceCache();
+      if (!StorageService.saveNceCache({ ...cache, book: { ...(cache.book || {}), units }, lessons: { ...(cache.lessons || {}), [unit.filename]: text } })) throw new Error('课文没有保存成功。');
+      await cacheCourseAudio(audioUrl, { signal: controller.signal });
+      if (!await isCoursePackageReady(unit, StorageService.getNceCache())) throw new Error('离线包不完整，请重新下载。');
+      if (!controller.signal.aborted) {
+        setAudioCacheState('cached');
+        toast.success('本课离线包已就绪：课文、字幕和原版音频均已保存。');
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) { setAudioCacheState('error'); toast.error(error.message || '离线包下载失败，请重试。'); }
+    } finally { if (downloadAbortRef.current === controller) downloadAbortRef.current = null; }
   };
 
   const cancelSentenceLoop = (stopAudio = false) => {
@@ -575,8 +593,8 @@ export default function NewConcept({ intent = null }) {
     if (exerciseIndex + 1 >= exercises.length) {
       if (selectedUnit) {
         const bestScore = Math.max(currentProgress.exerciseScore || 0, exerciseCorrectCount);
-        saveProgress(selectedUnit.filename, { exercisesCompleted: true, exerciseScore: bestScore });
-        StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 5, source: 'nce-exercise', entityId: selectedUnit.filename, label: '新概念句子练习' });
+        if (!saveProgress(selectedUnit.filename, { exercisesCompleted: true, exerciseScore: bestScore, exerciseTotal: exercises.length })) return;
+        StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-exercise', entityId: selectedUnit.filename, label: '新概念句子练习' });
       }
       setExerciseFinished(true);
       return;
@@ -586,11 +604,11 @@ export default function NewConcept({ intent = null }) {
 
   const markComplete = () => {
     if (!selectedUnit) return;
-    saveProgress(selectedUnit.filename, {
+    if (!saveProgress(selectedUnit.filename, {
       status: 'completed',
       completedCount: (currentProgress.completedCount || 0) + 1,
-    });
-    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 5, source: 'nce-lesson', entityId: selectedUnit.filename, label: '完成新概念课程' });
+    })) return;
+    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-lesson', entityId: selectedUnit.filename, label: '完成新概念课程' });
   };
 
   const changeLearningView = (nextView) => {
@@ -639,11 +657,11 @@ export default function NewConcept({ intent = null }) {
   const handleDictationComplete = (averageScore) => {
     if (!selectedUnit) return;
     const lessonProgress = progressRef.current[selectedUnit.filename] || {};
-    saveProgress(selectedUnit.filename, {
+    if (!saveProgress(selectedUnit.filename, {
       dictationCompleted: true,
       dictationBest: Math.max(lessonProgress.dictationBest || 0, averageScore),
-    });
-    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 5, source: 'nce-dictation', entityId: selectedUnit.filename, label: '新概念听写' });
+    })) return;
+    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-dictation', entityId: selectedUnit.filename, label: '新概念听写' });
   };
 
   // N-01: the lesson word list showed only the word and its frequency — no meaning, phonetic or
@@ -722,7 +740,7 @@ export default function NewConcept({ intent = null }) {
     setIsSavingAllWords(false);
     if (addedCount > 0) {
       setWordSaveError('');
-      StorageService.recordStudyActivity({ type: 'vocab', count: addedCount, durationMinutes: 1, source: 'nce-vocab', entityId: selectedUnit.filename, label: '批量收录新概念单词' });
+      StorageService.recordStudyActivity({ type: 'vocab', count: addedCount, durationMinutes: studyClock.takeMinutes(), source: 'nce-vocab', entityId: selectedUnit.filename, label: '批量收录新概念单词' });
     } else {
       setWordSaveError('单词没有保存成功，请检查浏览器存储空间。');
     }
@@ -891,7 +909,7 @@ export default function NewConcept({ intent = null }) {
   }
 
   if (view === 'review') {
-    return <NceReview progress={progress} units={units} initialUnitFilename={reviewUnitFilename} onResolve={handleResolveReview} onOpenLesson={(filename, lineId) => { const unit = units.find((item) => item.filename === filename); if (unit) openUnit(unit, { lineId }); }} onBack={backToLessons} />;
+    return <NceReview progress={progress} units={units} initialUnitFilename={reviewUnitFilename} reviewIds={reviewTargets} onResolve={handleResolveReview} onOpenLesson={(filename, lineId) => { const unit = units.find((item) => item.filename === filename); if (unit) openUnit(unit, { lineId }); }} onBack={backToLessons} />;
   }
 
   const exerciseScore = Math.min(exercises.length, exerciseCorrectCount);
@@ -1022,6 +1040,7 @@ export default function NewConcept({ intent = null }) {
       <button type="button" onClick={() => openExam(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-semibold text-amber-900"><FileText className="w-4 h-4" />做本课试题</button>
       <div className="flex items-center justify-between gap-2 mt-3"><button type="button" onClick={() => goToAdjacentUnit(previousUnit)} disabled={!previousUnit} className="flex items-center gap-1 text-xs text-slate-500 disabled:opacity-30"><ChevronLeft className="w-4 h-4" />上一课</button><span className="text-[11px] text-slate-400">{selectedUnitIndex + 1}/{units.length || 72} 单元</span><button type="button" onClick={() => goToAdjacentUnit(nextUnit)} disabled={!nextUnit} className="flex items-center gap-1 text-xs text-slate-500 disabled:opacity-30">下一课<ChevronRight className="w-4 h-4" /></button></div>
       {view === 'exercise' && <button onClick={resetExercise} className="w-full mt-2 py-2 text-xs text-slate-400 flex items-center justify-center gap-1"><RotateCcw className="w-3 h-3" />重置本课练习</button>}
+      {onNavigate && <div className="mt-3 flex gap-2"><button type="button" onClick={() => onNavigate('home')} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm">回今日计划</button><button type="button" disabled={!lessonWords.length} onClick={() => onNavigate('oral', { practiceWords: lessonWords.slice(0, 5).map((item) => item.word) })} className="flex-1 rounded-xl bg-sky-50 py-2.5 text-sm text-sky-800 disabled:opacity-40">用本课词练表达</button></div>}
     </section>
   );
 }

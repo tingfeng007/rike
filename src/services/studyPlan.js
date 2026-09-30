@@ -1,3 +1,4 @@
+import { dueVocabulary } from './reviewSession.js';
 import { buildNceReviewQueue } from './nceReview.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -68,7 +69,7 @@ export function buildActivityCalendar({ now = new Date(), days = 7, byDay = {}, 
 export function getDailyPlanState(studyPlan = {}, dateKey = getDateKey()) {
   const day = studyPlan.days?.[dateKey];
   return day && typeof day === 'object'
-    ? day
+    ? { ...day, completedTaskIds: Array.isArray(day.completedTaskIds) ? day.completedTaskIds : [], deferredTaskIds: Array.isArray(day.deferredTaskIds) ? day.deferredTaskIds : [] }
     : { completedTaskIds: [], deferredTaskIds: [], createdAt: Date.now() };
 }
 
@@ -106,18 +107,20 @@ export function buildDailyPlan({
   articles = [],
   appState = {},
   studyPlan = {},
+  events = [],
+  courseUnits = [],
+  hasAiKey = true,
 } = {}) {
   const dateKey = getDateKey(now);
   const state = getDailyPlanState(studyPlan, dateKey);
   const nowMs = now.getTime();
-  const dueWords = vocabulary.filter((word) => !word.nextReviewDate || word.nextReviewDate <= nowMs + 60 * 60 * 1000);
+  const dueWords = dueVocabulary(vocabulary, nowMs);
   const reviewItems = buildNceReviewQueue(nceProgress);
   const lessonEntries = Object.entries(nceProgress)
     .filter(([, item]) => item && typeof item === 'object')
     .sort((a, b) => (b[1].lastStudiedAt || 0) - (a[1].lastStudiedAt || 0));
   const latestLesson = lessonEntries[0]?.[0] || '';
   const oralDone = (stats.todayOralCount || 0) >= 3;
-  const courseDone = (stats.todayCourseCount || 0) > 0;
   const planMinutes = clampMinutes(dailyMinutes, 10);
 
   const tasks = [];
@@ -129,7 +132,8 @@ export function buildDailyPlan({
       description: dueWords.length > 12 ? `${dueWords.length} 个到期词，先完成最需要复习的一组` : '把今天到期的词重新想起来',
       minutes: clampMinutes(Math.min(8, Math.max(4, dueWords.length * 0.7))),
       target: 'vocab',
-      count: dueWords.length,
+      count: Math.min(dueWords.length, 12),
+      wordIds: dueWords.slice(0, 12).map((word) => word.id),
     });
   }
   if (nceExams.draft) {
@@ -150,10 +154,12 @@ export function buildDailyPlan({
       description: '把听写、练习和试题错题重新答对',
       minutes: clampMinutes(Math.min(8, Math.max(5, reviewItems.length * 0.8))),
       target: 'nce-review',
-      count: reviewItems.length,
+      count: Math.min(reviewItems.length, 6),
+      reviewIds: reviewItems.slice(0, 6).map((item) => item.id),
     });
   } else {
-    const nextLesson = latestLesson || Object.keys(nceProgress).find((id) => nceProgress[id]?.status !== 'completed') || '';
+    const unfinished = lessonEntries.find(([, progress]) => progress.status !== 'completed')?.[0];
+    const nextLesson = unfinished || courseUnits.find((unit) => nceProgress[unit.filename]?.status !== 'completed')?.filename || (nceProgress[latestLesson]?.status !== 'completed' ? latestLesson : '') || '';
     tasks.push({
       id: 'nce-lesson',
       type: 'nce',
@@ -165,7 +171,7 @@ export function buildDailyPlan({
       count: 1,
     });
   }
-  if (!oralDone) {
+  if (hasAiKey && !oralDone) {
     tasks.push({
       id: 'oral-practice',
       type: 'oral',
@@ -197,16 +203,27 @@ export function buildDailyPlan({
       usedMinutes += task.minutes;
     }
   });
-  const adjustedTasks = visibleTasks.map((task, index) => ({
-    ...task,
-    order: index + 1,
-    done: state.completedTaskIds.includes(task.id)
-      || (task.id === 'vocab-review' && dueWords.length === 0)
-      || (task.id === 'nce-review' && reviewItems.length === 0)
-      || (task.id === 'oral-practice' && oralDone)
-      || (task.id === 'nce-lesson' && courseDone),
-    deferred: state.deferredTaskIds.includes(task.id),
-  }));
+  const frozenTasks = Array.isArray(state.tasks) ? state.tasks : visibleTasks;
+  const sessionEvents = events.filter((event) => event.at >= (state.createdAt || nowMs) && event.source !== 'daily-plan');
+  const adjustedTasks = frozenTasks.map((task, index) => {
+    let verified = false;
+    if (task.id === 'vocab-review') {
+      const recalled = new Set(sessionEvents.filter((event) => event.type === 'review' && event.metadata?.quality !== 'again').map((event) => event.entityId));
+      verified = task.wordIds?.length > 0 && task.wordIds.every((id) => recalled.has(id));
+    } else if (task.id === 'oral-practice') {
+      verified = sessionEvents.filter((event) => event.type === 'oral').reduce((sum, event) => sum + event.count, 0) >= task.count;
+    } else if (task.id === 'reader-session') {
+      verified = sessionEvents.some((event) => event.type === 'reader' && String(event.entityId) === String(task.entityId));
+    } else if (task.id === 'nce-review') {
+      const pending = new Set(reviewItems.map((item) => item.id));
+      verified = task.reviewIds?.length > 0 && task.reviewIds.every((id) => !pending.has(id));
+    } else if (task.id === 'nce-exam-draft') {
+      verified = sessionEvents.some((event) => event.source === 'nce-exam');
+    } else if (task.id === 'nce-lesson') {
+      verified = sessionEvents.some((event) => ['nce-lesson', 'nce-dictation', 'nce-exercise'].includes(event.source) && (!task.entityId || event.entityId === task.entityId));
+    }
+    return { ...task, order: index + 1, done: state.completedTaskIds.includes(task.id) || verified, deferred: state.deferredTaskIds.includes(task.id) };
+  });
 
   return {
     version: 1,
@@ -215,7 +232,7 @@ export function buildDailyPlan({
     tasks: adjustedTasks,
     completedCount: adjustedTasks.filter((task) => task.done).length,
     totalCount: adjustedTasks.length,
-    plannedMinutes: Math.min(planMinutes, usedMinutes),
+    plannedMinutes: adjustedTasks.reduce((sum, task) => sum + task.minutes, 0),
     generatedAt: Date.now(),
     source: 'local-first',
     state,

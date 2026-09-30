@@ -32,7 +32,8 @@
   }
 
   body {
-    @apply bg-slate-900 text-slate-800 antialiased select-none;
+    @apply text-slate-800 antialiased;
+    background: #e9e5dc;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
@@ -104,6 +105,61 @@
   border: 1px solid rgba(215, 207, 193, 0.82);
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 12px 32px -24px rgba(30, 41, 59, 0.5);
+}
+
+/* A reading desk on desktop, an edge-to-edge notebook on the phone. */
+.app-shell { max-width: 1040px; box-shadow: 0 0 0 1px #d9d5cc, 0 24px 80px -36px #102a4350; }
+.app-navigation { max-width: 680px; margin-inline: auto; }
+.app-navigation button { min-height: 48px; }
+.study-hero { padding-inline: clamp(16px, 3vw, 28px); }
+.study-hero button { min-height: 36px; }
+.grammar-scroll { scrollbar-gutter: stable; }
+.grammar-workbench { display: grid; gap: 20px; align-items: start; }
+.grammar-outline { min-width: 0; }
+.grammar-mobile-topic { display: none; }
+.grammar-topic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.grammar-topic { display: flex; align-items: start; gap: 10px; padding: 12px; border: 1px solid #dfdbd1; border-radius: 12px; background: #fffdf9; text-align: left; color: #625f57; transition: background 150ms, border-color 150ms; }
+.grammar-topic:hover { border-color: #91b5af; }
+.grammar-topic.is-active { background: #e6f1ec; border-color: #65978c; color: #245c50; }
+.grammar-topic strong { line-height: 1.5; }
+.grammar-lesson { min-width: 0; overflow: hidden; border: 1px solid #dfdbd1; border-radius: 20px; background: #fffefa; }
+.grammar-lesson-heading { padding: 24px; }
+.grammar-section { padding: 24px; border-top: 1px solid #e9e5dc; }
+.grammar-section-title { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-weight: 700; color: #102a43; font-size: 15px; }
+.grammar-builder { padding: 20px; margin: 0 20px 24px; background: #f1f6f0; border: 1px solid #d3e2d6; border-radius: 16px; }
+.grammar-parts { display: flex; flex-wrap: wrap; gap: 6px; }
+.grammar-parts > div { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 9px; overflow-wrap: anywhere; }
+.grammar-page .study-card { max-width: 760px; margin-inline: auto; }
+.grammar-page .study-card p, .grammar-page .study-card li { line-height: 1.85; }
+.grammar-page .study-card button { min-height: 40px; }
+.grammar-page .study-card h2 { font-size: 18px; }
+.grammar-page .study-card h3 { font-size: 13px; }
+.grammar-page .study-card ul, .grammar-page .study-card p { font-size: max(12px, 0.82rem); }
+.home-task { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border-bottom: 1px solid #eee9df; padding-block: 16px; }
+.home-task:last-child { border-bottom: 0; }
+.home-task-description { white-space: normal; line-height: 1.7; }
+@media (min-width: 760px) {
+  .grammar-scroll { padding: 24px; }
+  .grammar-workbench { grid-template-columns: 218px minmax(0, 1fr); gap: 24px; }
+  .grammar-outline { position: sticky; top: 0; }
+  .grammar-topic-grid { grid-template-columns: 1fr; }
+  .home-content { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; align-content: start; align-items: start; }
+  .home-content > * { margin-top: 0 !important; min-width: 0; }
+  .home-content > .home-plan { grid-row: span 2; }
+  .home-content > .home-notice, .home-content > p, .home-content > button { grid-column: 1 / -1; }
+}
+@media (max-width: 380px) {
+  .grammar-lesson-heading, .grammar-section { padding: 18px; }
+  .grammar-builder { margin-inline: 12px; padding: 14px; }
+  .grammar-topic { padding: 10px 8px; gap: 6px; }
+  .grammar-topic strong { font-size: 12px; }
+}
+@media (max-width: 759px) {
+  .grammar-mobile-topic { display: block; }
+  .grammar-outline > p, .grammar-outline > .grammar-topic-grid { display: none; }
+  .grammar-outline.is-open > .grammar-topic-grid { display: grid; margin-top: 8px; }
+  .grammar-outline > button { margin-top: 0; }
+  .grammar-page .study-hero > div:last-child { margin-top: 10px; padding-top: 10px; }
 }
 
 .study-pill {

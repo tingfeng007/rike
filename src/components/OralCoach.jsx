@@ -1,3 +1,4 @@
+import { useStudyClock } from '../hooks/useStudyClock';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Mic,
@@ -80,6 +81,7 @@ function loadScenarioMessages(scenario) {
 
 export default function OralCoach({ onNavigateToVocab, intent = null }) {
   const toast = useToast();
+  const studyClock = useStudyClock();
   const [currentScenario, setCurrentScenario] = useState(() => {
     const saved = StorageService.getSettings().currentScenarioId;
     return SCENARIOS.find((s) => s.id === saved) || SCENARIOS[0];
@@ -108,6 +110,8 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   };
 
   const messagesEndRef = useRef(null);
+  const transcriptRef = useRef('');
+  const sendAfterRecognitionRef = useRef(false);
   const streamAbortRef = useRef(null);
   const isSttSupported = stt.isSupported();
 
@@ -121,12 +125,17 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   // its result could be applied to an unmounted component.
   useEffect(() => () => {
     streamAbortRef.current?.abort();
+    sendAfterRecognitionRef.current = false;
     stt.stop();
+    tts.stop();
   }, []);
 
   // Save current scenario selection to settings
   const handleSelectScenario = (scenario) => {
     streamAbortRef.current?.abort();
+    sendAfterRecognitionRef.current = false;
+    stt.stop();
+    tts.stop();
     setCurrentScenario(scenario);
     setMessages(loadScenarioMessages(scenario));
     setWantedWordsList(pickWantedWords());
@@ -138,7 +147,9 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
 
   // Jump straight to the scenario a saved word came from (source chip in the vocabulary list).
   useEffect(() => {
-    if (!intent?.token || !intent.scenarioId) return;
+    if (!intent?.token) return;
+    if (intent.practiceWords?.length) setWantedWordsList(intent.practiceWords.map((word) => StorageService.getVocabulary().find((entry) => entry.word.toLowerCase() === word.toLowerCase()) || { word }));
+    if (!intent.scenarioId) return;
     const target = SCENARIOS.find((scenario) => scenario.id === intent.scenarioId);
     if (target) handleSelectScenario(target);
     // handleSelectScenario is recreated per render; the token keeps this a one-shot effect.
@@ -194,22 +205,10 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
         return next;
       });
 
-      // Boost word in vocabulary
-      hitWords.forEach((hw) => {
-        const allWords = StorageService.getVocabulary();
-        const found = allWords.find((v) => v.word.toLowerCase() === hw.toLowerCase());
-        if (found) {
-          StorageService.updateWordSRS(found.id, 'good');
-          const reloaded = StorageService.getVocabulary();
-          const tIdx = reloaded.findIndex((v) => v.id === found.id);
-          if (tIdx >= 0) {
-            const tags = reloaded[tIdx].tags || [];
-            if (!tags.includes('🔥 实战激活')) {
-              reloaded[tIdx].tags = ['🔥 实战激活', ...tags];
-              StorageService.saveVocabulary(reloaded);
-            }
-          }
-        }
+      // Occurrence is evidence of use, not of correct recall: keep the SRS schedule intact.
+      hitWords.forEach((word) => {
+        const found = StorageService.getVocabulary().find((entry) => entry.word.toLowerCase() === word.toLowerCase());
+        if (found) StorageService.updateWord(found.id, { lastUsedAt: Date.now(), useCount: (found.useCount || 0) + 1 });
       });
 
       setMissionToast(`🎯 恭喜！成功在对话中实战激活生词 [${hitWords.join(', ')}]！掌握度升级！`);
@@ -279,7 +278,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
       const finalMessages = [...messagesWithUser, finalAssistantMsg];
       setMessages(finalMessages);
       StorageService.saveChatMessages(currentScenario.id, finalMessages);
-      StorageService.recordStudyActivity({ type: 'oral', count: 1, durationMinutes: 3, source: 'oral-chat', entityId: currentScenario.id, label: '完成一轮口语对练' });
+      StorageService.recordStudyActivity({ type: 'oral', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'oral-chat', entityId: currentScenario.id, label: '完成一轮口语对练' });
 
       // Auto play audio if enabled
       const settings = StorageService.getSettings();
@@ -331,9 +330,12 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
         return;
       }
 
+      transcriptRef.current = '';
+      sendAfterRecognitionRef.current = false;
       stt.startListening({
         onStart: () => setIsRecording(true),
         onResult: ({ text, isFinal }) => {
+          transcriptRef.current = text;
           setInputText(text);
           if (isFinal) {
             setIsRecording(false);
@@ -341,6 +343,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
         },
         onError: (err) => {
           console.warn(err);
+          sendAfterRecognitionRef.current = false;
           setIsRecording(false);
           const errorCode = err?.error || err?.name || '';
           setMicHelpReason(
@@ -352,7 +355,14 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
           );
           setShowMicHelp(true);
         },
-        onEnd: () => setIsRecording(false),
+        onEnd: () => {
+          setIsRecording(false);
+          if (sendAfterRecognitionRef.current) {
+            sendAfterRecognitionRef.current = false;
+            if (transcriptRef.current.trim()) handleSendMessage(transcriptRef.current);
+            else toast.info('没有识别到语音，请再说一次。');
+          }
+        },
       });
     }
   };
@@ -766,8 +776,8 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
             </div>
             <button
               onClick={() => {
-                toggleRecording();
-                setTimeout(() => handleSendMessage(), 200);
+                sendAfterRecognitionRef.current = true;
+                stt.stop();
               }}
               className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] hover:from-emerald-700 hover:to-teal-700 transition-all shadow-xs active:scale-95"
             >

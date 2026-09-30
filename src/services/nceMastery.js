@@ -4,11 +4,17 @@ export function getNceMastery(progress = {}) {
   const steps = MASTERY_KEYS.map((key) => Boolean(progress[key]));
   const examBonus = Number(progress.examBest || 0) >= 80;
   const completedSteps = steps.filter(Boolean).length;
-  const score = Math.round(((completedSteps + (examBonus ? 1 : 0)) / 5) * 100);
-  const weakAreas = MASTERY_KEYS.filter((key, index) => !steps[index]);
-  if (progress.status === 'completed' && score >= 80) weakAreas.splice(0, weakAreas.length);
+  const dictation = Math.min(100, Math.max(0, Number(progress.dictationBest) || 0));
+  const exercises = progress.exerciseTotal > 0 ? Math.min(100, 100 * (Number(progress.exerciseScore) || 0) / progress.exerciseTotal) : 0;
+  const score = Math.round(dictation * 0.4 + exercises * 0.4 + (examBonus ? 20 : 0));
+  const weakAreas = [];
+  if (dictation < 80) weakAreas.push('dictationCompleted');
+  if (exercises < 80) weakAreas.push('exercisesCompleted');
+  if (!examBonus) weakAreas.push('exam');
+  if ((progress.dictationMistakes?.length || 0) + (progress.exerciseMistakes?.length || 0) + (progress.examMistakes?.length || 0) > 0) weakAreas.push('mistakes');
   return {
     score,
+    progressPercent: Math.round(completedSteps / MASTERY_KEYS.length * 100),
     steps,
     completedSteps,
     totalSteps: 5,

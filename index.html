@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>LingoFlow · 英语学习随身伴侣</title>
     
     <!-- PWA & Mobile Meta Tags -->
@@ -15,8 +15,8 @@
     <link rel="manifest" href="./manifest.json" />
 
     <!-- Register LingoFlow Offline Resilience Service Worker -->
-    <script>
-      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+    <script type="module">
+      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http') && !import.meta.env.DEV) {
         window.addEventListener('load', function() {
           navigator.serviceWorker.register('./sw.js').catch(function(err) {
             console.warn('ServiceWorker registration skipped:', err);

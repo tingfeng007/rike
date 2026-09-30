@@ -14,7 +14,7 @@ import vm from 'node:vm';
 
 const SW_SOURCE = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 
-function loadServiceWorker({ cacheKeys }) {
+function loadServiceWorker({ cacheKeys, requireIgnoreVary = false, networkStatus = null }) {
   const listeners = {};
   const deleted = [];
   const context = {
@@ -27,12 +27,12 @@ function loadServiceWorker({ cacheKeys }) {
     caches: {
       keys: async () => [...cacheKeys],
       delete: async (key) => { deleted.push(key); return true; },
-      open: async () => ({ put: async () => {}, match: async () => undefined }),
+      open: async () => ({ addAll: async () => {}, put: async () => {}, match: async (_request, options) => requireIgnoreVary && options?.ignoreVary ? { status: 200 } : undefined }),
       match: async () => undefined,
     },
     Response: class Response {},
     URL,
-    fetch: async () => { throw new Error('offline'); },
+    fetch: async () => { if (networkStatus) return { status: networkStatus, ok: false }; throw new Error('offline'); },
   };
   vm.createContext(context);
   vm.runInContext(SW_SOURCE, context);
@@ -59,6 +59,20 @@ test('activate only removes superseded app-shell caches', async () => {
   assert.ok(!deleted.includes('lingoflow-nce-audio-v1'), 'downloaded course audio must survive');
   assert.ok(!deleted.includes('lingoflow-tts-v1'), 'cloud TTS cache must survive');
   assert.ok(!deleted.includes('some-unrelated-cache'), 'foreign caches are left alone');
+});
+
+test('offline module loading matches precached assets even when Origin varies', async () => {
+  const { listeners } = loadServiceWorker({ cacheKeys: [], requireIgnoreVary: true });
+  let response;
+  listeners.fetch({ request: { method: 'GET', mode: 'cors', url: 'https://example.com/assets/app.js' }, respondWith: (pending) => { response = pending; } });
+  assert.equal((await response).status, 200);
+});
+
+test('a removed chunk during deployment falls back to its precached copy', async () => {
+  const { listeners } = loadServiceWorker({ cacheKeys: [], requireIgnoreVary: true, networkStatus: 404 });
+  let response;
+  listeners.fetch({ request: { method: 'GET', mode: 'cors', url: 'https://example.com/assets/previous.js' }, respondWith: (pending) => { response = pending; } });
+  assert.equal((await response).status, 200);
 });
 
 test('install does not precache-or-delete anything unexpected', () => {

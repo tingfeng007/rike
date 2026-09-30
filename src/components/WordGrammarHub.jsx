@@ -53,7 +53,7 @@ export default function WordGrammarHub({ onOpenSource, onOpenSettings, intent = 
       {section === 'grammar' ? (
         <GrammarLab onOpenSettings={onOpenSettings} sectionSwitch={sectionSwitch} />
       ) : (
-        <VocabularySRS onOpenSource={onOpenSource} sectionSwitch={sectionSwitch} />
+        <VocabularySRS onOpenSource={onOpenSource} sectionSwitch={sectionSwitch} intent={intent} />
       )}
     </div>
   );
