@@ -65,7 +65,7 @@ function PartedSentence({ parts, highlight }) {
   );
 }
 
-export default function GrammarLab({ onOpenSettings }) {
+export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState('explain'); // 'explain' | 'practice' | 'analyze'
   const [selectedPatternId, setSelectedPatternId] = useState(GRAMMAR_PATTERNS[0].id);
@@ -201,6 +201,7 @@ export default function GrammarLab({ onOpenSettings }) {
         icon={<SpellCheck className="w-4 h-4" />}
         status={practicedTotal ? `已练 ${practicedTotal} 题 · 正确率 ${practicedAccuracy}%` : '尚未开始练习'}
       >
+        {sectionSwitch && <div className="mb-2">{sectionSwitch}</div>}
         <div className="mt-3 flex rounded-xl bg-white/10 p-1 text-[11px] ring-1 ring-white/10">
           {[['explain', '句型讲解', BookOpen], ['practice', '句型练习', Target], ['analyze', 'AI 拆句', Wand2]].map(([value, label, Icon]) => (
             <button

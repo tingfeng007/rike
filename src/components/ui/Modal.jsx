@@ -13,6 +13,16 @@ import { X } from 'lucide-react';
  * Usage:
  *   <Modal open={show} onClose={() => setShow(false)} title="…">…</Modal>
  *   <BottomSheet open={show} onClose={…} title="…">…</BottomSheet>
+ *
+ * ⚠️ GOTCHA — always render the caller's state-dependent children conditionally:
+ *
+ *   {item && <Modal open onClose={…}>{item.word}</Modal>}     ✅
+ *   <Modal open={Boolean(item)} onClose={…}>{item.word}</Modal>  ❌ crashes when item is null
+ *
+ * React evaluates JSX children in the *parent* before this component runs, so returning null
+ * here cannot stop `item.word` from being evaluated. Passing `open={Boolean(item)}` while the
+ * children read `item` is what produced the "这个页面刚刚卡住了" crash on the vocabulary,
+ * reader and settings pages; `test/render-smoke.test.js` now renders every page to catch it.
  */
 export function Modal({
   open,

@@ -61,7 +61,7 @@ function readSessionSize() {
   return [10, 20, 50].includes(numeric) ? numeric : DEFAULT_SESSION_SIZE;
 }
 
-export default function VocabularySRS({ onOpenSource = null }) {
+export default function VocabularySRS({ onOpenSource = null, sectionSwitch = null }) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState('flashcard'); // 'flashcard' | 'list' | 'quiz'
   const [vocabulary, setVocabulary] = useState([]);
@@ -539,6 +539,7 @@ export default function VocabularySRS({ onOpenSource = null }) {
           </>
         )}
       >
+        {sectionSwitch && <div className="mb-2">{sectionSwitch}</div>}
         <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
           <button
             type="button"
@@ -1447,9 +1448,13 @@ export default function VocabularySRS({ onOpenSource = null }) {
       </Modal>
 
       {/* Edit Word & Note Modal — migrated to Modal: it previously had no height cap, so the
-          on-screen keyboard could push “保存修改” out of reach (V-20). */}
+          on-screen keyboard could push “保存修改” out of reach (V-20).
+          NOTE: the whole modal is rendered conditionally. React evaluates JSX children before
+          the component runs, so a closed `<Modal open={false}>` would still evaluate
+          `editingWord.word` and crash the page. */}
+      {editingWord && (
       <Modal
-        open={Boolean(editingWord)}
+        open
         onClose={() => setEditingWord(null)}
         size="md"
         showCloseButton={false}
@@ -1550,6 +1555,7 @@ export default function VocabularySRS({ onOpenSource = null }) {
               </button>
             </div>
       </Modal>
+      )}
 
       {/* Manual Add Word Modal */}
       <Modal

@@ -1165,9 +1165,13 @@ export default function SmartReader({ intent = null }) {
         )}
       </div>
 
-      {/* 1. Bottom Sheet: Word Detail & Add to Vocab */}
+      {/* 1. Bottom Sheet: Word Detail & Add to Vocab
+          NOTE: rendered conditionally on purpose. React evaluates JSX children *before* the
+          component runs, so `<Modal open={false}>…{x.word}…</Modal>` still evaluates `x.word`
+          and crashes the page — Modal returning null cannot prevent that. */}
+      {selectedWord && (
       <BottomSheet
-        open={Boolean(selectedWord)}
+        open
         onClose={() => setSelectedWord(null)}
         size="md"
         showCloseButton={false}
@@ -1340,10 +1344,12 @@ export default function SmartReader({ intent = null }) {
               </button>
             </div>
       </BottomSheet>
+      )}
 
       {/* 2. Modal: Deep Sentence & Grammar Breakdown */}
+      {selectedSentence && (
       <BottomSheet
-        open={Boolean(selectedSentence)}
+        open
         onClose={() => setSelectedSentence(null)}
         size="lg"
         showCloseButton={false}
@@ -1477,6 +1483,7 @@ export default function SmartReader({ intent = null }) {
               ) : null}
             </div>
       </BottomSheet>
+      )}
 
       {/* 3. Modal: Add New Custom Article */}
       <Modal
@@ -1601,8 +1608,9 @@ export default function SmartReader({ intent = null }) {
       </Modal>
 
       {/* 4. Bottom Sheet: Sentence Highlight & Personal Note */}
+      {editingAnnotation && (
       <BottomSheet
-        open={Boolean(editingAnnotation)}
+        open
         onClose={() => setEditingAnnotation(null)}
         size="lg"
         showCloseButton={false}
@@ -1664,6 +1672,7 @@ export default function SmartReader({ intent = null }) {
               </button>
             </div>
       </BottomSheet>
+      )}
 
       {/* 5. Modal: Reading Notes Collection & Markdown Export */}
       <BottomSheet

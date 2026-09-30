@@ -776,9 +776,13 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Import Preview Modal */}
+      {/* Import Preview Modal
+          NOTE: rendered conditionally — React evaluates JSX children before the component
+          runs, so a closed `<Modal open={false}>` still evaluates `importPreview.exportedAt`
+          and takes the whole page down. */}
+      {importPreview && (
       <Modal
-        open={Boolean(importPreview)}
+        open
         onClose={() => setImportPreview(null)}
         size="sm"
         showCloseButton={false}
@@ -846,6 +850,7 @@ export default function Settings() {
               </button>
             </div>
       </Modal>
+      )}
 
       {/* Safety Reset Modal */}
       <Modal

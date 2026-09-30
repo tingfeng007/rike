@@ -5,7 +5,6 @@ import {
   BookOpen,
   Layers,
   GraduationCap,
-  SpellCheck,
 } from 'lucide-react';
 import HomeDashboard from './components/HomeDashboard';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -14,12 +13,13 @@ import { StorageService } from './services/storage';
 
 const OralCoach = lazy(() => import('./components/OralCoach'));
 const SmartReader = lazy(() => import('./components/SmartReader'));
-const VocabularySRS = lazy(() => import('./components/VocabularySRS'));
 const Settings = lazy(() => import('./components/Settings'));
 const NewConcept = lazy(() => import('./components/NewConcept'));
-const GrammarLab = lazy(() => import('./components/GrammarLab'));
+// 「生词 + 语法」合并为一个导航项（内部由 WordGrammarHub 切换板块）
+const WordGrammarHub = lazy(() => import('./components/WordGrammarHub'));
 
-const VALID_TABS = new Set(['home', 'oral', 'reader', 'nce', 'grammar', 'vocab', 'settings']);
+// 'grammar' 保留在集合里只为兼容历史保存的 activeTab：它现在由「词法」板块承载。
+const VALID_TABS = new Set(['home', 'oral', 'reader', 'nce', 'vocab', 'settings']);
 
 function PageFallback() {
   return (
@@ -40,6 +40,8 @@ function countDueWords() {
 export default function App() {
   const [activeTab, setActiveTab] = useState(() => {
     const saved = StorageService.getAppState().activeTab;
+    // 旧版本可能保存过 'grammar'：现在它归入「词法」板块。
+    if (saved === 'grammar') return 'vocab';
     return VALID_TABS.has(saved) ? saved : 'home';
   });
   const [dueVocabCount, setDueVocabCount] = useState(() => countDueWords());
@@ -50,6 +52,8 @@ export default function App() {
   const [nceIntent, setNceIntent] = useState(null);
   const [readerIntent, setReaderIntent] = useState(null);
   const [oralIntent, setOralIntent] = useState(null);
+  // 「词法」板块内部的跳转意图（section: 'vocab' | 'grammar'）
+  const [wordGrammarIntent, setWordGrammarIntent] = useState(null);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
 
@@ -91,6 +95,8 @@ export default function App() {
       setReaderIntent({ token, articleId: options.articleId || '' });
     } else if (tab === 'oral') {
       setOralIntent({ token, scenarioId: options.scenarioId || '' });
+    } else if (tab === 'vocab' && (options.section === 'vocab' || options.section === 'grammar')) {
+      setWordGrammarIntent({ token, section: options.section });
     }
 
     setActiveTab(tab);
@@ -147,8 +153,13 @@ export default function App() {
           )}
           {activeTab === 'reader' && <SmartReader intent={readerIntent} />}
           {activeTab === 'nce' && <NewConcept intent={nceIntent} />}
-          {activeTab === 'grammar' && <GrammarLab onOpenSettings={() => navigate('settings')} />}
-          {activeTab === 'vocab' && <VocabularySRS onOpenSource={openSourceFromVocab} />}
+          {activeTab === 'vocab' && (
+            <WordGrammarHub
+              onOpenSource={openSourceFromVocab}
+              onOpenSettings={() => navigate('settings')}
+              intent={wordGrammarIntent}
+            />
+          )}
           {activeTab === 'settings' && <Settings />}
         </Suspense>
         </ErrorBoundary>
@@ -218,21 +229,6 @@ export default function App() {
             <span className="text-[10px] leading-none tracking-tight">新概念</span>
           </button>
 
-          {/* Tab: Grammar Lab */}
-          <button
-            type="button"
-            aria-current={activeTab === 'grammar' ? 'page' : undefined}
-            onClick={() => navigate('grammar')}
-            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
-              activeTab === 'grammar'
-                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <SpellCheck className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10px] leading-none tracking-tight">语法</span>
-          </button>
-
           {/* Tab 4: Vocabulary & SRS */}
           <button
             type="button"
@@ -255,7 +251,7 @@ export default function App() {
                 </span>
               )}
             </div>
-            <span className="text-[10px] leading-none tracking-tight">生词</span>
+            <span className="text-[10px] leading-none tracking-tight">词法</span>
           </button>
 
         </div>

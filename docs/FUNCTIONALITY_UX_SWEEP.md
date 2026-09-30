@@ -568,6 +568,58 @@ $ npm run build
 4. **口径统一（2.4-C）**：到期词 5 份实现、"困难词"阈值 2 处、活动/打卡口径分散 —— 建议收敛为单一 `metrics` 模块，属破坏性重构，需产品决策。
 5. **真机走查**：所有标注"未经运行验证"的条目（音频手势、连续朗读衔接、移动端安全区、弹层 `dvh`、焦点归还、误触概率）。
 
+### 6.15 线上事故修复（弹层迁移引入的渲染崩溃）与新回归防线
+
+**现象**：用户反馈「生词」与「精读」页面打不开，显示"这个页面刚刚卡住了"（即 ErrorBoundary 捕获）。
+
+**根因（已用真实渲染复现）**：第 5 批把弹层迁移到共享 `<Modal>` 时，原来的条件渲染被换成了 `open` 属性：
+
+```jsx
+{editingWord && (<div>…{editingWord.word}…</div>)}      // 迁移前：关闭时子节点根本不创建
+<Modal open={Boolean(editingWord)}>…{editingWord.word}…</Modal>   // 迁移后：子节点总会被求值
+```
+
+React 会**先求值 JSX 子节点**、再执行 `Modal` 组件，而 `Modal` 在 `!open` 时 `return null` —— 返回 null *无法阻止* 子节点表达式被求值。于是 `editingWord.word` 在 `editingWord === null` 时抛
+`TypeError: Cannot read properties of null (reading 'word')`，整页被 ErrorBoundary 接住。
+
+**实际影响比反馈更大**：用 SSR 真实渲染逐页验证后发现**三个**页面崩溃 —— 精读（`selectedWord.word` / `sentenceAnalysis.*` / `editingAnnotation.*`）、生词（`editingWord.word`）、**设置**（`importPreview.exportedAt`，用户尚未反馈）。
+
+**修复**：把弹层的调用点恢复为条件渲染（`{state && <Modal open …>}`），使关闭状态下子节点根本不被创建；并在 `Modal.jsx` 顶部以 ⚠️ 标注这条 React 语义陷阱与正确/错误写法。
+
+**新回归防线**：新增 `test/render-smoke.test.js` + `test/helpers/renderEnv.mjs` —— 用 Vite 的 SSR loader 加载**真实页面组件**并 `renderToString` 一次，7 个页面 × 2 种数据状态（空数据 / 有数据）任一渲染期异常即失败。`npm run build` 与 oxlint **都不会**发现这类问题（构建不执行组件），只有真实渲染能。
+
+```
+$ npm test
+ℹ tests 117   ℹ pass 117   ℹ fail 0     （含新增 8 项渲染冒烟）
+```
+
+**修复前**（冒烟测试首轮运行）：
+
+```
+✖ SmartReader    Actual message: "Cannot read properties of null (reading 'word')"
+✖ VocabularySRS  Actual message: "Cannot read properties of null (reading 'word')"
+✖ Settings       Actual message: "Cannot read properties of null (reading 'exportedAt')"
+✔ HomeDashboard / OralCoach / NewConcept / GrammarLab
+```
+
+### 6.16 底部导航合并（6 项 → 5 项）
+
+语法模块上线后底部导航变成 6 项（首页 / 口语 / 精读 / 新概念 / 语法 / 生词），375px 手机上过于拥挤。现按"语言知识积累"把**生词与语法合并为一个导航项「词法」**：
+
+- 新增 `src/components/WordGrammarHub.jsx`：持有板块状态并持久化到 `AppState.wordGrammarSection`，在「生词复习 / 语法实验室」之间切换。
+- 新增 `src/components/ui/SectionSwitch.jsx`：一级板块切换器，插在每个板块的 `StudyHeader` 内、二级标签之上，形成 **一级板块 → 二级标签** 的两层结构：
+  - 生词复习 → 闪卡 / 生词库清单 / AI 巩固测验
+  - 语法实验室 → 句型讲解 / 句型练习 / AI 拆句
+- `App` 的导航回到 5 项；`activeTab === 'grammar'`（旧版本可能保存过）会被自动映射到「词法」。
+- 外部跳转支持 `navigate('vocab', { section: 'grammar' })`，`intent.token` 保证重复点击同样生效。
+
+```
+$ npm run lint
+Found 48 warnings and 0 errors.        （与事故前基线一致）
+$ npm run build
+✓ built in 1.13s
+```
+
 ---
 
 ## 附录：本次扫描用到的核验手法
