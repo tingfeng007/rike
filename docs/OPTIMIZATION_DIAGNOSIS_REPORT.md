@@ -1062,15 +1062,16 @@ $ Test-Path tsconfig.json                    → False        （无类型检查
 
 ---
 
-## 十二、实施记录（本次已落地的修复）
+## 十二、实施记录（已落地的修复）
 
-> 本节记录本报告发布**之后**实际执行的代码改动，使本文档同时充当"问题清单"与"修复台账"。所有改动均在 `main` 分支工作区完成，未提交。
+> 本节记录本报告发布**之后**实际执行的代码改动，使本文档同时充当"问题清单"与"修复台账"。
+> 第一批修复已提交为 `8fc5a3a` 并推送到 `origin/main`，随后发布到 `gh-pages`（`08015f7`）；D-31 护栏与部署自动化在其后补入。
 
 ### 12.1 验证结论（本次改动后实测）
 
 ```
 $ npm test
-ℹ tests 36   ℹ pass 36   ℹ fail 0        （原 24 例 + 新增 12 例回归测试）
+ℹ tests 39   ℹ pass 39   ℹ fail 0        （原 24 例 + 新增 15 例回归测试）
 
 $ npx oxlint
 Found 88 warnings and 0 errors.          （88 条为本次主动启用的可见告警，详见下）
@@ -1082,22 +1083,25 @@ Found 88 warnings and 0 errors.          （88 条为本次主动启用的可见
     1 jsx-a11y(media-has-caption)
 
 $ npm run build
-✓ 1870 modules transformed.   ✓ built in 732ms
+✓ 1870 modules transformed.   ✓ built in ~0.7s
 ```
 
-**红→绿验证（证明新测试不是空测试）**：把新增用例分别指向 `git show HEAD:` 的**修改前**文件运行：
+**红→绿验证（证明新测试不是空测试）**：把新增用例指向 `git show HEAD~1:`（即全部改动之前的 `33bbc45`）运行：
 
 | 测试文件 | 对旧代码 | 对新代码 |
 | :--- | :--- | :--- |
-| `test/storage-safety.test.js`（10 例） | **10 fail / 0 pass** | 10 pass |
+| `test/storage-safety.test.js`（13 例） | **12 fail / 1 pass** | 13 pass |
 | `test/service-worker.test.js`（缓存清理 1 例） | **1 fail** | pass |
+
+> 唯一的旧代码通过项是 `"again" 把卡片重置为明天再学` —— 该行为原本就正确，属于"防止后续改坏"的护栏测试。
+> 注意：验证时必须使用 `HEAD~1` 而非 `HEAD`，否则拿到的是已修复版本，红测会假通过。
 
 ### 12.2 已修复清单
 
 | 编号 | 修复内容 | 改动位置 | 验证方式 |
 | :--- | :--- | :--- | :--- |
 | D-01 | 读取路径不再写盘：删除 `getVocabulary()` 里的"自动升级"覆盖逻辑；改为显式一次性迁移 `migrateLegacySampleData()`——仅在**整个词库全部为 `sample_*` 演示词**时替换，且替换前把原值备份到 `lingoflow_vocabulary_legacy_backup` | `src/services/storage.js` | 新测试 + 红绿验证 |
-| D-02 | Service Worker 激活时只清理自身命名空间（`lingoflow-offline-*`），并把 `lingoflow-nce-audio-v1` / `lingoflow-tts-v1` 列入保护名单 | `public/sw.js:22-38` | `test/service-worker.test.js`（红绿验证） |
+| D-02 | Service Worker 激活时只清理自身命名空间（`lingoflow-offline-*`），并把 `lingoflow-nce-audio-v1` / `lingoflow-tts-v1` 列入保护名单 | `public/sw.js` | `test/service-worker.test.js`（红绿验证） |
 | D-03 | 导入前先做快照，写入失败即整体回滚；`speechApiKey` 与 `apiKey` 同样"导入值非空才覆盖" | `src/services/storage.js` | 新测试 ×2 |
 | D-04 | AI 请求新增超时（默认 60s，流式空闲 30s）与 `AbortSignal` 支持；修正 `[DONE]` 只跳出内层循环导致的不结束；`finally` 中 `reader.cancel()`；中断时保留已收到的文本；超时/取消/连不上分别给出中文错误 | `src/services/ai.js` | 代码确证 + 构建 |
 | D-05 | `safeSetItem` 记录失败原因并累计计数；`updateWordSRS` 写盘失败返回 `null` 而非"已推进"的卡片；设置页保存失败显示"未能保存"而不是"已保存" | `src/services/storage.js`、`src/components/Settings.jsx` | 新测试 |
@@ -1109,30 +1113,48 @@ $ npm run build
 | D-26 | 阅读进度与批注不再绕过服务层：新增 `getReadingPosition`/`saveReadingPosition`，`SmartReader` 改走 `StorageService` | `src/services/storage.js`、`src/components/SmartReader.jsx` | 代码确证 |
 | D-28 | 补齐 Tailwind 缺失令牌：`boxShadow.2xs/xs`、`spacing.4.5`、`slate.850`、`fade-in` keyframes/animation；`no-scrollbar`/`pb-safe` 在 `index.css` 实现；并加 `prefers-reduced-motion` 保护 | `tailwind.config.js`、`src/index.css` | **构建产物 CSS 逐条核对（9/9 已生成规则）** |
 | D-29 | 中文输入法按 Enter 不再误提交：新增 `src/services/keyboard.js`（`onEnterSubmit`/`isImeComposing`），替换 `NewConcept.jsx`、`NceReview.jsx` 两处裸 Enter 判断 | `src/services/keyboard.js` + 2 组件 | 代码确证 + lint |
-| D-31（部分） | 修正误导性注释：明确写出"三档固定增量启发式，并非标准 SM-2 公式" | `src/services/storage.js:357-360` | 代码确证 |
+| D-31 | 排程语义修正（**保留三档启发式，只加护栏**，不改评分档位）：① 新增 `MAX_INTERVAL_DAYS = 365` 上限——此前连续 9 次"good"会把间隔推到 3819 天，单词等于消失；② `hard` 至少前进 1 天——此前 `max(1, round(1×1.2)) = 1`，1 天卡片会永远每天到期；③ 删除 `Math.max(0, newStep)` 这行空操作并注明 `step` 为何故意不降级（降级会把已知难词打回每日阶梯，反而加重每日负担）；④ 修正注释与 README 对"SM-2"的表述 | `src/services/storage.js` | 新测试 ×3（红绿验证：旧代码 2 例失败） |
 | D-33/D-37（部分） | `OralCoach` 新增卸载清理：离开页面时中断在途 AI 流并 `stt.stop()`；切换情景时中断旧流；被取消的请求不再写回对话 | `src/components/OralCoach.jsx` | 代码确证 + lint |
+| D-17（部分） | 部署链路自动化（见 12.3）：`npm run deploy` + `scripts/deploy-gh-pages.mjs` 取代手工铺 `gh-pages`；新增 CI 与自动部署工作流 | `scripts/`、`.github/workflows/`、`package.json` | 脚本 dry-run 实测 |
 | — | 删除零引用死资源：`src/App.css`(184 行)、`src/assets/{react.svg,vite.svg,hero.png}`、`public/{favicon.svg,icons.svg}`；`App.css` 中唯一的 `:focus-visible` 规则已迁移进 `index.css` | 多处 | git 引用复查 |
 | — | `Settings` 清理课程缓存补 `.catch`，失败不再静默；删除两处永不更新的 state（`OralCoach` 的 `scenarios`、`Settings` 的 `localSummary`） | 2 组件 | lint |
 
-### 12.3 本次**未做**的部分及原因（保持诚实）
+### 12.3 部署链路自动化（本次新增）
+
+手工铺 `gh-pages` 是"线上落后于 main"这一风险的根源，因此一并自动化：
+
+| 新增 | 作用 |
+| :--- | :--- |
+| `scripts/deploy-gh-pages.mjs` | 用临时 git worktree 把 `dist/` **整体替换**到部署分支（因此删除的文件会真正消失），附加 `.nojekyll`，**普通快进提交、绝不 force push**；支持 `--dry-run`；`finally` 中清理 worktree |
+| `npm run deploy` / `npm run deploy:dry` | 构建后一键发布 / 空跑校验 |
+| `.github/workflows/ci.yml` | 每次 push / PR 跑 `npm test` + `npm run lint` + `npm run build` |
+| `.github/workflows/deploy.yml` | push 到 `main` 后自动构建并发布到 `gh-pages`（先跑测试，且带并发保护） |
+
+> 踩坑记录（已修）：脚本最初在 `try` 内调用 `process.exit(0)`，导致 `finally` 不执行、临时 worktree 泄漏。已改为 `return` + 顶层 `process.exitCode`，dry-run 实测 worktree 正常回收。另外首版日志打印的是分支上的**旧**入口分块，已改为读取 `dist/index.html`。
+
+### 12.4 本次**未做**的部分及原因（保持诚实）
 
 | 未做项 | 原因 |
 | :--- | :--- |
-| **D-17 缓存策略调整**（`/assets/*` 改 cache-first、`install` 预缓存应用外壳、缓存淘汰上限） | 会改变离线行为，需要真机验证；本报告 11.2 已列为"需要确认后再动"。本次只修了其中的明确缺陷（D-02）。 |
+| **D-17 剩余部分：缓存策略调整**（`/assets/*` 改 cache-first、`install` 预缓存应用外壳、缓存淘汰上限） | 会改变离线行为，需要真机验证。本次只做了其中的明确缺陷（D-02）与部署自动化，策略本身仍待真机确认。**已知残留**：新 worker 激活时会清掉旧 app-shell 缓存且尚无预缓存，老用户更新后立刻断网可能看到 503 文本页。 |
 | **D-19 PWA 图标**（192/512 PNG、maskable 独立图、`apple-touch-icon-180.png`） | 需要设计与位图资源，且 iOS/Android 表现需真机确认。 |
-| **D-31 剩余部分**（`hard` 不降级 `step`、间隔无上限、`hard` 在 1 天卡片上永远停留） | 改动会**直接改变学习排程行为**，属于产品决策，等待确认"实现真 SM-2"还是"保留启发式但加装护栏"。 |
+| **D-31 的评分档位本身**（是否改成正真 SM-2 的 0–5 评分与 EF 公式） | 本次按"保留启发式 + 加护栏"处理，因为它不改变复习负担；改成真 SM-2 会显著改变每日复习量，属产品决策。 |
 | **D-12 错误文案全面中文化**（把 `diagnoseErrorMessage` 上移为共享模块、7 处调用点改造） | 本次已在 `ai.js` 内完成超时/取消/断网三类的中文映射；其余上游错误原文的处理留待与 D-12 一并做。 |
 | **D-13 查词并发竞态**（点 B 词时 A 的结果贴错） | 需要请求 token 与状态核对，属于 SmartReader 的独立改造；本次先解决了 `OralCoach` 的取消与写回问题。 |
 | **D-23/D-24 组件拆分与 memo 化**、**D-27 概念去重**、**D-25 alert→toast**、**D-30 弹层 Modal 化**、**D-32 渲染期 IO 收敛**、**D-34 打乱统一** | 均为较大范围重构，且与外观/交互强相关，建议作为独立批次推进。 |
-| **D-35~D-39 文档对齐**（README 补新概念模块、修正审计文档对 `sw.js` 的错误描述、标注 P0_P1 计划已完成） | 属于文档工作，本次聚焦代码；建议紧接着做，避免文档继续误导。 |
-| **CI 接入**（GitHub Actions 跑 test/lint/build） | 无 `.github` 目录，属仓库配置变更，建议由你确认后添加。 |
+| **D-35~D-39 文档对齐**（README 补新概念模块、修正审计文档对 `sw.js` 的错误描述、标注 P0_P1 计划已完成） | 属于文档工作，本次聚焦代码与部署；建议紧接着做，避免文档继续误导。 |
 
-### 12.4 变更规模
+### 12.5 变更规模与发布记录
 
 ```
-25 files changed, 708 insertions(+), 717 deletions(-)
+第一批（8fc5a3a）：25 files changed, 708 insertions(+), 717 deletions(-)
+第二批（D-31 护栏 + 部署自动化）：见 12.1 的测试与构建结果
+
+gh-pages： 53 文件 / 1,188,998 B  →  26 文件 / 598,888 B
+           （清掉 47 个不可达文件，约 859 KB）
 ```
-其中新增：`src/services/keyboard.js`（共享输入法判断）、`test/storage-safety.test.js`（10 例）、`test/service-worker.test.js`（2 例）。
+
+新增文件：`src/services/keyboard.js`、`scripts/deploy-gh-pages.mjs`、`.github/workflows/{ci,deploy}.yml`、`test/storage-safety.test.js`、`test/service-worker.test.js`。
 
 ---
 

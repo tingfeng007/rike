@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { StorageService, DEFAULT_SAMPLE_WORDS } from '../src/services/storage.js';
+import { StorageService, DEFAULT_SAMPLE_WORDS, MAX_INTERVAL_DAYS } from '../src/services/storage.js';
 
 /**
  * Regression tests for the data-safety defects found in the optimisation audit
@@ -234,4 +234,48 @@ test('a non numeric schema marker is repaired', () => {
   assert.equal(StorageService.ensureSchema(), 3);
   assert.equal(storage.getItem('lingoflow_schema_version'), '3', 'garbage marker must be rewritten');
   assert.equal(StorageService.getSchemaVersion(), 3);
+});
+
+// --- D-31: SRS scheduling guard rails -----------------------------------------
+
+test('review intervals never grow past the cap', () => {
+  StorageService.saveVocabulary([{ id: 'w1', word: 'alpha', step: 0, intervalDays: 1, easeFactor: 2.5, tags: [] }]);
+
+  const intervals = [];
+  for (let i = 0; i < 12; i += 1) {
+    intervals.push(StorageService.updateWordSRS('w1', 'good').intervalDays);
+  }
+
+  // Previously this sequence reached 3819 days (about 10.4 years).
+  assert.ok(
+    intervals.every((days) => days <= MAX_INTERVAL_DAYS),
+    `every interval must stay <= ${MAX_INTERVAL_DAYS}, got ${intervals.join(', ')}`,
+  );
+  assert.equal(intervals.at(-1), MAX_INTERVAL_DAYS, 'growth saturates at the cap');
+});
+
+test('a difficult one-day card is no longer stuck due every day', () => {
+  StorageService.saveVocabulary([{ id: 'w1', word: 'alpha', step: 0, intervalDays: 1, easeFactor: 2.5, tags: [] }]);
+
+  const first = StorageService.updateWordSRS('w1', 'hard');
+  assert.ok(first.intervalDays > 1, `hard on a 1-day card must advance, got ${first.intervalDays}`);
+
+  // And it keeps advancing rather than oscillating at a single day.
+  storage.failKeys.clear();
+  StorageService.saveVocabulary([{ id: 'w2', word: 'beta', step: 1, intervalDays: first.intervalDays, easeFactor: first.easeFactor, tags: [] }]);
+  const second = StorageService.updateWordSRS('w2', 'hard');
+  assert.ok(second.intervalDays > first.intervalDays, `${second.intervalDays} should exceed ${first.intervalDays}`);
+});
+
+test('"again" still resets a card to relearn tomorrow', () => {
+  StorageService.saveVocabulary([{
+    id: 'w1', word: 'alpha', step: 6, intervalDays: 120, easeFactor: 2.8, status: 'mastered', tags: [],
+  }]);
+
+  const reset = StorageService.updateWordSRS('w1', 'again');
+
+  assert.equal(reset.step, 0);
+  assert.equal(reset.intervalDays, 1, 'a forgotten card comes back tomorrow');
+  assert.equal(reset.status, 'learning');
+  assert.equal(reset.easeFactor, 2.6, 'ease is penalised but stays above the 1.3 floor');
 });

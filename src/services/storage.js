@@ -22,6 +22,10 @@ const READ_POSITION_PREFIX = 'lingoflow_read_pos_';
 
 const STORAGE_SCHEMA_VERSION = 3;
 
+// Upper bound for a single review interval. Without it the multiplicative growth of
+// "good" answers scheduled a card ~3800 days out, i.e. beyond any practical horizon.
+export const MAX_INTERVAL_DAYS = 365;
+
 // Reason of the most recent failed write. Surfaced through getStorageDiagnostics /
 // getLastWriteError so a full disk or blocked storage is never silent.
 let lastWriteError = null;
@@ -345,7 +349,7 @@ export const StorageService = {
   },
 
   updateWordSRS(wordId, quality) {
-    // quality: 'again' (0) | 'hard' (1) | 'good' (2)
+    // quality: 'again' | 'hard' | 'good'
     const words = this.getVocabulary();
     const index = words.findIndex((w) => w.id === wordId);
     if (index === -1) return null;
@@ -362,7 +366,14 @@ export const StorageService = {
     // Three-grade adaptive interval heuristic (again / hard / good).
     // NOTE: this is *not* the standard SuperMemo SM-2 EF formula
     // (EF' = EF + (0.1 - (5-q)*(0.08 + (5-q)*0.02))); the deltas below are fixed steps.
-    // Kept as-is deliberately: changing scheduling changes real learning behaviour.
+    // The three grades and the ease deltas are intentionally unchanged — rewriting them
+    // would change the user's real review load. Only the pathologies below were fixed:
+    //   1. intervals could grow without bound (9x "good" reached ~3800 days → the word
+    //      effectively disappeared), now capped by MAX_INTERVAL_DAYS;
+    //   2. "hard" on a 1-day card computed max(1, round(1*1.2)) = 1, so the card stayed
+    //      due every single day forever, now it always advances by at least a day.
+    const capInterval = (days) => Math.min(MAX_INTERVAL_DAYS, Math.max(1, Math.round(days)));
+
     if (quality === 'again') {
       newStep = 0;
       newInterval = 1;
@@ -370,8 +381,10 @@ export const StorageService = {
       // Penalize ease factor for forgotten word (floor at 1.3)
       newEase = Math.max(1.3, Number((newEase - 0.2).toFixed(2)));
     } else if (quality === 'hard') {
-      newStep = Math.max(0, newStep);
-      newInterval = Math.max(1, Math.round(newInterval * 1.2));
+      // Step is deliberately left unchanged: "hard" is not a success, but demoting it
+      // would send a known-but-difficult word back to the daily ladder and inflate the
+      // daily workload. (The previous `Math.max(0, newStep)` here was a no-op.)
+      newInterval = capInterval(Math.max(newInterval + 1, newInterval * 1.2));
       newStatus = 'review';
       // Slight ease penalty for difficult word
       newEase = Math.max(1.3, Number((newEase - 0.15).toFixed(2)));
@@ -387,10 +400,10 @@ export const StorageService = {
         newInterval = 3;
         newStatus = 'review';
       } else if (newStep >= 5) {
-        newInterval = Math.round(newInterval * newEase);
+        newInterval = capInterval(newInterval * newEase);
         newStatus = 'mastered';
       } else {
-        newInterval = Math.round(newInterval * newEase);
+        newInterval = capInterval(newInterval * newEase);
         newStatus = 'review';
       }
     }

@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "oxlint",
     "test": "node --test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "vite build && node scripts/deploy-gh-pages.mjs",
+    "deploy:dry": "vite build && node scripts/deploy-gh-pages.mjs --dry-run"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
