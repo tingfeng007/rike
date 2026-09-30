@@ -25,11 +25,14 @@ import NceExam from './NceExam';
 import NceReview from './NceReview';
 import { tts } from '../services/speech';
 import { StorageService } from '../services/storage';
-import { buildDictationItems, buildExercises, extractWords, parseLrc, safeAssetName } from '../services/nce';
+import { buildDictationItems, buildExercises, buildNceWordPayload, extractWords, parseLrc, safeAssetName } from '../services/nce';
 import { buildNceReviewQueue, resolveNceReviewMistake } from '../services/nceReview';
 import { getNceMastery, getNceNextReviewAt, isNceReviewDue } from '../services/nceMastery';
 import { cacheCourseAudio, getCachedCourseAudioUrl, supportsCourseCache } from '../services/offline';
 import { onEnterSubmit } from '../services/keyboard';
+import { analyzeWordWithAI, describeAIError } from '../services/ai';
+import { useToast } from './ui/toastContext';
+import { IconButton } from './ui/IconButton';
 
 const NCE1_BASE = 'https://nce.mleo.site/NCE1';
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5];
@@ -64,6 +67,7 @@ function pendingReviewCount(item) {
 }
 
 export default function NewConcept({ intent = null }) {
+  const toast = useToast();
   const [units, setUnits] = useState([]);
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [lines, setLines] = useState([]);
@@ -164,6 +168,9 @@ export default function NewConcept({ intent = null }) {
 
   const exercises = useMemo(() => buildExercises(lines), [lines]);
   const dictationItems = useMemo(() => buildDictationItems(lines), [lines]);
+  const [wordAnalyses, setWordAnalyses] = useState(() => new Map());
+  const [analyzingWordKey, setAnalyzingWordKey] = useState('');
+
   const lessonWords = useMemo(() => extractWords(lines), [lines]);
   const filteredWords = useMemo(
     () => lessonWords.filter((item) => item.word.includes(wordFilter.trim().toLowerCase())),
@@ -639,13 +646,52 @@ export default function NewConcept({ intent = null }) {
     StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: 5, source: 'nce-dictation', entityId: selectedUnit.filename, label: '新概念听写' });
   };
 
-  const buildWordPayload = (item) => ({
-    word: item.word,
-    translation: '',
-    contextSentence: item.sentence,
-    contextSentenceCn: item.sentenceCn,
-    tags: ['新概念英语', '第一册', displayUnitTitle(selectedUnit)],
-    sources: [{ type: 'nce', id: selectedUnit?.filename, key: `nce:${selectedUnit?.filename}`, label: displayUnitTitle(selectedUnit) }],
+  // N-01: the lesson word list showed only the word and its frequency — no meaning, phonetic or
+  // part of speech. The only way to see one was to collect the word first and then go read it in
+  // the vocabulary book. Look-ups are cached per lesson, and a word already in the vocabulary
+  // book reuses that entry instead of spending an AI request.
+  const meaningFor = (item) => {
+    const key = item.word.toLowerCase();
+    const fetched = wordAnalyses.get(key);
+    if (fetched) return fetched;
+    const saved = savedWords.get(key);
+    if (saved && (saved.translation || saved.phonetic || saved.pos)) {
+      return {
+        translation: saved.translation || '',
+        phonetic: saved.phonetic || '',
+        pos: saved.pos || '',
+        definitionEn: saved.definitionEn || '',
+      };
+    }
+    return null;
+  };
+
+  const lookupWord = async (item) => {
+    const key = item.word.toLowerCase();
+    if (analyzingWordKey || meaningFor(item)) return;
+    setAnalyzingWordKey(key);
+    try {
+      const analysis = await analyzeWordWithAI(item.word, item.sentence);
+      setWordAnalyses((previous) => new Map(previous).set(key, {
+        translation: analysis?.translation || '',
+        phonetic: analysis?.phonetic || '',
+        pos: analysis?.pos || '',
+        definitionEn: analysis?.definitionEn || '',
+      }));
+      if (!analysis?.translation) {
+        toast.info(`没有查到 “${item.word}” 的释义，可以稍后重试。`);
+      }
+    } catch (error) {
+      toast.error(describeAIError(error, { fallback: `查询 “${item.word}” 失败` }).message);
+    } finally {
+      setAnalyzingWordKey('');
+    }
+  };
+
+  const buildWordPayload = (item) => buildNceWordPayload(item, {
+    unitId: selectedUnit?.filename,
+    unitTitle: displayUnitTitle(selectedUnit),
+    meaning: meaningFor(item),
   });
 
   const saveWord = (item) => {
@@ -912,7 +958,51 @@ export default function NewConcept({ intent = null }) {
         <div className="rounded-2xl bg-white border border-slate-200 p-4">
           <div className="flex items-start justify-between gap-3 mb-3"><div><h2 className="font-semibold text-slate-800">本课重点词</h2><p className="text-xs text-slate-400 mt-1">按出现频率排序 · 已收录 {lessonWords.length - unsavedWordCount}/{lessonWords.length}</p></div><button type="button" onClick={saveAllWords} disabled={isSavingAllWords || unsavedWordCount === 0} className="text-xs px-2.5 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed">{isSavingAllWords ? '收录中…' : unsavedWordCount ? `一键收录 ${unsavedWordCount} 词` : '已全部收录'}</button></div>
           <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 mb-3"><Search className="w-4 h-4 text-slate-400" /><input value={wordFilter} onChange={(event) => setWordFilter(event.target.value)} placeholder="筛选本课单词" className="bg-transparent outline-none text-sm flex-1" /></div>
-          {selectedUnit && lessonWords.length === 0 ? <div className="text-center py-8 text-sm text-slate-500">课文加载后会生成本课重点词。</div> : <div className="space-y-2">{filteredWords.map((item) => { const saved = savedWords.has(item.word); return <div key={item.word} className="border border-slate-100 rounded-xl p-3"><div className="flex items-center gap-2"><button onClick={() => tts.speak(item.word, { channel: 'course', mode: 'system' })} className="text-sky-600" title={`朗读 ${item.word}`}><Volume2 className="w-4 h-4" /></button><span className="font-semibold text-slate-800">{item.word}</span><span className="text-xs text-slate-400">出现 {item.count} 次</span><button onClick={() => saved ? null : saveWord(item)} className={`ml-auto text-xs px-2 py-1 rounded-lg ${saved ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600'}`}>{saved ? <span className="flex items-center gap-1"><Check className="w-3 h-3" />已收录</span> : <span className="flex items-center gap-1"><BookmarkPlus className="w-3 h-3" />加入生词本</span>}</button></div><p className="text-xs text-slate-500 mt-2">{item.sentence}</p>{item.sentenceCn && <p className="text-xs text-slate-400 mt-1">{item.sentenceCn}</p>}</div>; })}</div>}
+          {selectedUnit && lessonWords.length === 0 ? <div className="text-center py-8 text-sm text-slate-500">课文加载后会生成本课重点词。</div> : <div className="space-y-2">{filteredWords.map((item) => {
+            const saved = savedWords.has(item.word);
+            const meaning = meaningFor(item);
+            const isLookingUp = analyzingWordKey === item.word;
+            return (
+              <div key={item.word} className="border border-slate-100 rounded-xl p-3">
+                <div className="flex items-center gap-2">
+                  <IconButton label={`朗读 ${item.word}`} tone="sky" onClick={() => tts.speak(item.word, { channel: 'course', mode: 'system' })} className="p-1">
+                    <Volume2 className="w-4 h-4" />
+                  </IconButton>
+                  <span className="font-semibold text-slate-800">{item.word}</span>
+                  {meaning?.phonetic && <span className="text-[11px] font-mono text-slate-500">{meaning.phonetic}</span>}
+                  {meaning?.pos && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{meaning.pos}</span>}
+                  <span className="text-xs text-slate-400">出现 {item.count} 次</span>
+                  <div className="ml-auto flex items-center gap-1">
+                    {!meaning && (
+                      <button
+                        type="button"
+                        onClick={() => lookupWord(item)}
+                        disabled={isLookingUp}
+                        className="flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        {isLookingUp ? '查询中…' : '查释义'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => saved ? null : saveWord(item)}
+                      className={`rounded-lg px-2 py-1 text-xs ${saved ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600'}`}
+                    >
+                      {saved ? <span className="flex items-center gap-1"><Check className="w-3 h-3" />已收录</span> : <span className="flex items-center gap-1"><BookmarkPlus className="w-3 h-3" />加入生词本</span>}
+                    </button>
+                  </div>
+                </div>
+                {meaning?.translation ? (
+                  <p className="mt-2 text-xs font-medium text-slate-700">{meaning.translation}</p>
+                ) : (
+                  <p className="mt-2 text-[11px] text-slate-400">还没有释义——点“查释义”之后收录，词条会带上中文意思。</p>
+                )}
+                <p className="text-xs text-slate-500 mt-2">{item.sentence}</p>
+                {item.sentenceCn && <p className="text-xs text-slate-400 mt-1">{item.sentenceCn}</p>}
+              </div>
+            );
+          })}</div>}
         </div>
       )}
 

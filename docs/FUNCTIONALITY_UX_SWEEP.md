@@ -537,6 +537,37 @@ $ npm run build
 3. 组件抽取的收尾：`label-has-associated-control` 26 处（表单 label 未关联控件）、`no-array-index-key` 11 处、`NceReview` 的 `role="status"` 2 处、`media-has-caption` 1 处。
 4. **口径统一**（2.4-C）：到期词 5 份实现、"困难词"阈值 2 处、活动/打卡口径 —— 建议收敛为单一 `metrics` 模块，属于需要产品决策的重构。
 
+### 6.13 第七批（N-01 本课词表补释义入口）已落地
+
+| 编号 | 修复内容 | 改动位置 | 验证 |
+| :--- | :--- | :--- | :--- |
+| **N-01** | 本课词表每行新增「**查释义**」：调 `analyzeWordWithAI(word, sentence)` 并把音标 / 词性 / 中文释义就地显示；结果按课缓存在组件内，**已经在生词本里的词直接复用词库释义（不发 AI 请求）**。收录时把释义一并写入词条 —— 此前 `translation` 恒为空串，只能"先收录、再回生词本看"。释义会带进 SRS 卡片与复习。 | `NewConcept.jsx`、`nce.js` | 新测试 3 例（红测失败） |
+| — | 顺带把词条构造抽到服务层 `buildNceWordPayload(item, { unitId, unitTitle, meaning })`，使其**契约可测**：有释义必须落进词条；**没有释义时 `translation` 必须是空串而不是占位文案**（占位会让应用自己的「需要释义」筛选永远找不到这个词，即 V-24 的同一教训） | `nce.js` | 同上 |
+
+```
+$ npm test
+ℹ tests 91   ℹ pass 91   ℹ fail 0        （第六批 88 例 + 本批新增 3 例）
+
+$ npm run lint
+Found 48 warnings and 0 errors.
+
+$ npm run build
+✓ built in 1.13s
+```
+
+**红→绿（第七批）**：指向 `HEAD` = `eca5c74` → `nce.test.js` 模块级失败（`buildNceWordPayload` 不存在）。
+
+### 6.14 报告主线的最终收口状态
+
+七批累计修复 **48 项**，`docs/FUNCTIONALITY_UX_SWEEP.md` 里 **🔴 高危项已全部落地**；五个学习模块（新概念 / 口语 / 精读 / 生词 / 今日闭环）的闭环路径均已走通。
+
+**仍未做**（均为中低优先或需要产品决策）：
+1. **`.github/` 的 CI 与自动部署**：本地已写好 `ci.yml` / `deploy.yml`，但推送凭据缺 `workflow` scope（`gh auth refresh -h github.com -s workflow`），因此仍留在工作区未提交、每次靠 `npm run deploy` 手动发布。
+2. **O-17 剩余项**：口语页的小图标按钮尚未逐一迁到 `IconButton`。
+3. **lint 余项**：`label-has-associated-control` 26 处（表单 label 未关联控件）、`no-array-index-key` 11 处、`NceReview` 的 `role="status"` 2 处、`media-has-caption` 1 处。
+4. **口径统一（2.4-C）**：到期词 5 份实现、"困难词"阈值 2 处、活动/打卡口径分散 —— 建议收敛为单一 `metrics` 模块，属破坏性重构，需产品决策。
+5. **真机走查**：所有标注"未经运行验证"的条目（音频手势、连续朗读衔接、移动端安全区、弹层 `dvh`、焦点归还、误触概率）。
+
 ---
 
 ## 附录：本次扫描用到的核验手法

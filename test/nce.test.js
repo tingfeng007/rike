@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildDictationItems,
   buildExercises,
+  buildNceWordPayload,
   extractWords,
   parseLrc,
   safeAssetName,
@@ -119,6 +120,60 @@ test('review queue tolerates older mistake records without a line id', () => {
   assert.equal(item.lineId, '');
   assert.equal(item.sourceText, '', 'no source text rather than undefined');
   assert.equal(item.kind, 'exercise');
+});
+
+// --- N-01: lesson words can carry a looked-up meaning into the vocabulary book ------------
+
+test('a lesson word saved after a lookup keeps the meaning, context and source', () => {
+  const payload = buildNceWordPayload(
+    { word: 'handbag', sentence: 'Is this your handbag?', sentenceCn: '这是你的手提包吗？' },
+    {
+      unitId: '001&002.Excuse Me',
+      unitTitle: 'Excuse Me',
+      meaning: { phonetic: '/ˈhændbæg/', pos: 'n.', translation: '手提包', definitionEn: 'a small bag' },
+    },
+  );
+
+  assert.equal(payload.word, 'handbag');
+  assert.equal(payload.phonetic, '/ˈhændbæg/');
+  assert.equal(payload.pos, 'n.');
+  assert.equal(payload.translation, '手提包');
+  assert.equal(payload.definitionEn, 'a small bag');
+  assert.equal(payload.contextSentence, 'Is this your handbag?');
+  assert.equal(payload.contextSentenceCn, '这是你的手提包吗？');
+  assert.ok(payload.tags.includes('新概念英语'));
+  assert.equal(payload.sources.length, 1);
+  assert.deepEqual(
+    { type: payload.sources[0].type, id: payload.sources[0].id },
+    { type: 'nce', id: '001&002.Excuse Me' },
+    'the source must point back to the lesson so the word can jump home',
+  );
+});
+
+test('a lesson word saved without a lookup stays meaning-less (so it can be found later)', () => {
+  const payload = buildNceWordPayload({ word: 'umbrella', sentence: 'My coat and my umbrella.' }, {
+    unitId: '003&004.Sorry Sir',
+    unitTitle: 'Sorry Sir',
+  });
+
+  // Empty — not a placeholder like "待补充": the vocabulary book's 需要释义 filter keys off a
+  // blank translation, so a placeholder would hide the word from the user forever.
+  assert.equal(payload.translation, '');
+  assert.equal(payload.phonetic, '');
+  assert.equal(payload.pos, '');
+  assert.equal(payload.contextSentence, 'My coat and my umbrella.');
+});
+
+test('buildNceWordPayload tolerates a missing item or unit', () => {
+  const empty = buildNceWordPayload(undefined);
+  assert.equal(empty.word, '');
+  assert.deepEqual(empty.sources, []);
+  assert.deepEqual(empty.tags, ['新概念英语', '第一册']);
+
+  const partial = buildNceWordPayload({ word: 'coat' }, { meaning: { translation: '大衣' } });
+  assert.equal(partial.translation, '大衣');
+  assert.equal(partial.phonetic, '');
+  assert.deepEqual(partial.sources, []);
 });
 
 test('buildExercises masks answers and distributes correct choice positions', () => {

@@ -136,6 +136,32 @@ export function buildExercises(lines, limit = 5) {
   });
 }
 
+/**
+ * Build the vocabulary entry for a lesson word.
+ *
+ * Extracted so the contract is testable: when a meaning was looked up it must reach the saved
+ * entry, and when it was not, `translation` must stay EMPTY — a placeholder would defeat the
+ * app's own "需要释义" filter (see V-24 in docs/FUNCTIONALITY_UX_SWEEP.md).
+ *
+ * @param {{ word: string, sentence?: string, sentenceCn?: string }} item from `extractWords`
+ * @param {{ unitId?: string, unitTitle?: string, meaning?: { phonetic?: string, pos?: string, translation?: string, definitionEn?: string }|null }} [options]
+ */
+export function buildNceWordPayload(item, { unitId = '', unitTitle = '', meaning = null } = {}) {
+  return {
+    word: item?.word || '',
+    phonetic: meaning?.phonetic || '',
+    pos: meaning?.pos || '',
+    translation: meaning?.translation || '',
+    definitionEn: meaning?.definitionEn || '',
+    contextSentence: item?.sentence || '',
+    contextSentenceCn: item?.sentenceCn || '',
+    tags: ['新概念英语', '第一册', unitTitle].filter(Boolean),
+    sources: unitId
+      ? [{ type: 'nce', id: unitId, key: `nce:${unitId}`, label: unitTitle || unitId }]
+      : [],
+  };
+}
+
 export function extractWords(lines) {
   const map = new Map();
   lines.forEach((line) => {
