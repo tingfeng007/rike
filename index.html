@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>LingoFlow · 英语学习随身伴侣</title>
     
     <!-- PWA & Mobile Meta Tags -->
@@ -14,19 +14,10 @@
     <link rel="apple-touch-icon" href="./icon.svg" />
     <link rel="manifest" href="./manifest.json" />
 
-    <!-- Register LingoFlow Offline Resilience Service Worker -->
-    <script>
-      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('./sw.js').catch(function(err) {
-            console.warn('ServiceWorker registration skipped:', err);
-          });
-        });
-      }
-    </script>
-    <script type="module" crossorigin src="./assets/index-D5cLc5zF.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-Z_6EiEBW.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-ULtjGAm2.css">
+    <!-- Register LingoFlow Offline Resilience Service Worker -->
+    <script type="module" crossorigin src="./assets/index-D_kDt8JI.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-Bw7O_yca.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-BCyAz5EK.css">
   </head>
   <body class="bg-slate-100 text-slate-900 selection:bg-sky-200">
     <div id="root"></div>
