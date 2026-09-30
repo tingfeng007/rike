@@ -24,7 +24,7 @@ import {
   cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const DIST_DIR = join(REPO_ROOT, 'dist');
@@ -61,7 +61,9 @@ function main() {
   run(['fetch', REMOTE, BRANCH]);
 
   // 2. Throwaway worktree for the deploy branch.
-  const worktree = join(tmpdir(), `lingoflow-deploy-${process.pid}-${Date.now()}`);
+  const deployName = `lingoflow-deploy-${process.pid}-${Date.now()}`;
+  const worktree = resolve(tmpdir(), deployName);
+  if (dirname(worktree) !== resolve(tmpdir())) throw new Error('部署目录越界');
   let added = false;
   try {
     run(['worktree', 'add', '--detach', worktree, `${REMOTE}/${BRANCH}`], { capture: false });
@@ -70,7 +72,9 @@ function main() {
     // 3. Replace the tree so files deleted from dist/ disappear from the branch too.
     for (const entry of readdirSync(worktree)) {
       if (entry === '.git') continue;
-      rmSync(join(worktree, entry), { recursive: true, force: true });
+      const target = resolve(worktree, entry);
+      if (!target.startsWith(`${worktree}${sep}`)) throw new Error('清理目标越界');
+      rmSync(target, { recursive: true, force: true });
     }
     cpSync(DIST_DIR, worktree, { recursive: true });
     writeFileSync(join(worktree, '.nojekyll'), '');
