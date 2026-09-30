@@ -31,6 +31,9 @@ import {
 import { tts } from '../services/speech';
 import StudyHeader from './StudyHeader';
 import { filterVocabulary, formatDueDate } from '../services/studyView';
+import { useToast } from './ui/toastContext';
+import { Modal } from './ui/Modal';
+import { IconButton } from './ui/IconButton';
 
 // Fisher-Yates random shuffle utility
 function shuffleArray(array) {
@@ -59,6 +62,7 @@ function readSessionSize() {
 }
 
 export default function VocabularySRS({ onOpenSource = null }) {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('flashcard'); // 'flashcard' | 'list' | 'quiz'
   const [vocabulary, setVocabulary] = useState([]);
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'learning' | 'review' | 'mastered'
@@ -364,7 +368,7 @@ export default function VocabularySRS({ onOpenSource = null }) {
   // Generate Story
   const handleGenerateStory = async () => {
     if (selectedStoryWords.length === 0) {
-      alert('请至少勾选 1 个生词融入故事');
+      toast.error('请至少勾选 1 个生词融入故事');
       return;
     }
 
@@ -383,7 +387,7 @@ export default function VocabularySRS({ onOpenSource = null }) {
         origin: { y: 0.6 },
       });
     } catch (err) {
-      alert(`微剧场生成失败: ${err.message}`);
+      toast.error(`微剧场生成失败: ${err.message}`);
     } finally {
       setIsGeneratingStory(false);
     }
@@ -420,7 +424,7 @@ export default function VocabularySRS({ onOpenSource = null }) {
   // Start AI Quiz
   const handleGenerateQuiz = async () => {
     if (vocabulary.length < 2) {
-      alert('生词本中至少需要有 2 个词才能生成测验，先去阅读或对话中收集几个词吧！');
+      toast.error('生词本中至少需要有 2 个词才能生成测验，先去阅读或对话中收集几个词吧！');
       return;
     }
 
@@ -434,7 +438,7 @@ export default function VocabularySRS({ onOpenSource = null }) {
       const res = await generateVocabularyQuiz(shuffled);
       setQuizQuestions(res.questions || []);
     } catch (err) {
-      alert(`生成测验失败: ${err.message}`);
+      toast.error(`生成测验失败: ${err.message}`);
     } finally {
       setIsGeneratingQuiz(false);
     }
@@ -1064,20 +1068,24 @@ export default function VocabularySRS({ onOpenSource = null }) {
                     </div>
 
                     <div className="flex flex-col gap-1 flex-none">
-                      <button
+                      {/* IconButton keeps the compact look but expands the touch target to 44x44:
+                          stacked 26px buttons made “delete” easy to hit instead of “edit”. */}
+                      <IconButton
+                        label="编辑生词与个人笔记"
+                        tone="sky"
                         onClick={(e) => handleOpenEdit(item, e)}
-                        className="p-1.5 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
-                        title="编辑生词与个人笔记"
+                        className="p-1.5"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
+                      </IconButton>
+                      <IconButton
+                        label={`删除生词 ${item.word}`}
+                        tone="danger"
                         onClick={(e) => handleDeleteWord(item.id, e)}
-                        className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                        title="删除该词"
+                        className="p-1.5"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </IconButton>
                     </div>
                   </div>
                 ))}
@@ -1254,9 +1262,13 @@ export default function VocabularySRS({ onOpenSource = null }) {
       </div>
 
       {/* Vocab Story Studio Modal */}
-      {showStoryModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
+      <Modal
+        open={showStoryModal}
+        onClose={() => setShowStoryModal(false)}
+        size="lg"
+        showCloseButton={false}
+        bodyClassName="space-y-4 p-5"
+      >
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -1432,14 +1444,17 @@ export default function VocabularySRS({ onOpenSource = null }) {
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
+      </Modal>
 
-      {/* Edit Word & Note Modal */}
-      {editingWord && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+      {/* Edit Word & Note Modal — migrated to Modal: it previously had no height cap, so the
+          on-screen keyboard could push “保存修改” out of reach (V-20). */}
+      <Modal
+        open={Boolean(editingWord)}
+        onClose={() => setEditingWord(null)}
+        size="md"
+        showCloseButton={false}
+        bodyClassName="space-y-3.5 p-5"
+      >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-sky-600" />
@@ -1534,18 +1549,17 @@ export default function VocabularySRS({ onOpenSource = null }) {
                 保存修改
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Manual Add Word Modal */}
-      {showAddModal && (
-        <div onClick={() => setShowAddModal(false)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white cursor-default w-full max-w-md rounded-2xl p-5 shadow-xl border border-slate-200">
-            <h3 className="font-bold text-slate-850 text-base mb-3">
-              添加生词到生词本
-            </h3>
-
+      <Modal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="添加生词到生词本"
+        size="md"
+        showCloseButton={false}
+        bodyClassName="p-5 pt-3"
+      >
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
@@ -1589,14 +1603,16 @@ export default function VocabularySRS({ onOpenSource = null }) {
                 {isAddingWord ? 'AI 分析中...' : '智能添加'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Today's Study Stats Detail Modal */}
-      {showStatsDetail && (
-        <div onClick={() => setShowStatsDetail(false)} className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white cursor-default w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+      <Modal
+        open={showStatsDetail}
+        onClose={() => setShowStatsDetail(false)}
+        size="sm"
+        showCloseButton={false}
+        bodyClassName="space-y-3.5 p-5"
+      >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🔥</span>
@@ -1660,9 +1676,7 @@ export default function VocabularySRS({ onOpenSource = null }) {
             >
               我知道了，继续学习
             </button>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

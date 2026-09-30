@@ -31,6 +31,9 @@ import {
 } from '../services/ai';
 import { tts } from '../services/speech';
 import { containsTerm } from '../services/text';
+import { useToast } from './ui/toastContext';
+import { BottomSheet, Modal } from './ui/Modal';
+import { IconButton } from './ui/IconButton';
 import StudyHeader from './StudyHeader';
 import { getReadingMetrics, filterArticles } from '../services/studyView';
 
@@ -95,6 +98,7 @@ function pickRandomOtherArticle(articles, currentId) {
 }
 
 export default function SmartReader({ intent = null }) {
+  const toast = useToast();
   const [articles, setArticles] = useState(() => StorageService.getArticles());
   const [currentArticle, setCurrentArticle] = useState(() => {
     const list = StorageService.getArticles();
@@ -275,7 +279,7 @@ export default function SmartReader({ intent = null }) {
     if (!currentArticle?.id) return;
     const saved = StorageService.markArticleRead(currentArticle.id);
     if (!saved) {
-      alert('标记没有保存成功（可能是浏览器存储已满）。请先导出备份再重试。');
+      toast.error('标记没有保存成功（可能是浏览器存储已满）。请先导出备份再重试。');
       return;
     }
     // Reading an article end to end is a real study action; without this the daily plan's
@@ -347,7 +351,7 @@ export default function SmartReader({ intent = null }) {
   const startArticleSpeech = (fromIndex = 0) => {
     const first = paragraphBatches.findIndex((batch, index) => index >= fromIndex && batch.length > 0);
     if (first === -1) {
-      alert('这篇文章没有可朗读的内容。');
+      toast.error('这篇文章没有可朗读的内容。');
       return;
     }
     articleSpeechActiveRef.current = true;
@@ -367,7 +371,7 @@ export default function SmartReader({ intent = null }) {
     const cleanSentences = sentences.map((sentence) => sentence.trim()).filter(Boolean);
     if (cleanSentences.length === 0) return;
     if (!tts.isSupported()) {
-      alert('当前浏览器不支持系统语音朗读，请换用新版 Chrome、Edge 或 Safari。');
+      toast.error('当前浏览器不支持系统语音朗读，请换用新版 Chrome、Edge 或 Safari。');
       return;
     }
 
@@ -500,7 +504,7 @@ export default function SmartReader({ intent = null }) {
   // 1. Randomly pick an existing article from library
   const handleRandomPickExisting = () => {
     if (articles.length <= 1) {
-      alert('文库中目前只有一篇文章，点击下方“生成全新 AI 外刊”立即创作新短文吧！');
+      toast.info('文库中目前只有一篇文章，点击下方“生成全新 AI 外刊”立即创作新短文吧！');
       return;
     }
     const chosen = pickRandomOtherArticle(articles, currentArticle?.id);
@@ -545,7 +549,7 @@ export default function SmartReader({ intent = null }) {
         origin: { y: 0.6 },
       });
     } catch (err) {
-      alert(`生成失败: ${err.message}。请检查设置中的 API Key 或网络状况。`);
+      toast.error(`生成失败: ${err.message}。请检查设置中的 API Key 或网络状况。`);
     } finally {
       setIsGeneratingArticle(false);
     }
@@ -586,7 +590,7 @@ export default function SmartReader({ intent = null }) {
         [key]: { text: translation, visible: true },
       }));
     } catch (err) {
-      alert(`段落翻译失败: ${err.message}`);
+      toast.error(`段落翻译失败: ${err.message}`);
     } finally {
       setTranslatingParaIndex(null);
     }
@@ -596,11 +600,11 @@ export default function SmartReader({ intent = null }) {
   const handleExtractFromUrl = async () => {
     const url = urlInput.trim();
     if (!url) {
-      alert('请先输入网页链接');
+      toast.error('请先输入网页链接');
       return;
     }
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      alert('请输入以 http:// 或 https:// 开头的完整网址');
+      toast.error('请输入以 http:// 或 https:// 开头的完整网址');
       return;
     }
 
@@ -633,7 +637,7 @@ export default function SmartReader({ intent = null }) {
       setNewContent(cleanContent);
       setImportMode('text');
     } catch (err) {
-      alert(`提取失败: ${err.message}。建议直接在浏览器中全选英文正文复制后粘贴到“直接粘贴”标签。`);
+      toast.error(`提取失败: ${err.message}。建议直接在浏览器中全选英文正文复制后粘贴到“直接粘贴”标签。`);
     } finally {
       setIsExtractingUrl(false);
     }
@@ -642,7 +646,7 @@ export default function SmartReader({ intent = null }) {
   // Save new custom article
   const handleCreateArticle = () => {
     if (!newTitle.trim() || !newContent.trim()) {
-      alert('请填写文章标题和内容');
+      toast.error('请填写文章标题和内容');
       return;
     }
     const newArt = {
@@ -663,7 +667,7 @@ export default function SmartReader({ intent = null }) {
   const handleDeleteArticle = (id, e) => {
     e.stopPropagation();
     if (articles.length <= 1) {
-      alert('请至少保留一篇文章');
+      toast.error('请至少保留一篇文章');
       return;
     }
     if (confirm('确认删除这篇文章吗？（该篇的阅读位置记忆与划线批注手记将一并安全清理）')) {
@@ -946,14 +950,16 @@ export default function SmartReader({ intent = null }) {
               >
                 <button type="button" onClick={() => selectArticle(art)} aria-current={isActive ? 'page' : undefined} className="max-w-[155px] truncate px-3 py-1.5 text-left text-[11px] font-semibold">{art.title}</button>
                 {articles.length > 1 && (
-                  <button
-                    type="button"
+                  // IconButton keeps the 12px look but gives the trash a 44x44 hit area; it used
+                  // to sit flush against the title button, so a mis-tap while scrolling the row
+                  // deleted the wrong article.
+                  <IconButton
+                    label={`删除文章 ${art.title}`}
                     onClick={(e) => handleDeleteArticle(art.id, e)}
-                    className={`mr-1 rounded-md p-1 ${isActive ? 'text-[#102a43]/60 hover:bg-black/5' : 'text-slate-400 hover:bg-white/10 hover:text-rose-300'}`}
-                    aria-label={`删除文章 ${art.title}`}
+                    className={`mr-1 p-1 ${isActive ? 'text-[#102a43]/60 hover:bg-black/5' : 'text-slate-400 hover:bg-white/10 hover:text-rose-300'}`}
                   >
                     <Trash2 className="w-3 h-3" />
-                  </button>
+                  </IconButton>
                 )}
               </div>
             );
@@ -1082,25 +1088,28 @@ export default function SmartReader({ intent = null }) {
                               );
                             })}
 
-                            {/* Sentence action trigger icon */}
-                            <button
+                            {/* Sentence action triggers. These sit immediately after the last
+                                word, so a mis-tap used to either fire an AI sentence breakdown or
+                                hit a word (which costs a real AI request): IconButton gives both
+                                a 44x44 hit area without widening the row. */}
+                            <IconButton
+                              label="点击剖析此长难句语法结构"
                               onClick={() => handleSentenceClick(sentence)}
-                              title="点击剖析此长难句语法结构"
-                              className="inline-flex items-center text-slate-400 hover:text-sky-600 hover:bg-sky-50 p-1 rounded-md text-xs transition-colors align-middle ml-0.5"
+                              className="ml-0.5 p-1 align-middle text-xs"
                             >
                               <Sparkles className="w-3.5 h-3.5" />
-                            </button>
-                            <button
+                            </IconButton>
+                            <IconButton
+                              label={savedAnnotation ? '编辑这句的划线批注' : '划线收藏并写下心得'}
                               onClick={() => openAnnotationEditor(sentence)}
-                              title={savedAnnotation ? '编辑这句的划线批注' : '划线收藏并写下心得'}
-                              className={`inline-flex items-center p-1 rounded-md text-xs transition-colors align-middle ${
+                              className={`p-1 align-middle text-xs ${
                                 savedAnnotation
                                   ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
                                   : 'text-slate-400 hover:text-amber-700 hover:bg-amber-50'
                               }`}
                             >
                               <Highlighter className="w-3.5 h-3.5" />
-                            </button>
+                            </IconButton>
                           </span>
                         );
                       })}
@@ -1149,12 +1158,17 @@ export default function SmartReader({ intent = null }) {
         )}
       </div>
 
-      {/* 1. Bottom Sheet / Modal: Word Detail & Add to Vocab */}
-      {selectedWord && (
-        <div onClick={() => setSelectedWord(null)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white w-full sm:max-w-md cursor-default rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto">
-            {/* iOS BottomSheet Grabber */}
-            <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-3" />
+      {/* 1. Bottom Sheet: Word Detail & Add to Vocab */}
+      <BottomSheet
+        open={Boolean(selectedWord)}
+        onClose={() => setSelectedWord(null)}
+        size="md"
+        showCloseButton={false}
+        className="sm:rounded-3xl"
+        bodyClassName="p-5"
+      >
+        {/* iOS BottomSheet Grabber */}
+        <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-3" />
 
             {/* Header */}
             <div className="flex items-start justify-between pb-3 border-b border-slate-100">
@@ -1303,14 +1317,17 @@ export default function SmartReader({ intent = null }) {
                 )}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </BottomSheet>
 
       {/* 2. Modal: Deep Sentence & Grammar Breakdown */}
-      {selectedSentence && (
-        <div onClick={() => setSelectedSentence(null)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white w-full sm:max-w-lg cursor-default rounded-t-3xl sm:rounded-2xl p-5 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto">
+      <BottomSheet
+        open={Boolean(selectedSentence)}
+        onClose={() => setSelectedSentence(null)}
+        size="lg"
+        showCloseButton={false}
+        className="sm:rounded-2xl"
+        bodyClassName="p-5"
+      >
             {/* Header */}
             <div className="flex items-start justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -1437,24 +1454,17 @@ export default function SmartReader({ intent = null }) {
                 </>
               ) : null}
             </div>
-          </div>
-        </div>
-      )}
+      </BottomSheet>
 
       {/* 3. Modal: Add New Custom Article */}
-      {showAddModal && (
-        <div onClick={() => setShowAddModal(false)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white w-full max-w-lg cursor-default rounded-2xl p-5 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-850 text-base">导入自学英文材料</h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="p-1 text-slate-500 hover:bg-slate-100 rounded-full"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+      <Modal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="导入自学英文材料"
+        size="lg"
+        showCloseButton={false}
+        bodyClassName="p-5 pt-3"
+      >
             {/* Import Mode Tabs */}
             <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium mt-3 mb-2">
               <button
@@ -1566,22 +1576,18 @@ export default function SmartReader({ intent = null }) {
                 保存并开始精读
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 4. Bottom Sheet: Sentence Highlight & Personal Note */}
-      {editingAnnotation && (
-        <div onClick={() => setEditingAnnotation(null)} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-[#fffdf7] cursor-default w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-amber-100 max-h-[88vh] overflow-y-auto overscroll-contain"
-            style={{
-              // Keep the sheet inside the *visual* mobile viewport and above the home indicator.
-              maxHeight: 'min(88dvh, 720px)',
-              paddingBottom: 'max(1.25rem, var(--safe-area-inset-bottom, 0px))',
-            }}
-          >
+      <BottomSheet
+        open={Boolean(editingAnnotation)}
+        onClose={() => setEditingAnnotation(null)}
+        size="lg"
+        showCloseButton={false}
+        className="sm:rounded-3xl"
+        panelClassName="bg-[#fffdf7] border border-amber-100"
+        bodyClassName="p-5"
+      >
             <div className="w-10 h-1 bg-amber-200 rounded-full mx-auto mb-4 sm:hidden" />
             <div className="flex items-start justify-between pb-3 border-b border-amber-100">
               <div className="flex items-center gap-2">
@@ -1635,18 +1641,18 @@ export default function SmartReader({ intent = null }) {
                 保存划线与批注
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </BottomSheet>
 
       {/* 5. Modal: Reading Notes Collection & Markdown Export */}
-      {showNotesModal && (
-        <div onClick={() => setShowNotesModal(false)} className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-[#faf8f2] cursor-default w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-stone-200 max-h-[90vh] flex flex-col overflow-hidden overscroll-contain"
-            style={{ maxHeight: 'min(90dvh, 720px)' }}
-          >
+      <BottomSheet
+        open={showNotesModal}
+        onClose={() => setShowNotesModal(false)}
+        size="lg"
+        showCloseButton={false}
+        className="sm:rounded-3xl"
+        panelClassName="bg-[#faf8f2] border border-stone-200"
+        bodyClassName="p-0"
+      >
             <div className="flex-none p-5 pb-3 border-b border-stone-200 bg-white/70">
               <div className="flex items-start justify-between">
                 <div className="flex gap-2.5">
@@ -1738,15 +1744,17 @@ export default function SmartReader({ intent = null }) {
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
+      </BottomSheet>
 
       {/* 6. Modal: AI Daily Editorial Refresh & Switcher */}
-      {showRefreshModal && (
-        <div onClick={() => setShowRefreshModal(false)} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white w-full max-w-md cursor-default rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">
-            {/* Header */}
+      <Modal
+        open={showRefreshModal}
+        onClose={() => setShowRefreshModal(false)}
+        title="换一篇新外刊 · AI 每日精选"
+        size="md"
+        showCloseButton={false}
+        bodyClassName="space-y-4 p-5 pt-3"
+      >
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-amber-500" />
@@ -1855,9 +1863,7 @@ export default function SmartReader({ intent = null }) {
                 )}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

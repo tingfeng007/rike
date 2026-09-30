@@ -474,6 +474,33 @@ oxlint 报 `useMemo has unnecessary dependency`（依赖没在回调里被引用
 
 N-01（本课词表补释义入口）、Q-01（首启演示数据说明 + "清空示例"）、Q-02/Q-03（统一缺 Key 提示含"去设置"入口），以及 2.4 的**组件抽取**（`Modal`/`BottomSheet`/`IconButton`/`Toast`）与口径统一（到期词、"困难词"阈值、活动/打卡口径收敛为单一模块）。
 
+### 6.10 第五批（2.4-E 基础组件抽取）已落地
+
+新增 `src/components/ui/`：`Modal.jsx`（`Modal` + `BottomSheet`）、`IconButton.jsx`、`Toast.jsx` + `toastContext.js`。
+
+| 项 | 修复内容 | 覆盖的既有发现 |
+| :--- | :--- | :--- |
+| **Modal / BottomSheet** | 统一弹层：`role="dialog"` + `aria-modal` + `aria-labelledby`、**Esc 关闭**、焦点移入面板并在关闭后**归还焦点**、打开时锁背景滚动、`dvh` 高度上限、底部安全区（`max(…, var(--safe-area-inset-bottom))`）、遮罩为真实 `<button>`（可点击关闭且不污染语义）、面板背景用 `panelClassName` 显式传入（避免依赖 Tailwind 生成顺序） | **D-30**（15 个弹层无 dialog 语义）、**D-35**（`vh` 假设）、**R-19**（卡片弹层无安全区 + 85vh）、**V-20**（加/改词弹层无高度上限） |
+| **Toast** | 轻量 toast 替换 `alert`：3 种语气（info/success/error）、错误停留更久、`<output>` 语义化 live region、可手动关闭、**provider 缺失时回退 `alert`**（消息不会静默丢失） | **D-25**（`alert` 阻塞且不可样式化） |
+| **IconButton** | 图标按钮统一：`aria-label` + `title`、用 `::before` 把**点击区域扩到 44×44 而不改变视觉尺寸**（密集行布局不受影响） | **O-17**（20–26px 图标按钮）、**R-20**（句末图标误触会真的发 AI 请求）、**R-21**（12px 删除键紧贴标题）、**V-19**（26px 竖排编辑/删除） |
+
+**实际迁移量**：`alert()` **23 处全部替换**（OralCoach 2 / Settings 6 / SmartReader 11 / VocabularySRS 4）；`fixed inset-0` 手写遮罩 **15 处全部迁移**（SmartReader 6、VocabularySRS 4、Settings 3、OralCoach 2；现仅 `Modal.jsx` 自身保留该模式）；IconButton 已用于精读文库删除、精读句末两个图标、词库列表行编辑/删除。
+
+```
+$ npm run lint
+Found 48 warnings and 0 errors.   ← 本批开始前为 88（−40，全部是弹层/遮罩带来的 a11y 告警）
+
+$ npm test
+ℹ tests 84   ℹ pass 84   ℹ fail 0
+
+$ npm run build
+✓ built in 1.36s
+```
+
+**本批抓到一个真实缺陷（构建不会报，运行时会崩）**：`SmartReader.jsx` 迁移时用了 `<Modal>` 但只导入了 `BottomSheet`。Vite 构建**不校验未定义标识符**，所以 `npm run build` 通过；是 oxlint 的 `react(jsx-no-undef)` 把它报了出来（否则打开"导入文章"与"换一篇新外刊"两个弹层时会直接 ReferenceError）。已修复并复查了四个文件的 `ui/` 导入完整性。
+
+**仍未做**：O-17 中口语页的小图标按钮（未逐一迁移）；`label-has-associated-control` 26 处（表单 label 与控件未关联）、`no-array-index-key` 11 处、NceReview 的 `role="status"` 2 处、`media-has-caption` 1 处 —— 这些是独立的小项，不属于本次组件抽取范围。
+
 ---
 
 ## 附录：本次扫描用到的核验手法

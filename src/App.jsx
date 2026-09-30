@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import HomeDashboard from './components/HomeDashboard';
 import ErrorBoundary from './components/ErrorBoundary';
+import { ToastProvider } from './components/ui/Toast';
 import { StorageService } from './services/storage';
 
 const OralCoach = lazy(() => import('./components/OralCoach'));
@@ -113,6 +114,7 @@ export default function App() {
   }, []);
 
   return (
+    <ToastProvider>
     <div className="study-page flex flex-col h-[100dvh] w-full max-w-md mx-auto overflow-hidden font-sans shadow-2xl relative">
       {/* Background Subtle Gradient Atmosphere */}
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
@@ -241,5 +243,6 @@ export default function App() {
         </div>
       </nav>
     </div>
+    </ToastProvider>
   );
 }

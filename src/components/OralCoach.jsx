@@ -23,6 +23,8 @@ import { SCENARIOS } from '../data/scenarios';
 import { StorageService } from '../services/storage';
 import { getOralCoachResponseStream } from '../services/ai';
 import { containsTerm } from '../services/text';
+import { useToast } from './ui/toastContext';
+import { BottomSheet, Modal } from './ui/Modal';
 import { tts, stt } from '../services/speech';
 import StudyHeader from './StudyHeader';
 
@@ -77,6 +79,7 @@ function loadScenarioMessages(scenario) {
 }
 
 export default function OralCoach({ onNavigateToVocab, intent = null }) {
+  const toast = useToast();
   const [currentScenario, setCurrentScenario] = useState(() => {
     const saved = StorageService.getSettings().currentScenarioId;
     return SCENARIOS.find((s) => s.id === saved) || SCENARIOS[0];
@@ -822,9 +825,14 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
       </footer>
 
       {/* Gentle Microphone Help Sheet */}
-      {showMicHelp && (
-        <div onClick={() => setShowMicHelp(false)} className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150 cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white cursor-default w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100">
+      <BottomSheet
+        open={showMicHelp}
+        onClose={() => setShowMicHelp(false)}
+        size="sm"
+        showCloseButton={false}
+        className="sm:rounded-3xl"
+        bodyClassName="p-5"
+      >
             <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-4 sm:hidden" />
             <div className="flex items-start justify-between">
               <div className="flex gap-3">
@@ -883,14 +891,16 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
+      </BottomSheet>
 
       {/* Quick API Key Modal */}
-      {showQuickKeyModal && (
-        <div onClick={() => setShowQuickKeyModal(false)} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in cursor-pointer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white cursor-default w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+      <Modal
+        open={showQuickKeyModal}
+        onClose={() => setShowQuickKeyModal(false)}
+        size="sm"
+        showCloseButton={false}
+        bodyClassName="space-y-3.5 p-5"
+      >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Key className="w-4 h-4 text-sky-600" />
@@ -946,7 +956,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
                 onClick={() => {
                   const key = quickKeyInput.trim();
                   if (!key) {
-                    alert('请先输入有效的 API Key');
+                    toast.error('请先输入有效的 API Key');
                     return;
                   }
                   const settings = StorageService.getSettings();
@@ -954,16 +964,14 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
                   StorageService.saveSettings(settings);
                   setHasApiKey(true);
                   setShowQuickKeyModal(false);
-                  alert('🎉 配置成功！现在可以畅快与外教 Echo 对练啦！');
+                  toast.success('🎉 配置成功！现在可以畅快与外教 Echo 对练啦！');
                 }}
                 className="flex-1 py-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
               >
                 保存并开始聊天
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

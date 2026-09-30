@@ -28,8 +28,11 @@ import { callAICompletion } from '../services/ai';
 import { tts } from '../services/speech';
 import { clearCourseCaches, getCourseCacheCount } from '../services/offline';
 import StudyHeader from './StudyHeader';
+import { useToast } from './ui/toastContext';
+import { Modal } from './ui/Modal';
 
 export default function Settings() {
+  const toast = useToast();
   const [settings, setSettings] = useState(() => StorageService.getSettings());
   const [showKey, setShowKey] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -158,11 +161,11 @@ export default function Settings() {
         setAudioCacheCount(0);
         setStorageDiagnostics(StorageService.getStorageDiagnostics());
         setLocalSummary(StorageService.getLocalDataSummary());
-        alert('课程缓存已清除，学习记录仍然保留。');
+        toast.success('课程缓存已清除，学习记录仍然保留。');
       })
       .catch(() => {
         getCourseCacheCount().then(setAudioCacheCount).catch(() => {});
-        alert('清理课程缓存时出错，可能有缓存仍在使用。请稍后重试。');
+        toast.error('清理课程缓存时出错，可能有缓存仍在使用。请稍后重试。');
       });
   };
 
@@ -179,7 +182,7 @@ export default function Settings() {
         if (preview.valid) {
           setImportPreview({ ...preview, rawContent: content });
         } else {
-          alert(`无法识别该备份文件: ${preview.error}`);
+          toast.error(`无法识别该备份文件: ${preview.error}`);
         }
       }
     };
@@ -192,18 +195,18 @@ export default function Settings() {
     if (!importPreview?.rawContent) return;
     const res = StorageService.importAllData(importPreview.rawContent);
     if (res.success) {
-      alert(
-        `🎉 智能增量合并成功！\n` +
-        `• 新增生词: ${res.addedWords} 个，更新同步: ${res.updatedWords} 个\n` +
-        `• 新增文章: ${res.addedArticles || 0} 篇\n` +
-        `• 新增划线批注: ${res.addedAnnotations || 0} 处\n` +
-        `• 当前生词库总量: ${res.totalWords} 词\n` +
-        `页面即将自动刷新加载最新数据。`
+      toast.success(
+        `🎉 智能增量合并成功！`
+        + ` 新增生词 ${res.addedWords} 个，更新 ${res.updatedWords} 个；`
+        + ` 新增文章 ${res.addedArticles || 0} 篇；`
+        + ` 新增划线批注 ${res.addedAnnotations || 0} 处；`
+        + ` 当前生词库 ${res.totalWords} 词。页面即将自动刷新。`,
+        { duration: 6000 },
       );
       setImportPreview(null);
       window.location.reload();
     } else {
-      alert(`导入失败: ${res.error}`);
+      toast.error(`导入失败: ${res.error}`);
     }
   };
 
@@ -212,7 +215,7 @@ export default function Settings() {
     StorageService.saveVocabulary(DEFAULT_SAMPLE_WORDS);
     StorageService.saveArticles(DEFAULT_SAMPLE_ARTICLES);
     setShowResetModal(false);
-    alert('已恢复为官方初始演示数据！');
+    toast.success('已恢复为官方初始演示数据！');
     window.location.reload();
   };
 
@@ -739,9 +742,13 @@ export default function Settings() {
       </div>
 
       {/* Import Preview Modal */}
-      {importPreview && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3.5">
+      <Modal
+        open={Boolean(importPreview)}
+        onClose={() => setImportPreview(null)}
+        size="sm"
+        showCloseButton={false}
+        bodyClassName="space-y-3.5 p-5"
+      >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className="text-xl">📦</span>
@@ -803,14 +810,16 @@ export default function Settings() {
                 确认增量合并导入
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Safety Reset Modal */}
-      {showResetModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-rose-100 space-y-3.5">
+      <Modal
+        open={showResetModal}
+        onClose={() => setShowResetModal(false)}
+        size="sm"
+        showCloseButton={false}
+        bodyClassName="space-y-3.5 p-5"
+      >
             <div className="flex items-center gap-2 pb-2 border-b border-rose-100 text-rose-700 font-bold text-sm">
               <AlertCircle className="w-5 h-5 text-rose-600" />
               <span>重置确认（危险操作）</span>
@@ -838,14 +847,16 @@ export default function Settings() {
                 确认重置为初始数据
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* PWA Mobile Add to Screen Guide Modal */}
-      {showPwaGuide && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl border border-slate-200 max-h-[85vh] overflow-y-auto">
+      <Modal
+        open={showPwaGuide}
+        onClose={() => setShowPwaGuide(false)}
+        size="md"
+        showCloseButton={false}
+        bodyClassName="space-y-3 p-5 pt-3"
+      >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-slate-850 text-base">
                 📱 手机添加到主屏幕教学
@@ -892,9 +903,7 @@ export default function Settings() {
             >
               我知道了，去体验
             </button>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }
