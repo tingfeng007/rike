@@ -409,6 +409,39 @@ $ npm run build
 
 V-06/V-07/V-08（来源可跳转、显示下次复习日期、可选学多少）、N-05/N-01（错题定位到原句、词表补释义）、N-08/Q-07（"继续学习"intent 与 `entityId` 传递）、Q-01/Q-02/Q-03（首启引导与缺 Key 统一提示）、R-01/R-02/R-03（整篇朗读、文库检索、默读计入 + 标记读完），以及 2.4 的组件抽取与口径统一。详见 5.2 第三批。
 
+### 6.6 第三批（复盘闭环：回到原句 / 知道何时再考 / 积压可退）已落地
+
+| 编号 | 修复内容 | 改动位置 | 验证 |
+| :--- | :--- | :--- | :--- |
+| **V-06** | 生词列表的"来源"由死文本改为**可点击跳转**：新增 `onOpenSource`，`App.openSourceFromVocab` 把三种来源映射到对应模块——`reader → 打开该篇文章`、`nce → 打开该课`、`oral → 切到该情景`。三种 `source.type` 与写入端逐一核对过（`NewConcept.jsx:648` / `OralCoach.jsx:406` / `SmartReader.jsx:594`）；无 `type` 的旧数据仍按纯文本降级显示 | `App.jsx`、`VocabularySRS.jsx`、`SmartReader.jsx`、`OralCoach.jsx` | 类型映射经写入端核对 |
+| **V-07** | 展示**下次复习日期**：列表行新增"下次复习: 今天到期 / 明天 / 3 天后 / 10月31日 / 已到期 / 待安排"（新增可测的 `formatDueDate(nextReviewDate, now)`，`now` 可注入） | `studyView.js`、`VocabularySRS.jsx` | 新测试 2 例（红测） |
+| **V-08** | **积压保护**：每会话默认 20 张（可选 10/20/50/全部，落 `AppState`），并在卡片上方显示"今天到期 N 个，本次做 M 个"；一组做完后若仍有到期词，明确显示"还剩 N 个"并给"继续下一组"按钮，**不再**在还有到期词时说"今日已全部搞定" | `VocabularySRS.jsx` | 代码确证（UI 层） |
+| **N-05** | 错题可回到**犯错那一句**：`buildExercises` 输出补 `lineId` / `sourceText`，听写错题补 `lineId`；`buildNceReviewQueue` 透传两字段（旧数据缺字段时降级为空串）；复盘页按钮由"回课文理解"变为"**回到该句**"，`NewConcept.openUnit(unit, { lineId })` 在字幕到达后定位并高亮该句（复用既有 `activeLine` 滚动）。听写的 `prompt` **仍保持为空**——否则等于提前给出答案 | `nce.js`、`nceReview.js`、`NewConcept.jsx`、`NceReview.jsx` | 新测试 3 例（红测失败） |
+| **N-08 / Q-07** | "继续学习"改为**自增 intent token** 驱动：此前用 `autoResumedRef === resumeLesson` 判重，第二次点同一个目标被静默忽略、用户落在课程地图；`App` 统一为 `nceIntent / readerIntent / oralIntent`（带 `token`），`NewConcept` 据此重新打开课程、也可以切换 `review/exam` 入口。同时把计划任务的 `entityId` 透传下去（此前 `openTask` 丢掉它，改用"打开过的最后一课"，卡片写 A、点进去可能是 B） | `App.jsx`、`NewConcept.jsx`、`HomeDashboard.jsx` | 代码确证（UI 层） |
+
+```
+$ npm test
+ℹ tests 74   ℹ pass 74   ℹ fail 0        （第二批 69 例 + 本批新增 5 例）
+
+$ npm run lint
+Found 88 warnings and 0 errors.          （与基线一致）
+
+$ npm run build
+✓ built in 1.12s
+```
+
+**红→绿（第三批）**：指向 `HEAD` = `9b471ba` → 4 项失败：
+`exercises carry the lesson line they came from`、`the review queue passes the source line through…`、
+`review queue tolerates older mistake records without a line id`、`studyPlan.test.js`（`formatDueDate` 不存在）。
+
+**过程中修正的两处自身问题**：
+1. 新增的"下次复习"日期让 `reloadVocabulary` 变成依赖 React state 的函数，触发 `react-hooks(exhaustive-deps)` 与 `react(purity)` 两条新告警。改法是让 `reloadVocabulary` 从 storage 读取会话大小而非闭包捕获 state（消除前一条），并对"读取当前时间"这一固有 impurity 加**带理由的定向豁免**（后一条），告警回到基线 88。
+2. `formatDueDate` 的月内边界写成了 `days <= 30`，我的测试却断言 30 天显示日期 —— 是**测试期望写错**，已按实现意图修正并补上"30 天相对 / 31 天日期"的边界断言。
+
+### 6.7 第三批之后仍未做
+
+N-01（词表补释义入口）、Q-01（首启演示数据说明与"清空示例"）、Q-02/Q-03（统一缺 Key 提示含"去设置"）、R-01（整篇连续朗读 + 查词保留句位）、R-02（文库检索/排序/难度与进度）、R-03（默读计入 + 标记读完），以及 2.4 的组件抽取（Modal/BottomSheet/IconButton/Toast，可一次消掉 D-25/D-30/D-35 与 R-19~R-21、V-19、O-17 等十余项）与口径统一。
+
 ---
 
 ## 附录：本次扫描用到的核验手法

@@ -30,7 +30,7 @@ import {
 } from '../services/ai';
 import { tts } from '../services/speech';
 import StudyHeader from './StudyHeader';
-import { filterVocabulary } from '../services/studyView';
+import { filterVocabulary, formatDueDate } from '../services/studyView';
 
 // Fisher-Yates random shuffle utility
 function shuffleArray(array) {
@@ -47,7 +47,18 @@ const RATING_LOCK_MS = 600;
 // How long the "撤销" affordance stays available after a rating.
 const UNDO_WINDOW_MS = 5000;
 
-export default function VocabularySRS() {
+// How many due cards a single session shows by default (see the backlog note in the UI).
+const SESSION_SIZE_OPTIONS = [10, 20, 50, 'all'];
+const DEFAULT_SESSION_SIZE = 20;
+
+function readSessionSize() {
+  const saved = StorageService.getAppState().vocabSessionSize;
+  if (saved === 'all') return 'all';
+  const numeric = Number(saved);
+  return [10, 20, 50].includes(numeric) ? numeric : DEFAULT_SESSION_SIZE;
+}
+
+export default function VocabularySRS({ onOpenSource = null }) {
   const [activeTab, setActiveTab] = useState('flashcard'); // 'flashcard' | 'list' | 'quiz'
   const [vocabulary, setVocabulary] = useState([]);
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'learning' | 'review' | 'mastered'
@@ -62,6 +73,12 @@ export default function VocabularySRS() {
   // Last rating, kept briefly so a mis-tap can be undone (word state + stats + event).
   const [undoState, setUndoState] = useState(null);
   const [dataError, setDataError] = useState('');
+  // How many due cards one session should contain (learners returning after a break need an
+  // exit from a huge backlog). The authoritative value is read from storage inside
+  // `reloadVocabulary` so that function stays independent of React state — otherwise every
+  // caller (including the mount effect) would need `sessionSize` as a dependency.
+  const [sessionSize, setSessionSize] = useState(() => readSessionSize());
+  const [dueTotal, setDueTotal] = useState(0);
   const lastRatedRef = useRef({ id: '', at: 0 });
   const requeuedRef = useRef(new Set());
   const undoTimerRef = useRef(null);
@@ -125,9 +142,13 @@ export default function VocabularySRS() {
     setStudyStats(StorageService.getStudyStats());
 
     // Calculate due cards (nextReviewDate <= now + 1 hour)
+    // Reading the clock is inherent to "what is due right now"; this function only runs from
+    // effects and event handlers (never during render), so the purity heuristic does not apply.
+    // oxlint-disable-next-line react/purity
     const now = Date.now();
     const due = words.filter((w) => !w.nextReviewDate || w.nextReviewDate <= now + 60 * 60 * 1000);
-    
+    setDueTotal(due.length);
+
     if (forcePractice) {
       // Randomly sample 8 words from entire deck
       const randomBatch = shuffleArray(words).slice(0, Math.min(8, words.length));
@@ -136,8 +157,12 @@ export default function VocabularySRS() {
       setIsFlipped(false);
       setReviewCompleted(false);
     } else if (due.length > 0) {
-      // Shuffle due cards to eliminate predictable position memory
-      setDueCards(shuffleArray(due));
+      // Shuffle due cards to eliminate predictable position memory, then cap the session.
+      // Without a cap, coming back after a week off meant being handed a 200+ card queue
+      // with no way to say "I'll do 20 today" — the classic reason learners quit a streak.
+      const shuffled = shuffleArray(due);
+      const size = readSessionSize();
+      setDueCards(size === 'all' ? shuffled : shuffled.slice(0, size));
       setCurrentIndex(0);
       setIsFlipped(false);
       setReviewCompleted(false);
@@ -148,6 +173,15 @@ export default function VocabularySRS() {
       setIsFlipped(false);
       setReviewCompleted(true);
     }
+  };
+
+  const changeSessionSize = (size) => {
+    setSessionSize(size);
+    const state = StorageService.getAppState();
+    StorageService.saveAppState({ ...state, vocabSessionSize: size });
+    setReviewCompleted(false);
+    // Rebuild the queue with the new size (due list is recomputed from current storage).
+    setTimeout(() => reloadVocabulary(), 0);
   };
 
   useEffect(() => {
@@ -214,9 +248,11 @@ export default function VocabularySRS() {
         spread: 70,
         origin: { y: 0.6 },
       });
-      // Refresh local list
+      // Refresh local list and recompute what is still due, so the completion screen does not
+      // report a stale backlog count.
       const words = StorageService.getVocabulary();
       setVocabulary(words);
+      setDueTotal(words.filter((w) => !w.nextReviewDate || w.nextReviewDate <= Date.now() + 60 * 60 * 1000).length);
     }
   };
 
@@ -595,6 +631,29 @@ export default function VocabularySRS() {
                   </span>
                 </div>
 
+                {/* Backlog transparency: say how many are due in total, and let the learner
+                    pick a batch size instead of being handed the whole pile. */}
+                {(dueTotal > dueCards.length || dueCards.length > 10) && (
+                  <div className="mb-3 flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-2.5 py-1.5 text-[10px] text-slate-600">
+                    <span>
+                      今天到期 {dueTotal} 个{ dueTotal > dueCards.length ? `，本次做 ${dueCards.length} 个` : '' }
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-slate-400">每组</span>
+                      {SESSION_SIZE_OPTIONS.map((size) => (
+                        <button
+                          key={String(size)}
+                          type="button"
+                          onClick={() => changeSessionSize(size)}
+                          className={`rounded-md px-1.5 py-0.5 font-semibold ${sessionSize === size ? 'bg-sky-600 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}
+                        >
+                          {size === 'all' ? '全部' : size}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                )}
+
                 {/* Progress Track */}
                 <div className="w-full h-1.5 bg-slate-200/80 rounded-full mb-4 overflow-hidden">
                   <div
@@ -791,19 +850,34 @@ export default function VocabularySRS() {
                 <h3 className="text-xl font-bold text-slate-850">
                   {vocabulary.length === 0
                     ? '生词库暂无单词'
-                    : '太棒了！今日闪卡已全部搞定'}
+                    : dueTotal > 0
+                      ? '这一组复习完成'
+                      : '太棒了！今日闪卡已全部搞定'}
                 </h3>
                 <p className="text-xs text-slate-600 max-w-xs mt-2 leading-relaxed">
                   {vocabulary.length === 0
                     ? '去“精读伴读”或“口语对练”中收藏几个新词，开启你的艾宾浩斯记忆旅程吧！'
-                    : '艾宾浩斯智能算法显示：当前所有生词均在记忆稳定期，今天无待复习单词。保持这个节奏，下一次复习将在明天到来！'}
+                    : dueTotal > 0
+                      // Never claim the day is clear while cards are still due — offer the
+                      // next batch instead (the reviewed ones already left the due list).
+                      ? `今天还剩 ${dueTotal} 个到期词。可以再做一组，也可以明天继续——进度已经保存。`
+                      : '艾宾浩斯智能算法显示：当前所有生词均在记忆稳定期，今天无待复习单词。保持这个节奏，下一次复习将在明天到来！'}
                 </p>
 
                 <div className="mt-6 flex flex-col w-full max-w-xs space-y-2">
+                  {dueTotal > 0 && (
+                    <button
+                      onClick={() => reloadVocabulary()}
+                      className="w-full py-2.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>继续下一组（还剩 {dueTotal} 个）</span>
+                    </button>
+                  )}
                   {vocabulary.length > 0 && (
                     <button
                       onClick={() => reloadVocabulary(true)}
-                      className="w-full py-2.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
                     >
                       <RotateCw className="w-3.5 h-3.5" />
                       <span>🎲 随便翻翻（随机抽选 8 词强化）</span>
@@ -950,7 +1024,7 @@ export default function VocabularySRS() {
                         </p>
                       )}
 
-                      <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-600">
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-600">
                         <span className="bg-slate-100 px-1.5 py-0.5 rounded">
                           {item.tags?.[0] || '生词'}
                         </span>
@@ -960,14 +1034,31 @@ export default function VocabularySRS() {
                             ? '🌟 已掌握'
                             : `间隔: ${item.intervalDays || 1} 天`}
                         </span>
+                        <span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">
+                          下次复习: {formatDueDate(item.nextReviewDate)}
+                        </span>
                       </div>
                       {Array.isArray(item.sources) && item.sources.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
-                          {item.sources.slice(0, 3).map((source) => (
-                            <span key={source.key || `${source.type}:${source.id}`} className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">
-                              来源 · {source.label || source.id}
-                            </span>
-                          ))}
+                          {item.sources.slice(0, 3).map((source) => {
+                            const sourceKey = source.key || `${source.type}:${source.id}`;
+                            const canOpen = typeof onOpenSource === 'function' && Boolean(source.type);
+                            return canOpen ? (
+                              <button
+                                key={sourceKey}
+                                type="button"
+                                onClick={(event) => { event.stopPropagation(); onOpenSource(source); }}
+                                className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700 ring-1 ring-sky-100 hover:bg-sky-100"
+                                title={`回到原文：${source.label || source.id}`}
+                              >
+                                来源 · {source.label || source.id} ↗
+                              </button>
+                            ) : (
+                              <span key={sourceKey} className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">
+                                来源 · {source.label || source.id}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

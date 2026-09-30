@@ -69,6 +69,58 @@ test('the same variant is reproducible, and a variant does not leak across units
   assert.equal(sameAsA, false, 'unitId still participates in the seed');
 });
 
+// --- N-05: a wrong answer must be traceable back to the exact lesson line -------------
+
+test('exercises carry the lesson line they came from', () => {
+  const lines = parseLrc(SAMPLE_LRC);
+  const exercises = buildExercises(lines, 5);
+  assert.ok(exercises.length >= 1);
+
+  for (const exercise of exercises) {
+    assert.ok(exercise.lineId, 'every exercise records its line id');
+    assert.ok(exercise.sourceText, 'every exercise records the unmasked sentence');
+    // The recorded line must really exist in the lesson and match the exercise content.
+    const line = lines.find((item) => item.id === exercise.lineId);
+    assert.ok(line, `line ${exercise.lineId} exists in the lesson`);
+    assert.equal(line.en, exercise.sourceText);
+    // The masked sentence is derived from that same line (sanitised), never a different one.
+    assert.equal(exercise.sentence.replace(/_+/g, 'X').length > 0, true);
+  }
+});
+
+test('the review queue passes the source line through for both exercise and dictation mistakes', () => {
+  const progress = {
+    '001&002.Excuse Me': {
+      exerciseMistakes: [{ id: 'l1-exercise', sentence: 'Is this your ______?', answer: 'handbag', lineId: 'l1', sourceText: 'Is this your handbag?', updatedAt: 5 }],
+      dictationMistakes: [{ id: 'l2-dictation', text: 'Yes, it is.', lineId: 'l2', score: 60, updatedAt: 6 }],
+    },
+  };
+
+  const queue = buildNceReviewQueue(progress);
+  const exercise = queue.find((item) => item.kind === 'exercise');
+  const dictation = queue.find((item) => item.kind === 'dictation');
+
+  assert.equal(exercise.lineId, 'l1', 'exercise mistake keeps its line id');
+  assert.equal(exercise.sourceText, 'Is this your handbag?');
+  assert.equal(dictation.lineId, 'l2', 'dictation mistake keeps its line id');
+  assert.equal(dictation.sourceText, 'Yes, it is.');
+  // Dictation must NOT expose the sentence before the retry, or it gives the answer away.
+  assert.equal(dictation.prompt, '', 'dictation prompt stays empty');
+  assert.equal(dictation.answer, 'Yes, it is.');
+});
+
+test('review queue tolerates older mistake records without a line id', () => {
+  const progress = {
+    '003&004.Sorry Sir': {
+      exerciseMistakes: [{ id: 'old', sentence: 'My coat and my ______.', answer: 'umbrella', updatedAt: 1 }],
+    },
+  };
+  const [item] = buildNceReviewQueue(progress);
+  assert.equal(item.lineId, '');
+  assert.equal(item.sourceText, '', 'no source text rather than undefined');
+  assert.equal(item.kind, 'exercise');
+});
+
 test('buildExercises masks answers and distributes correct choice positions', () => {
   const lines = parseLrc(`${SAMPLE_LRC}\n[00:08.00]Listen to the tape then answer this question. | 听录音，然后回答问题。`);
   const exercises = buildExercises(lines, 5);

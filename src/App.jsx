@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import {
   Home,
   MessageSquare,
@@ -40,8 +40,13 @@ export default function App() {
     return VALID_TABS.has(saved) ? saved : 'home';
   });
   const [dueVocabCount, setDueVocabCount] = useState(() => countDueWords());
-  const [nceResumeLesson, setNceResumeLesson] = useState('');
-  const [nceEntryIntent, setNceEntryIntent] = useState('');
+  // Navigation intents. Each carries a monotonic token so that navigating to the *same*
+  // target twice still triggers the child effect — the previous implementation compared the
+  // target against a "already handled" ref and silently ignored every repeat tap.
+  const intentSeqRef = useRef(0);
+  const [nceIntent, setNceIntent] = useState(null);
+  const [readerIntent, setReaderIntent] = useState(null);
+  const [oralIntent, setOralIntent] = useState(null);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
 
@@ -70,12 +75,31 @@ export default function App() {
 
   const navigate = (tab, options = {}) => {
     if (!VALID_TABS.has(tab)) return;
+    const token = (intentSeqRef.current += 1);
+
     if (tab === 'nce') {
-      setNceResumeLesson(options.resume ? (StorageService.getAppState().lastNceLesson || '') : '');
-      setNceEntryIntent(options.entry === 'review' || options.entry === 'exam' ? options.entry : '');
+      setNceIntent({
+        token,
+        lessonId: options.lesson || (options.resume ? (StorageService.getAppState().lastNceLesson || '') : ''),
+        entry: options.entry === 'review' || options.entry === 'exam' ? options.entry : '',
+        lineId: options.lineId || '',
+      });
+    } else if (tab === 'reader') {
+      setReaderIntent({ token, articleId: options.articleId || '' });
+    } else if (tab === 'oral') {
+      setOralIntent({ token, scenarioId: options.scenarioId || '' });
     }
+
     setActiveTab(tab);
     StorageService.saveAppState({ ...StorageService.getAppState(), activeTab: tab });
+  };
+
+  // Jump from a saved word back to where it came from (the vocabulary list shows its sources).
+  const openSourceFromVocab = (source) => {
+    if (!source?.type) return;
+    if (source.type === 'reader') navigate('reader', { articleId: source.id });
+    else if (source.type === 'nce') navigate('nce', { lesson: source.id });
+    else if (source.type === 'oral') navigate('oral', { scenarioId: source.id });
   };
 
   // Check how many cards are due today for review
@@ -115,11 +139,11 @@ export default function App() {
         <Suspense fallback={<PageFallback />}>
           {activeTab === 'home' && <HomeDashboard onNavigate={navigate} />}
           {activeTab === 'oral' && (
-            <OralCoach onNavigateToVocab={() => navigate('vocab')} />
+            <OralCoach intent={oralIntent} onNavigateToVocab={() => navigate('vocab')} />
           )}
-          {activeTab === 'reader' && <SmartReader />}
-          {activeTab === 'nce' && <NewConcept resumeLesson={nceResumeLesson} entryIntent={nceEntryIntent} />}
-          {activeTab === 'vocab' && <VocabularySRS />}
+          {activeTab === 'reader' && <SmartReader intent={readerIntent} />}
+          {activeTab === 'nce' && <NewConcept intent={nceIntent} />}
+          {activeTab === 'vocab' && <VocabularySRS onOpenSource={openSourceFromVocab} />}
           {activeTab === 'settings' && <Settings />}
         </Suspense>
         </ErrorBoundary>

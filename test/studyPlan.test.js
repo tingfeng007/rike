@@ -2,6 +2,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildActivityCalendar, buildDailyPlan, getWeeklyReview, saveDailyTaskState, activityTypeForTask } from '../src/services/studyPlan.js';
 import { getNceMastery, isNceReviewDue } from '../src/services/nceMastery.js';
+import { formatDueDate } from '../src/services/studyView.js';
+
+// --- V-07: the vocabulary screens must be able to say *when* a card comes back ---
+
+test('formatDueDate turns a due timestamp into a readable day', () => {
+  const now = new Date('2026-09-30T09:00:00').getTime();
+  const day = 86400000;
+
+  assert.equal(formatDueDate(now, now), '今天到期');
+  assert.equal(formatDueDate(now + day, now), '明天');
+  assert.equal(formatDueDate(now + 3 * day, now), '3 天后');
+  assert.equal(formatDueDate(now + 30 * day, now), '30 天后', 'within a month stays relative');
+  assert.equal(formatDueDate(now + 31 * day, now), '10月31日', 'beyond a month switches to a date');
+  assert.equal(formatDueDate(now - day, now), '已到期', 'an overdue card is called out, not hidden');
+  assert.equal(formatDueDate(now + 400 * day, now), '2027年11月4日', 'far future keeps the year');
+});
+
+test('formatDueDate is day-granular and never throws on junk', () => {
+  const now = new Date('2026-09-30T23:30:00').getTime();
+  // 40 minutes later is still "today" for the learner, even though it is a different date key
+  // only for a moment — the label must not flip to "明天" while the card is due today.
+  assert.equal(formatDueDate(now + 20 * 60000, now), '今天到期');
+
+  assert.equal(formatDueDate(undefined, now), '待安排');
+  assert.equal(formatDueDate(0, now), '待安排');
+  assert.equal(formatDueDate('not-a-date', now), '待安排');
+  assert.equal(formatDueDate(null, now), '待安排');
+});
 
 // --- Q-05: ticking a plan item must feed the same activity stream as doing the work ---
 

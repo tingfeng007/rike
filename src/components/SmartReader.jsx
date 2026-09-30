@@ -81,7 +81,7 @@ function pickRandomOtherArticle(articles, currentId) {
   return candidates[Math.floor(Math.random() * candidates.length)] || null;
 }
 
-export default function SmartReader() {
+export default function SmartReader({ intent = null }) {
   const [articles, setArticles] = useState(() => StorageService.getArticles());
   const [currentArticle, setCurrentArticle] = useState(() => {
     const list = StorageService.getArticles();
@@ -145,6 +145,18 @@ export default function SmartReader() {
   StorageService.getVocabulary().forEach((word) => {
     if (word.word) savedVocabMap[word.word.toLowerCase().trim()] = word;
   });
+
+  // Open a specific article when navigation arrives with a target (e.g. tapping a saved
+  // word's "来源" chip in the vocabulary list). Guarded by the intent token so repeating the
+  // same jump still works.
+  useEffect(() => {
+    if (!intent?.token || !intent.articleId) return;
+    const target = articles.find((article) => String(article.id) === String(intent.articleId));
+    if (!target) return;
+    selectArticle(target, { scrollToTop: false });
+    // selectArticle is stable enough for this one-shot intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent?.token, articles]);
 
   // Restore scroll position when article changes
   useEffect(() => {

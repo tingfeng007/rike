@@ -146,7 +146,10 @@ export default function HomeDashboard({ onNavigate }) {
     else if (task.target === 'reader') onNavigate('reader');
     else if (task.target === 'nce-exam') onNavigate('nce', { entry: 'exam' });
     else if (task.target === 'nce-review') onNavigate('nce', { entry: 'review' });
-    else onNavigate('nce', { resume: true });
+    // Pass the lesson the plan actually picked: without it the module fell back to
+    // `lastNceLesson` (written whenever a lesson is merely opened), so the card could say
+    // "继续：第 9–10 课" and open a different lesson.
+    else onNavigate('nce', { resume: true, lesson: task.entityId || '' });
   };
 
   return (

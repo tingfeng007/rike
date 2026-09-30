@@ -24,8 +24,13 @@ export function buildNceReviewQueue(progress, unitId = '') {
           kind,
           field,
           label,
+          // For dictation the prompt stays empty on purpose: showing the sentence would give
+          // the answer away before the retry. Use `sourceText` only for "回到该句".
           prompt: kind === 'dictation' ? '' : (mistake.question || mistake.sentence || ''),
           answer,
+          // Traceability back to the exact lesson line (older records have neither field).
+          lineId: mistake.lineId || '',
+          sourceText: mistake.sourceText || mistake.text || '',
           lastAttempt: mistake.submitted || mistake.attempt || '',
           updatedAt: mistake.updatedAt || record.lastStudiedAt || 0,
         });

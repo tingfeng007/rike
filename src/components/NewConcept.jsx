@@ -63,13 +63,13 @@ function pendingReviewCount(item) {
     + (item?.examMistakes?.length || 0);
 }
 
-export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
+export default function NewConcept({ intent = null }) {
   const [units, setUnits] = useState([]);
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [view, setView] = useState(() => entryIntent === 'review' || entryIntent === 'exam' ? entryIntent : 'lessons');
+  const [view, setView] = useState(() => (intent?.entry === 'review' || intent?.entry === 'exam' ? intent.entry : 'lessons'));
   const [showChinese, setShowChinese] = useState(true);
   const [activeLine, setActiveLine] = useState(-1);
   const [followAudio, setFollowAudio] = useState(() => StorageService.getAppState().nceFollowAudio !== false);
@@ -105,7 +105,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
   const progressRef = useRef(progress);
   const lastSavedSecondRef = useRef(-1);
   const requestSeqRef = useRef(0);
-  const autoResumedRef = useRef('');
+  const pendingLineIdRef = useRef('');
   const requestAbortRef = useRef(null);
   const sentenceLoopRef = useRef({ lineIndex: -1, remaining: 0 });
   const ttsLoopRef = useRef(0);
@@ -242,7 +242,10 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
     }
   };
 
-  const openUnit = async (unit) => {
+  const openUnit = async (unit, { lineId = '' } = {}) => {
+    // Remember which line to highlight once the subtitles arrive (used by the review page's
+    // "回到该句" action). The existing activeLine effect scrolls it into view.
+    pendingLineIdRef.current = lineId || '';
     const requestId = requestSeqRef.current + 1;
     requestSeqRef.current = requestId;
     requestAbortRef.current?.abort();
@@ -309,15 +312,32 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
     }
   };
 
+  // React to a navigation intent.
+  //
+  // The intent carries a monotonic `token`, so tapping the same "继续学习" task twice in a
+  // row works: the previous version compared only the lesson filename against a "handled"
+  // ref, so the second tap of the same target was silently ignored and the user landed on
+  // the course map instead of the lesson.
   useEffect(() => {
-    if (!resumeLesson || units.length === 0 || autoResumedRef.current === resumeLesson) return;
-    const unit = units.find((item) => item.filename === resumeLesson);
+    if (!intent?.token || units.length === 0) return;
+    if (intent.entry) setView(intent.entry === 'exam' ? 'exam' : 'review');
+
+    if (!intent.lessonId) return;
+    const unit = units.find((item) => item.filename === intent.lessonId);
     if (!unit) return;
-    autoResumedRef.current = resumeLesson;
-    openUnit(unit);
-    // openUnit intentionally runs once for each explicit resume intent.
+    openUnit(unit, { lineId: intent.lineId });
+    // openUnit intentionally runs once per explicit intent (guarded by the token).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resumeLesson, units]);
+  }, [intent?.token, units]);
+
+  // Resolve "回到该句" once the subtitles for the opened lesson are available.
+  useEffect(() => {
+    const pendingLineId = pendingLineIdRef.current;
+    if (!pendingLineId || lines.length === 0) return;
+    pendingLineIdRef.current = '';
+    const index = lines.findIndex((line) => line.id === pendingLineId);
+    if (index >= 0) setActiveLine(index);
+  }, [lines]);
 
   useEffect(() => {
     if (!followAudio || activeLine < 0) return;
@@ -520,6 +540,9 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
           answer: currentExercise.answer,
           attempt: normalized,
           updatedAt: Date.now(),
+          // Traceability: without these the review page could only jump to the whole lesson.
+          lineId: currentExercise.lineId || '',
+          sourceText: currentExercise.sourceText || '',
         },
       ];
       saveProgress(selectedUnit.filename, { exerciseMistakes });
@@ -598,6 +621,9 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
         score: result.score,
         missingWords: result.missingWords,
         updatedAt: Date.now(),
+        // Same traceability as exercise mistakes; note `text` must not be shown before the
+        // retry, or it would reveal the dictation answer.
+        lineId: item.lineId || '',
       },
     ];
     saveProgress(selectedUnit.filename, { dictationMistakes });
@@ -819,7 +845,7 @@ export default function NewConcept({ resumeLesson = '', entryIntent = '' }) {
   }
 
   if (view === 'review') {
-    return <NceReview progress={progress} units={units} initialUnitFilename={reviewUnitFilename} onResolve={handleResolveReview} onOpenLesson={(filename) => { const unit = units.find((item) => item.filename === filename); if (unit) openUnit(unit); }} onBack={backToLessons} />;
+    return <NceReview progress={progress} units={units} initialUnitFilename={reviewUnitFilename} onResolve={handleResolveReview} onOpenLesson={(filename, lineId) => { const unit = units.find((item) => item.filename === filename); if (unit) openUnit(unit, { lineId }); }} onBack={backToLessons} />;
   }
 
   const exerciseScore = Math.min(exercises.length, exerciseCorrectCount);

@@ -76,7 +76,7 @@ function loadScenarioMessages(scenario) {
   }];
 }
 
-export default function OralCoach({ onNavigateToVocab }) {
+export default function OralCoach({ onNavigateToVocab, intent = null }) {
   const [currentScenario, setCurrentScenario] = useState(() => {
     const saved = StorageService.getSettings().currentScenarioId;
     return SCENARIOS.find((s) => s.id === saved) || SCENARIOS[0];
@@ -132,6 +132,15 @@ export default function OralCoach({ onNavigateToVocab }) {
     settings.currentScenarioId = scenario.id;
     StorageService.saveSettings(settings);
   };
+
+  // Jump straight to the scenario a saved word came from (source chip in the vocabulary list).
+  useEffect(() => {
+    if (!intent?.token || !intent.scenarioId) return;
+    const target = SCENARIOS.find((scenario) => scenario.id === intent.scenarioId);
+    if (target) handleSelectScenario(target);
+    // handleSelectScenario is recreated per render; the token keeps this a one-shot effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent?.token]);
 
   // Get active target words from vocabulary
   const getActiveTargetWords = () => {

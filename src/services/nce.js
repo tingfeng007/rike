@@ -128,6 +128,10 @@ export function buildExercises(lines, limit = 5) {
       answer: answer.toLowerCase(),
       options,
       zh: line.zh || '先听懂句子，再尝试复述。',
+      // Kept so a wrong answer can be traced back to the exact lesson line later
+      // (the review page offers "回到该句").
+      lineId: line.id,
+      sourceText: line.en,
     };
   });
 }
