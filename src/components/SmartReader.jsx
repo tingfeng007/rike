@@ -21,6 +21,9 @@ import {
   Square,
   Search,
   ListFilter,
+  SlidersHorizontal,
+  Maximize2,
+  ChevronDown,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
@@ -795,31 +798,33 @@ export default function SmartReader({ intent = null }) {
     <div className="study-page reader-page flex flex-col h-full relative">
       <StudyHeader
         eyebrow="READ · NOTICE · REMEMBER"
-        title="精读工作台"
+        title="精读伴读"
         description={currentArticle ? `正在阅读：${currentArticle.title}` : '导入一篇英文文章，从真实语境中积累表达。'}
         icon={<BookOpen className="w-4 h-4" />}
         status={currentArticle ? `${currentWordCount} 词 · 约 ${readingMinutes} 分钟` : `${articles.length} 篇文章`}
         actions={(
           <>
-            <button type="button" onClick={() => setFocusReading((value) => !value)} aria-pressed={focusReading} className="rounded-xl bg-white/10 px-2.5 py-2 text-xs text-white">{focusReading ? '退出专注' : '专注阅读'}</button>
+            <button type="button" onClick={() => setFocusReading((value) => !value)} aria-pressed={focusReading} aria-label={focusReading ? '退出专注' : '专注阅读'} title={focusReading ? '退出专注' : '专注阅读'} className="reader-header-action"><Maximize2 size={18} /></button>
             <button
               type="button"
               onClick={() => setShowNotesModal(true)}
               className="tap-lift relative flex items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 py-2 text-[11px] font-semibold text-slate-100"
               title="查看本篇划线与读书笔记"
+              aria-label="查看笔记"
             >
               <NotebookPen className="w-3.5 h-3.5 text-amber-300" />
               <span>笔记</span>
               {currentAnnotations.length > 0 && <span className="min-w-4 rounded-full bg-amber-400 px-1 text-[9px] text-[#102a43]">{currentAnnotations.length}</span>}
             </button>
-            <button type="button" onClick={() => setShowAddModal(true)} className="tap-lift flex items-center gap-1 rounded-xl bg-amber-400 px-2.5 py-2 text-[11px] font-bold text-[#102a43]">
-              <Plus className="w-3.5 h-3.5" />导入
+            <button type="button" aria-label="导入文章" title="导入文章" onClick={() => setShowAddModal(true)} className="tap-lift flex items-center gap-1 rounded-xl bg-amber-400 px-2.5 py-2 text-[11px] font-bold text-[#102a43]">
+              <Plus className="w-3.5 h-3.5" /><span>导入</span>
             </button>
           </>
         )}
       >
         {!focusReading && <>
-        <div className="flex items-center justify-between gap-3">
+        <details className="reader-tools"><summary><SlidersHorizontal size={15} /><span>阅读工具</span><ChevronDown size={14} /></summary>
+        <div className="reader-tool-options flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-xl bg-white/10 p-0.5 text-[11px] text-slate-300 ring-1 ring-white/10" aria-label="正文字号">
               <button
@@ -872,6 +877,7 @@ export default function SmartReader({ intent = null }) {
             <button type="button" onClick={() => setShowRefreshModal(true)} className="tap-lift flex items-center gap-1 rounded-xl bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-amber-200 ring-1 ring-white/10"><Sparkles className="w-3.5 h-3.5" />换篇文章</button>
           </div>
         </div>
+        </details>
 
         {/* Library: search / difficulty / read status / sort */}
         <div className="mt-2 space-y-1.5">

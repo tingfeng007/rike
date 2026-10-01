@@ -816,22 +816,23 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
 
   if (view === 'lessons') {
     return (
-      <section className="study-page nce-page h-full overflow-y-auto p-4 pb-28">
-        <div className="rounded-[30px] bg-[#102a43] text-white p-5 shadow-xl shadow-slate-900/15 overflow-hidden relative nce-grid-texture nce-reveal">
-          <div className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-sky-400/20 blur-2xl" />
+      <section className="study-page nce-page course-overview h-full overflow-y-auto p-4 pb-28">
+        <div className="course-layout">
+        <header className="course-heading"><p>一步一步，打好基础</p><h1>新概念英语</h1></header>
+        <div className="course-book-card nce-reveal">
+          <div className="course-book-cover" aria-hidden="true"><span>NEW<br />CONCEPT<br />ENGLISH</span><strong>01</strong><small>听 · 读 · 写 · 练</small><BookOpen size={26} /></div>
           <div className="relative">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] text-sky-200 font-semibold tracking-[0.18em]">COURSE · NCE 1</p>
-                <h1 className="text-2xl font-bold mt-2 tracking-tight">新概念英语第一册</h1>
+                <h2 className="text-2xl font-bold mt-2 tracking-tight">从第一册开始</h2>
                 <p className="text-xs text-slate-300 mt-2 leading-5">听读建立语感，听写主动回忆，最后用练习巩固。</p>
               </div>
-              <BookOpen className="w-9 h-9 text-sky-200 shrink-0" />
             </div>
-            <div className="grid grid-cols-2 gap-2 mt-5">
-              <div className="rounded-2xl bg-white/10 p-3"><span className="block text-xl font-bold">{completedCount}</span><span className="text-[11px] text-slate-300">已完成单元</span></div>
+            <div className="course-metrics grid grid-cols-4 gap-2 mt-5">
+              <div className="rounded-2xl bg-white/10 p-3"><span className="block text-xl font-bold">{completedCount}</span><span className="text-[11px] text-slate-300">已完成</span></div>
               <div className="rounded-2xl bg-white/10 p-3"><span className="block text-xl font-bold">{learningCount}</span><span className="text-[11px] text-slate-300">正在学习</span></div>
-              <div className="rounded-2xl bg-white/10 p-3"><span className="block text-xl font-bold">{reviewCount}</span><span className="text-[11px] text-slate-300">待复习单元</span></div>
+              <div className="rounded-2xl bg-white/10 p-3"><span className="block text-xl font-bold">{reviewCount}</span><span className="text-[11px] text-slate-300">待复习</span></div>
               <div className="rounded-2xl bg-white/10 p-3"><span className="block text-xl font-bold">{courseWordCount}</span><span className="text-[11px] text-slate-300">已收录词</span></div>
             </div>
             <div className="mt-4 flex items-center justify-between text-xs text-sky-100"><span>第一册课程进度</span><span>{courseProgressPercent}% · 掌握度均值 {averageMastery}%</span></div>
@@ -841,14 +842,14 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
         </div>
 
         {continueUnit && (
-          <button onClick={() => openUnit(continueUnit)} className="w-full mt-4 rounded-2xl bg-white border border-sky-100 p-4 flex items-center gap-3 text-left shadow-sm hover:border-sky-300 transition-colors">
+          <button onClick={() => openUnit(continueUnit)} className="course-resume w-full mt-4 rounded-2xl bg-white border border-sky-100 p-4 flex items-center gap-3 text-left shadow-sm hover:border-sky-300 transition-colors">
             <span className="w-11 h-11 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center"><Play className="w-5 h-5" /></span>
             <span className="flex-1 min-w-0"><span className="block text-[11px] text-sky-600 font-semibold">{latestUnit ? '继续上次学习' : '从第一课开始'}</span><span className="block font-semibold text-slate-800 mt-1 truncate editorial-serif">{displayUnitTitle(continueUnit)}</span><span className="block text-xs text-slate-400 mt-1">{lessonRange(continueUnit)} · 听读、听写、单词、练习</span></span>
             <ChevronRight className="w-5 h-5 text-slate-300 shrink-0" />
           </button>
         )}
 
-        <button type="button" onClick={() => openExam()} className="w-full mt-3 relative overflow-hidden rounded-[24px] bg-[#f3e7ce] border border-amber-200 p-4 flex items-center gap-3 text-left shadow-sm hover:border-amber-400 transition-colors nce-reveal">
+        <button type="button" onClick={() => openExam()} className="course-exam w-full mt-3 relative overflow-hidden rounded-[24px] bg-[#f3e7ce] border border-amber-200 p-4 flex items-center gap-3 text-left shadow-sm hover:border-amber-400 transition-colors nce-reveal">
           <span className="absolute -right-3 -top-8 text-8xl font-black text-amber-950/5 pointer-events-none">A+</span>
           <span className="relative w-12 h-12 rounded-2xl bg-[#102a43] text-amber-300 flex items-center justify-center shrink-0"><FileText className="w-6 h-6" /></span>
           <span className="relative flex-1 min-w-0"><span className="block text-[10px] tracking-[0.16em] font-bold text-amber-900/70">EXAM · 第一册</span><span className="block text-lg font-bold text-[#102a43] mt-0.5 editorial-serif">试题中心</span><span className="block text-xs text-amber-900/70 mt-1">限时测验 · 交卷评分 · 错题回看</span></span>
@@ -883,7 +884,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
 
         {loading && <div className="text-center text-sm text-slate-500 py-12">正在加载第一册课程目录…</div>}
         {!loading && filteredUnits.length === 0 && <div className="text-center bg-white rounded-2xl border border-slate-200 text-sm text-slate-500 py-12 mt-3">没有找到符合条件的课文。换个关键词或筛选条件试试。</div>}
-        <div className="space-y-2 mt-3">
+        <div className="course-units space-y-2 mt-3">
           {filteredUnits.map((unit) => {
             const originalIndex = units.findIndex((item) => item.filename === unit.filename);
             const itemProgress = progress[unit.filename];
@@ -899,6 +900,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
               </button>
             );
           })}
+        </div>
         </div>
       </section>
     );

@@ -114,18 +114,11 @@
 .grammar-page .study-card h2 { font-size: 18px; }
 .grammar-page .study-card h3 { font-size: 13px; }
 .grammar-page .study-card ul, .grammar-page .study-card p { font-size: max(12px, 0.82rem); }
-.home-task { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border-bottom: 1px solid #eee9df; padding-block: 16px; }
-.home-task:last-child { border-bottom: 0; }
-.home-task-description { white-space: normal; line-height: 1.7; }
 @media (min-width: 760px) {
   .grammar-scroll { padding: 24px; }
   .grammar-workbench { grid-template-columns: 218px minmax(0, 1fr); gap: 24px; }
   .grammar-outline { position: sticky; top: 0; }
   .grammar-topic-grid { grid-template-columns: 1fr; }
-  .home-content { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; align-content: start; align-items: start; }
-  .home-content > * { margin-top: 0 !important; min-width: 0; }
-  .home-content > .home-plan { grid-row: span 2; }
-  .home-content > .home-notice, .home-content > p, .home-content > button { grid-column: 1 / -1; }
 }
 @media (max-width: 380px) {
   .grammar-lesson-heading, .grammar-section { padding: 18px; }
@@ -194,118 +187,6 @@
   .animate-in {
     animation: none;
   }
-}
-
-/* Blue & white learning workspace. Page-specific meaning colors remain intact. */
-.app-nav { flex: none; z-index: 30; padding: 8px 12px max(env(safe-area-inset-bottom, 0px), 10px); border-top: 1px solid #e5ebf5; background: #fff; }
-.app-navigation { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; max-width: 680px; margin-inline: auto; }
-.nav-link { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 48px; padding: 6px; border-radius: 13px; color: #8591a7; font-size: 11px; font-weight: 500; transition: background 150ms, color 150ms; }
-.nav-link:hover { background: #f0f5ff; color: #3979ed; }
-.nav-link[aria-current="page"] { background: #eaf1ff; color: #2869e3; font-weight: 700; }
-.nav-icon { position: relative; display: grid; place-items: center; }
-.nav-badge { position: absolute; top: -6px; right: -9px; min-width: 15px; border-radius: 9px; background: #ff856d; color: #fff; border: 2px solid #fff; padding: 0 3px; font-size: 9px; line-height: 14px; }
-.nav-brand, .nav-settings { display: none; }
-.study-eyebrow { color: #91a0b7; font-size: 10px; font-weight: 650; letter-spacing: .1em; margin-bottom: 10px; }
-.study-header-icon { display: grid; place-items: center; width: 34px; height: 34px; background: #ebf2ff; color: #387bf6; border-radius: 11px; }
-.study-header-title { font-size: 23px; line-height: 1.35; color: #233758; font-weight: 750; letter-spacing: -.02em; }
-.study-header-status { color: #6082bb; background: #f0f5ff; font-size: 11px; font-weight: 500; padding: 4px 8px; border-radius: 7px; }
-.study-header-description { margin-top: 8px; max-width: 640px; color: #8190a6; font-size: 12px; line-height: 1.8; }
-.study-hero :is(.text-white, .text-slate-100, .text-slate-200, .text-slate-300, .text-sky-100, .text-sky-200, .text-amber-200, .text-amber-300) { color: #5c7297; }
-.study-hero :is(.bg-white\/8, .bg-white\/10, .bg-white\/15, .bg-white\/20, .bg-black\/10) { background: #f0f4fb; --tw-ring-color: transparent; }
-.study-hero :is(.bg-amber-400, .bg-amber-500) { background: #3478f6; color: #fff; }
-.app-shell .study-hero :is(.bg-amber-400, .bg-amber-500) { color: #fff; }
-.study-hero :is(.text-emerald-100, .text-emerald-200, .text-emerald-300) { color: #288b68; }
-.study-hero :is(.text-rose-100, .text-rose-200) { color: #ba4562; }
-.study-hero input { color: #233758; }
-.study-hero button { border-color: #e2eafa; }
-.section-switch { display: flex; gap: 4px; padding: 4px; border-radius: 13px; background: #eff3fb; }
-.section-switch-tab { flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; border-radius: 10px; padding: 9px 8px; color: #8796ad; font-size: 12px; min-height: 36px; }
-.section-switch-tab[aria-selected="true"] { background: #fff; color: #2869e3; font-weight: 650; box-shadow: 0 2px 8px #466bb312; }
-.study-pill { background: #f0f4fb; color: #7589a8; border-color: #e3eafa; }
-.study-pill[aria-pressed="true"] { background: #e6efff; color: #2869e3; border-color: #bacffa; box-shadow: none; }
-.home-hero { background: linear-gradient(125deg, #eff5ff, #e7f0ff 60%, #e0ecff); color: #233758; padding: 28px 28px 26px; }
-.home-eyebrow { color: #5585d7; font-size: 10px; font-weight: 700; letter-spacing: .12em; }
-.home-title { font-size: clamp(23px, 3vw, 32px); line-height: 1.45; font-weight: 750; letter-spacing: -.03em; margin-top: 15px; }
-.home-description { color: #6e86ad; margin-top: 8px; font-size: 13px; line-height: 1.7; }
-.home-settings { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 12px; background: #ffffffb0; color: #5884ca; border: 1px solid #fff; }
-.home-illustration { position: absolute; right: 38px; top: 14px; width: 230px; height: 172px; pointer-events: none; }
-.home-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
-.home-metrics > div { background: #ffffffd9; border: 1px solid #fff; padding: 15px 18px; border-radius: 17px; box-shadow: 0 5px 12px -9px #4465a329; }
-.home-metrics svg { float: right; color: #649af8; }
-.home-metrics strong { display: block; font-size: 27px; line-height: 1.3; font-weight: 700; color: #25406c; }
-.home-metrics small { margin-left: 6px; font-size: 11px; font-weight: 400; color: #96a8c5; }
-.home-metrics p { margin-top: 6px; font-size: 11px; color: #8498b9; }
-.home-content { padding: 22px 28px 0; }
-.home-plan { border-color: #e2eaf8; }
-.home-notice { order: 5; }
-.home-page .study-card { border-radius: 20px; }
-.home-task { border-bottom-color: #edf1f8; }
-.app-shell [class~="bg-[#102a43]"] { background-color: #3478f6; }
-.app-shell [class~="text-[#102a43]"] { color: #25406c; }
-.grammar-lesson { background: #fff; border-color: #e3eaf5; box-shadow: 0 6px 24px -16px #2a4b8026; }
-.grammar-topic { background: #fff; border-color: #e3eaf5; color: #7485a1; }
-.grammar-topic.is-active { background: #eaf1ff; border-color: #b1caff; color: #2869e3; }
-.grammar-section, .grammar-section-title { border-color: #edf1f8; }
-.grammar-section-title { color: #25406c; }
-.grammar-builder { background: #f1f6ff; border-color: #dce8ff; }
-.vocab-page > header, .oral-compact-header { background: #fff; border-bottom-color: #e5ebf5; }
-.vocab-page .study-header-controls > .grid { display: none; }
-.vocab-page [role="group"] > div > div { border-color: #e4ecf8; border-radius: 24px; box-shadow: 0 10px 28px -15px #3d68b833; }
-.vocab-page #vocab-category { border-color: #dfe8f7; font-size: 14px !important; }
-.oral-chat { padding: 20px; }
-.oral-page textarea { border-color: #dfe8f7; border-radius: 16px; }
-.settings-page > .max-w-md { max-width: 720px; }
-.settings-page .study-card { border-radius: 20px; }
-.settings-page .paper-grain { background: #edf4ff; border-color: #d9e6fb; box-shadow: none; }
-.vocab-page [class~="bg-[#fffdf8]"] { background: #fff; border-color: #e3ebf7; }
-.app-shell [class~="bg-[#faf8f5]"] { background: #f5f8fe; border-color: #e1e9f7; }
-.reader-page .font-serif { font-family: Georgia, 'Songti SC', serif; }
-.reader-page [aria-label="精读文库"] > div:has([aria-current="page"]) { background: #e8f0ff; color: #2869e3; border-color: #c7d9fc; }
-.reader-page [aria-label="精读文库"] > div:has([aria-current="page"]) button { color: inherit; }
-.reader-page .study-header-controls button { white-space: nowrap; }
-.nce-page .nce-grid-texture { background: linear-gradient(120deg, #ebf3ff, #e4edff); color: #25406c; border: 1px solid #dce8ff; border-radius: 24px; box-shadow: none; }
-.nce-grid-texture > .absolute { display: none; }
-.nce-grid-texture :is(.text-sky-100, .text-sky-200, .text-slate-300) { color: #698ab9; }
-.nce-grid-texture .bg-white\/10 { background: #ffffffb3; }
-.nce-grid-texture .bg-sky-300 { background: #649af8; }
-.nce-grid-texture .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.nce-page .rounded-\[28px\], .nce-page .rounded-\[30px\] { border-radius: 22px; }
-[role="dialog"] { border: 1px solid #e3eaf5; box-shadow: 0 25px 90px -25px #294c884d; }
-.app-shell :is(input, textarea, select) { accent-color: #3478f6; }
-@media (min-width: 960px) {
-  .app-nav { order: -1; display: flex; align-items: center; gap: 30px; border-top: 0; border-bottom: 1px solid #e5ebf5; padding: 16px 30px; }
-  .nav-brand { display: flex; align-items: center; gap: 10px; min-width: 195px; }
-  .nav-brand-mark { display: grid; place-items: center; background: #3478f6; width: 40px; height: 40px; border-radius: 13px; color: #fff; box-shadow: 0 4px 12px #3478f629; }
-  .nav-brand strong { font-size: 19px; letter-spacing: -.04em; color: #25406c; }
-  .nav-brand strong span { display: block; margin-top: 2px; color: #92a0b7; font-size: 10px; letter-spacing: .04em; font-weight: 400; }
-  .app-navigation { flex: 1; max-width: 600px; gap: 8px; }
-  .nav-link { flex-direction: row; gap: 8px; font-size: 13px; min-height: 42px; padding: 10px 13px; }
-  .nav-badge { top: -9px; }
-  .nav-settings { display: flex; gap: 7px; align-items: center; color: #8092ae; font-size: 12px; padding: 10px; border-radius: 12px; }
-  .nav-settings[aria-current="page"] { color: #2869e3; background: #eaf1ff; }
-  .home-hero { padding: 34px 36px 28px; }
-  .home-hero > .flex { max-width: 70%; }
-  .home-hero .home-settings { display: none; }
-  .home-title, .home-description { max-width: 70%; }
-  .home-content { padding-inline: 36px; }
-}
-@media (max-width: 759px) {
-  .study-eyebrow { display: none; }
-  .study-header-title { font-size: 19px; }
-  .study-header-icon { width: 30px; height: 30px; }
-  .study-header-description { font-size: 12px; }
-  .study-hero:has(.study-header-controls) .study-header-description { display: none; }
-  .study-header-actions { flex-wrap: wrap; justify-content: end; max-width: 44%; }
-  .home-hero { padding: 20px 18px 20px; }
-  .home-illustration { display: none; }
-  .home-title { font-size: 23px; margin-top: 12px; }
-  .home-metrics { gap: 8px; margin-top: 18px; }
-  .home-metrics > div { padding: 12px; }
-  .home-metrics strong { font-size: 25px; }
-  .home-metrics svg { width: 15px; height: 15px; }
-  .home-content { display: flex; flex-direction: column; padding: 16px 16px 0; }
-  .nce-grid-texture .grid > div { padding: 10px 7px; border-radius: 12px; }
-  .nce-grid-texture .grid > div span:last-child { font-size: 10px; }
 }
 
 /* 3D Flashcard flip animation */

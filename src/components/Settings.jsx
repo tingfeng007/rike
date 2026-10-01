@@ -258,10 +258,10 @@ export default function Settings() {
     <div className="study-page settings-page flex flex-col h-full overflow-y-auto">
       <StudyHeader
         eyebrow="MY LINGOFLOW · LOCAL FIRST"
-        title="设备与服务"
-        description="先保证学习记录安全，再按需连接 AI 与调整语音。所有设置自动保存在当前浏览器。"
+        title="我的空间"
+        description="管理学习记录，找到喜欢的声音，连接你的 AI 服务。"
         icon={<SettingsIcon className="w-4 h-4" />}
-        status="本地优先"
+        status="偏好设置会自动保存"
         actions={
           saveError
             ? <span className="flex items-center gap-1 rounded-xl bg-rose-400/20 px-2.5 py-2 text-[11px] font-semibold text-rose-100 ring-1 ring-rose-300/30 animate-fade-in"><AlertCircle className="w-3.5 h-3.5" />未能保存</span>
@@ -274,27 +274,7 @@ export default function Settings() {
       {/* Main Form Content */}
       <div className="p-4 space-y-4 max-w-md mx-auto pb-28 w-full">
         {/* PWA Mobile Install Banner */}
-        <div className="paper-grain rounded-[26px] border border-[#dfd2b9] bg-[#f3e7ce] p-5 text-[#102a43] shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold bg-[#102a43] text-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                安装到主屏幕
-              </span>
-              <h3 className="text-base font-bold tracking-tight">添加到手机主屏幕 (PWA)</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                无需应用商店；从 Safari 或 Chrome 添加后，可全屏打开并保留本地学习记录。
-              </p>
-            </div>
-            <Smartphone className="w-7 h-7 text-amber-700 flex-none ml-2" />
-          </div>
-
-          <button
-            onClick={() => setShowPwaGuide(true)}
-            className="mt-3 bg-[#102a43] text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-xs transition-colors active:scale-95"
-          >
-            查看苹果/安卓添加教程
-          </button>
-        </div>
+        <button type="button" onClick={() => setShowPwaGuide(true)} className="settings-install"><span><Smartphone size={23} /></span><div><strong>让学习，随手可达</strong><p>添加到手机主屏幕，打开就能学</p></div><span aria-hidden="true">›</span></button>
 
         {/* Section 1: AI Model Configuration */}
         <div className="study-card rounded-[26px] p-5 space-y-3.5">

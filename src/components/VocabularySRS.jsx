@@ -24,6 +24,7 @@ import {
   X,
   Edit3,
   StickyNote,
+  MoreHorizontal,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
@@ -581,120 +582,28 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
   return (
     <div className="study-page vocab-page flex flex-col h-full">
-      {activeTab === 'flashcard' ? (
-        <header className="flex-none border-b border-stone-200 bg-[#fffdf8] px-4 py-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <h1 className="text-base font-bold text-[#102a43]">闪卡复习</h1>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setShowStatsDetail(true)} className="rounded-lg border border-stone-200 px-2.5 py-2 text-[11px] text-slate-600">今日已练 {studyStats.todayReviewedCount || 0} 词</button>
-              <button type="button" onClick={() => setShowAddModal(true)} className="rounded-lg bg-[#102a43] px-2.5 py-2 text-[11px] font-semibold text-white">添加词</button>
-            </div>
-          </div>
-          {sectionSwitch && <div className="mt-2">{sectionSwitch}</div>}
-          <div className="mt-2 flex gap-1 rounded-xl bg-stone-100 p-1 text-[11px]">
-            <button type="button" className="flex-1 rounded-lg bg-white py-2 font-semibold text-[#102a43]" aria-current="page">闪卡复习</button>
-            <button type="button" onClick={() => setActiveTab('list')} className="flex-1 rounded-lg py-2 text-slate-600">生词库清单</button>
-            <button type="button" onClick={() => { setActiveTab('quiz'); if (!quizQuestions.length) handleGenerateQuiz(); }} className="flex-1 rounded-lg py-2 text-slate-600">AI 巩固测验</button>
-          </div>
-        </header>
-      ) : <StudyHeader
-        eyebrow="REMEMBER · RECALL · USE"
-        title="记忆词库"
-        description={category ? `${category.label} · 每组随机 10 词，轻触卡片看释义并评价掌握程度。` : dueCards.length ? `今天先复习 ${dueCards.length} 个到期词，再用测验或口语把它们真正激活。` : '选择分类开始学词，或复习自己的生词。'}
-        icon={<Layers className="w-4 h-4" />}
-        status={category ? `分类词库 ${category.words.length} 词` : `${vocabulary.length} 词 · ${dueTotal} 到期`}
-        actions={(
-          <>
-            <button
-              type="button"
-              onClick={handleOpenStoryStudio}
-              className="tap-lift flex items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 py-2 text-[11px] font-semibold text-amber-200"
-              title="一键把难记生词写成悬疑微小说与有声广播剧"
-            >
-              <Film className="w-3.5 h-3.5" />
-              <span>微剧场</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="tap-lift flex items-center gap-1 rounded-xl bg-amber-400 px-2.5 py-2 text-[11px] font-bold text-[#102a43]"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>添加</span>
-            </button>
-          </>
-        )}
+      <StudyHeader
+        eyebrow="WORDS THAT STAY WITH YOU"
+        title={activeTab === 'flashcard' ? '记忆词卡' : activeTab === 'list' ? '我的词库' : '巩固测验'}
+        status={`${vocabulary.length} 个词 · 今日已练 ${studyStats.todayReviewedCount || 0} 词`}
+        actions={<>
+          <details className="vocab-menu"><summary aria-label="词卡更多功能"><MoreHorizontal size={20} /></summary><div>
+            <button type="button" aria-current={activeTab === 'flashcard' ? 'page' : undefined} onClick={(event) => { setActiveTab('flashcard'); reloadVocabulary(); event.currentTarget.closest('details').open = false; }}>闪卡复习</button>
+            <button type="button" aria-current={activeTab === 'list' ? 'page' : undefined} onClick={(event) => { setActiveTab('list'); event.currentTarget.closest('details').open = false; }}>生词库清单</button>
+            <button type="button" aria-current={activeTab === 'quiz' ? 'page' : undefined} onClick={(event) => { setActiveTab('quiz'); if (!quizQuestions.length) handleGenerateQuiz(); event.currentTarget.closest('details').open = false; }}>AI 巩固测验</button>
+            <button type="button" onClick={(event) => { setShowStatsDetail(true); event.currentTarget.closest('details').open = false; }}>查看学习统计</button>
+            <button type="button" onClick={(event) => { handleOpenStoryStudio(); event.currentTarget.closest('details').open = false; }}>生词微剧场</button>
+          </div></details>
+          <button type="button" aria-label="添加词" title="添加词" onClick={() => setShowAddModal(true)} className="vocab-header-action is-primary"><Plus size={19} /></button>
+        </>}
       >
-        {sectionSwitch && <div className="mb-2">{sectionSwitch}</div>}
-        <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
-          <button
-            type="button"
-            onClick={() => setShowStatsDetail(true)}
-            className="tap-lift rounded-xl bg-white/8 px-2 py-2 text-slate-200 ring-1 ring-white/10"
-            title="点击查看今日打卡明细与动作"
-          >
-            <Flame className="mx-auto mb-1 h-3.5 w-3.5 text-amber-300" />
-            <strong className="block text-sm text-white">{studyStats.streakDays || 0} 天</strong>连续学习
-          </button>
-          <div className="rounded-xl bg-white/8 px-2 py-2 text-slate-200 ring-1 ring-white/10"><Target className="mx-auto mb-1 h-3.5 w-3.5 text-sky-300" /><strong className="block text-sm text-white">{studyStats.todayReviewedCount || 0} 词</strong>今日复习</div>
-          <button
-            type="button"
-            onClick={() => {
-              setFilterStatus('mastered');
-              setActiveTab('list');
-            }}
-            className="tap-lift rounded-xl bg-white/8 px-2 py-2 text-slate-200 ring-1 ring-white/10"
-            title="点击查看所有已牢记掌握的生词名册"
-          >
-            <Trophy className="mx-auto mb-1 h-3.5 w-3.5 text-emerald-300" /><strong className="block text-sm text-white">{masteredCount} 词</strong>已牢记
-          </button>
+        {sectionSwitch}
+        <div className="vocab-mode-tabs">
+          <button type="button" aria-current={activeTab === 'flashcard' ? 'page' : undefined} onClick={() => { setActiveTab('flashcard'); reloadVocabulary(); }}>闪卡复习</button>
+          <button type="button" aria-current={activeTab === 'list' ? 'page' : undefined} onClick={() => setActiveTab('list')}>生词库清单</button>
+          <button type="button" aria-current={activeTab === 'quiz' ? 'page' : undefined} onClick={() => { setActiveTab('quiz'); if (!quizQuestions.length) handleGenerateQuiz(); }}>AI 巩固测验</button>
         </div>
-
-        <div className="mt-2 flex rounded-xl bg-black/10 p-1 text-[11px] font-medium ring-1 ring-white/10">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('flashcard');
-              reloadVocabulary();
-            }}
-            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-              activeTab === 'flashcard'
-                ? 'bg-white text-[#102a43] shadow-xs font-semibold'
-                : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>闪卡复习</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('list')}
-            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-              activeTab === 'list'
-                ? 'bg-white text-[#102a43] shadow-xs font-semibold'
-                : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <ListFilter className="w-3.5 h-3.5" />
-            <span>生词库清单</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('quiz');
-              if (quizQuestions.length === 0) handleGenerateQuiz();
-            }}
-            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-              activeTab === 'quiz'
-                ? 'bg-white text-[#102a43] shadow-xs font-semibold'
-                : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>AI 巩固测验</span>
-          </button>
-        </div>
-      </StudyHeader>}
+      </StudyHeader>
 
       {/* Main Body */}
       <div className="flex-1 overflow-y-auto p-4 pb-20">
@@ -708,17 +617,18 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
         {/* ================= TAB 1: FLASHCARD SRS ================= */}
         {activeTab === 'flashcard' && (
-          <div className="max-w-md mx-auto min-h-full flex flex-col gap-2 py-2">
-            <div className="rounded-2xl border border-stone-200 bg-[#fffdf8] p-3">
-              <div className="flex items-center gap-2">
+          <div className="flashcard-workspace max-w-md mx-auto min-h-full flex flex-col gap-2 py-2">
+            <div className="vocab-deck-picker">
+              <div className="deck-select-row flex items-center gap-2">
                 <label htmlFor="vocab-category" className="shrink-0 text-xs font-semibold text-slate-600">词库</label>
-                <select id="vocab-category" value={selectedCategory} onChange={(event) => startCategory(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 py-2 text-sm text-[#102a43]">
+                <select id="vocab-category" aria-label="词库" value={selectedCategory} onChange={(event) => startCategory(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 py-2 text-sm text-[#102a43]">
                   <option value="personal">我的生词 · 到期复习</option>
                   {VOCABULARY_CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.icon} {item.label}</option>)}
                 </select>
                 {category && <button type="button" onClick={() => startCategory(selectedCategory)} className="shrink-0 rounded-lg bg-[#102a43] px-3 py-2 text-xs font-semibold text-white">换一组</button>}
               </div>
-              <p className="mt-2 text-[11px] leading-5 text-slate-500">{category ? `内置 ${category.words.length} 词 · 抽到的词自动加入生词库，保留已有记忆进度。` : '没有生词也能练：选择分类，随机抽取 10 词开始。'}</p>
+              <div className="vocab-deck-chips no-scrollbar" aria-label="分类词库">{VOCABULARY_CATEGORIES.map((item) => <button key={item.id} type="button" aria-pressed={selectedCategory === item.id} onClick={() => startCategory(item.id)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>)}</div>
+              <p className="deck-hint">{category ? `内置 ${category.words.length} 词 · 抽到的词自动加入生词库，保留已有记忆进度。` : '没有生词也能练：选择分类，随机抽取 10 词开始。'}</p>
             </div>
             {!reviewCompleted && currentCard ? (
               <>
@@ -783,7 +693,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                   aria-label="翻转词卡，按回车或空格查看答案"
                   onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setIsFlipped((value) => !value); } }}
                   onClick={() => setIsFlipped(!isFlipped)}
-                  className="w-full flex-none h-[300px] md:h-[360px] cursor-pointer perspective-1000 relative select-none"
+                  className="vocab-flip-card w-full flex-none h-[300px] md:h-[360px] cursor-pointer perspective-1000 relative select-none"
                 >
                   <div
                     className={`w-full h-full duration-500 transform-style-preserve-3d relative transition-transform rounded-3xl ${
@@ -913,14 +823,14 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 </div>
 
                 {/* SRS Evaluation Buttons (only meaningful once the answer is visible) */}
-                <div className="mt-5 grid grid-cols-3 gap-2.5">
+                <div className="vocab-ratings mt-5 grid grid-cols-3 gap-2.5">
                   <button
                     type="button"
                     disabled={!isFlipped}
                     onClick={(event) => { event.stopPropagation(); handleRateCard('again'); }}
                     className="flex flex-col items-center py-2.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="text-sm font-semibold">❌ 遗忘</span>
+                    <span className="text-sm font-semibold">再认识一下</span>
                     <span className="text-[10px] text-rose-600 mt-0.5">今天再来一次</span>
                   </button>
 
@@ -930,7 +840,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     onClick={(event) => { event.stopPropagation(); handleRateCard('hard'); }}
                     className="flex flex-col items-center py-2.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="text-sm font-semibold">🤔 模糊</span>
+                    <span className="text-sm font-semibold">有点印象</span>
                     <span className="text-[10px] text-amber-700 mt-0.5">+1~2 天</span>
                   </button>
 
@@ -940,7 +850,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     onClick={(event) => { event.stopPropagation(); handleRateCard('good'); }}
                     className="flex flex-col items-center py-2.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="text-sm font-semibold">✅ 掌握</span>
+                    <span className="text-sm font-semibold">记住了</span>
                     <span className="text-[10px] text-emerald-700 mt-0.5">延长间隔</span>
                   </button>
                 </div>
