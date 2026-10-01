@@ -8,8 +8,8 @@
  * Cache version: lingoflow-offline-v11
  */
 
-const CACHE_NAME = "lingoflow-offline-4c82471a97e3";
-const SHELL_ASSETS = ["./index.html","./icon.svg","./manifest.json","./assets/index-JPBStibS.js","./assets/IconButton-05CKS2sx.js","./assets/NewConcept-DSZGe_Y2.js","./assets/OralCoach-BE_tmXaS.js","./assets/Settings-BUHHkLtg.js","./assets/SmartReader-BxzaWU_q.js","./assets/StudyHeader-DLd7-jd7.js","./assets/WordGrammarHub-DJe5r3na.js","./assets/chevron-right-LJZ6UStU.js","./assets/confetti.module-Uxh4CK4s.js","./assets/download-C82dBVWh.js","./assets/jsx-runtime-Bw7O_yca.js","./assets/key-BPsl1zMP.js","./assets/languages-C02sjK_t.js","./assets/offline-Cxa-gPB-.js","./assets/play-BUKOGdcv.js","./assets/speech-CzS2sFZn.js","./assets/studyView-CJbyzk2U.js","./assets/target-DwwNf6vs.js","./assets/trash-BGqVSjM1.js","./assets/trophy-DjwXeJIV.js","./assets/useStudyClock-DJxVRFXX.js","./assets/index-B9xOYF8P.css"];
+const CACHE_NAME = "lingoflow-offline-83beef798191";
+const SHELL_ASSETS = ["./index.html","./icon.svg","./manifest.json","./assets/index-BOgHoBju.js","./assets/IconButton-DlOvLmkI.js","./assets/NewConcept-BHe9stA6.js","./assets/OralCoach-DtraSHuk.js","./assets/Settings-CPl1TJag.js","./assets/SmartReader-k9YeOcDd.js","./assets/StudyHeader-BqgyBQKB.js","./assets/WordGrammarHub-gkbU60Of.js","./assets/chevron-right-Jojtk1Au.js","./assets/confetti.module-Uxh4CK4s.js","./assets/download-D-cddvBf.js","./assets/key-DQ1wxjmJ.js","./assets/languages-BF-l94th.js","./assets/offline-Cxa-gPB-.js","./assets/play-BYt-mhYb.js","./assets/speech-DWLVH8Xu.js","./assets/studyView-BfWAKUDw.js","./assets/target-BSkxWAdN.js","./assets/toastContext-D9PpOGxq.js","./assets/trash-Dh4Cv6-q.js","./assets/trophy-ORWAfI2-.js","./assets/useStudyClock-BC93N8Ln.js","./assets/index-CeZl3mzY.css"];
 
 // Caches owned by other parts of the app. The previous activate handler deleted every
 // cache that was not its own, which silently destroyed the user's deliberately
