@@ -9,7 +9,7 @@ import React from 'react';
  */
 export function SectionSwitch({ items, value, onChange, ariaLabel = '板块切换' }) {
   return (
-    <div className="flex rounded-xl bg-white/10 p-1 text-[11px] ring-1 ring-white/10" role="tablist" aria-label={ariaLabel}>
+    <div className="section-switch" role="tablist" aria-label={ariaLabel}>
       {items.map(({ value: itemValue, label, icon: Icon }) => (
         <button
           key={itemValue}
@@ -17,9 +17,7 @@ export function SectionSwitch({ items, value, onChange, ariaLabel = '板块切�
           role="tab"
           aria-selected={value === itemValue}
           onClick={() => onChange(itemValue)}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 transition-all ${
-            value === itemValue ? 'bg-white font-semibold text-[#102a43] shadow-xs' : 'text-slate-300 hover:text-white'
-          }`}
+          className="section-switch-tab"
         >
           {Icon && <Icon className="h-3.5 w-3.5" />}
           <span>{label}</span>

@@ -792,7 +792,7 @@ export default function SmartReader({ intent = null }) {
   };
 
   return (
-    <div className="study-page flex flex-col h-full relative">
+    <div className="study-page reader-page flex flex-col h-full relative">
       <StudyHeader
         eyebrow="READ · NOTICE · REMEMBER"
         title="精读工作台"

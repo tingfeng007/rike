@@ -255,7 +255,7 @@ export default function Settings() {
   const currentPreset = PROVIDER_PRESETS[settings.provider] || PROVIDER_PRESETS.custom;
 
   return (
-    <div className="study-page flex flex-col h-full overflow-y-auto">
+    <div className="study-page settings-page flex flex-col h-full overflow-y-auto">
       <StudyHeader
         eyebrow="MY LINGOFLOW · LOCAL FIRST"
         title="设备与服务"

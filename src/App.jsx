@@ -1,11 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
-import {
-  Home,
-  MessageSquare,
-  BookOpen,
-  Layers,
-  GraduationCap,
-} from 'lucide-react';
+import AppNavigation from './components/AppNavigation';
 import HomeDashboard from './components/HomeDashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ui/Toast';
@@ -126,13 +120,6 @@ export default function App() {
   return (
     <ToastProvider>
     <div className="app-shell study-page flex flex-col h-[100dvh] w-full mx-auto overflow-hidden font-sans relative">
-      {/* Background Subtle Gradient Atmosphere */}
-      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute -top-24 -left-24 w-72 h-72 bg-sky-200/25 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 -right-24 w-80 h-80 bg-[#dfeaf1]/30 rounded-full blur-3xl" />
-        <div className="absolute -bottom-24 left-1/4 w-72 h-72 bg-amber-100/25 rounded-full blur-3xl" />
-      </div>
-
       {/* Offline / Online Status Toast Bar */}
       {isOffline && (
         <div className="flex-none bg-amber-500/95 text-white text-[11px] font-medium py-1 px-3 flex items-center justify-center gap-1.5 shadow-xs z-50 animate-fade-in select-none">
@@ -146,7 +133,7 @@ export default function App() {
       )}
 
       {/* Main View Container */}
-      <main className="flex-1 overflow-hidden relative z-10">
+      <main className="app-main flex-1 min-h-0 min-w-0 overflow-hidden relative z-10">
         <ErrorBoundary key={activeTab}>
         <Suspense fallback={<PageFallback />}>
           {activeTab === 'home' && <HomeDashboard onNavigate={navigate} />}
@@ -167,97 +154,7 @@ export default function App() {
         </ErrorBoundary>
       </main>
 
-      {/* Bottom Floating Frosted Glass TabBar */}
-      <nav 
-        className="flex-none bg-[#fffdf8]/95 backdrop-blur-2xl border-t border-[#e7e0d4] px-3 pt-1.5 select-none z-30 shadow-[0_-12px_30px_-24px_rgba(15,23,42,0.5)]"
-        style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
-      >
-        <div className="app-navigation grid grid-cols-5 gap-1">
-          <button
-            type="button"
-            aria-current={activeTab === 'home' ? 'page' : undefined}
-            onClick={() => navigate('home')}
-            className={`tap-lift flex flex-col items-center py-1.5 px-0.5 rounded-2xl transition-all ${
-              activeTab === 'home'
-                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Home className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10px] leading-none tracking-tight">今日</span>
-          </button>
-
-          <button
-            type="button"
-            aria-current={activeTab === 'oral' ? 'page' : undefined}
-            onClick={() => navigate('oral')}
-            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
-              activeTab === 'oral'
-                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <MessageSquare className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10px] leading-none tracking-tight">口语</span>
-          </button>
-
-          {/* Tab 2: Smart Reader */}
-          <button
-            type="button"
-            aria-current={activeTab === 'reader' ? 'page' : undefined}
-            onClick={() => navigate('reader')}
-            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
-              activeTab === 'reader'
-                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <BookOpen className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10px] leading-none tracking-tight">精读</span>
-          </button>
-
-          {/* Tab 3: Vocabulary & SRS */}
-          <button
-            type="button"
-            aria-current={activeTab === 'nce' ? 'page' : undefined}
-            onClick={() => navigate('nce')}
-            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all ${
-              activeTab === 'nce'
-                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <GraduationCap className="w-4.5 h-4.5 mb-1" />
-            <span className="text-[10px] leading-none tracking-tight">新概念</span>
-          </button>
-
-          {/* Tab 4: Vocabulary & SRS */}
-          <button
-            type="button"
-            aria-current={activeTab === 'vocab' ? 'page' : undefined}
-            onClick={() => {
-              navigate('vocab');
-              updateDueCount();
-            }}
-            className={`tap-lift flex flex-col items-center py-1.5 px-1 rounded-2xl transition-all relative ${
-              activeTab === 'vocab'
-                ? 'bg-[#102a43] text-white font-semibold shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <div className="relative">
-              <Layers className="w-4.5 h-4.5 mb-1" />
-              {dueVocabCount > 0 && (
-                <span className="absolute -top-1 -right-2 bg-rose-600 text-white text-[9px] font-bold px-1 rounded-full min-w-[14px] h-[14px] flex items-center justify-center leading-none shadow-xs">
-                  {dueVocabCount}
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] leading-none tracking-tight">词法</span>
-          </button>
-
-        </div>
-      </nav>
+      <AppNavigation activeTab={activeTab} onNavigate={navigate} dueVocabCount={dueVocabCount} />
     </div>
     </ToastProvider>
   );

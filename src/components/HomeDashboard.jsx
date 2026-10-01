@@ -204,30 +204,29 @@ export default function HomeDashboard({ onNavigate }) {
   };
 
   return (
-    <section className="study-page h-full overflow-y-auto pb-8">
-      <div className="relative overflow-hidden px-5 pt-6 pb-8 bg-[#102a43] text-white">
-        <div className="absolute -top-16 -right-12 w-48 h-48 rounded-full bg-sky-400/20 blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-40 h-24 bg-amber-300/10 blur-2xl" />
+    <section className="study-page home-page h-full overflow-y-auto pb-8">
+      <div className="home-hero relative overflow-hidden px-5 pt-6 pb-8">
+        <svg className="home-illustration" viewBox="0 0 240 180" fill="none" aria-hidden="true"><circle cx="132" cy="88" r="76" fill="#dae8ff" /><rect x="75" y="30" width="110" height="131" rx="18" transform="rotate(10 75 30)" fill="#98bbff" /><rect x="51" y="22" width="110" height="131" rx="18" transform="rotate(-9 51 22)" fill="white" stroke="#d8e5ff" strokeWidth="2" /><path d="M78 72 92 45 107 72M83 62h19" stroke="#3979ed" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" /><path d="M78 96h47M78 112h36" stroke="#bbd0fa" strokeWidth="5" strokeLinecap="round" /><circle cx="177" cy="124" r="27" fill="#3679f4" /><path d="m165 124 8 8 16-17" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /><path d="m196 25 3 8 8 3-8 3-3 8-3-8-8-3 8-3 3-8Z" fill="#ffbe58" /></svg>
         <div className="relative flex items-center justify-between">
-          <p className="text-[11px] font-semibold tracking-[0.22em] text-sky-200">LINGOFLOW · TODAY</p>
-          <button onClick={() => onNavigate('settings')} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-slate-200" aria-label="打开设置"><Settings className="w-4 h-4" /></button>
+          <p className="home-eyebrow">LINGOFLOW · TODAY</p>
+          <button onClick={() => onNavigate('settings')} className="home-settings" aria-label="打开设置"><Settings className="w-4 h-4" /></button>
         </div>
-        <h1 className="editorial-serif relative mt-3 text-[29px] leading-tight font-bold tracking-tight">{getGreeting()}</h1>
-        <p className="relative mt-2 text-sm text-slate-300">
+        <h1 className="home-title relative">{getGreeting()}</h1>
+        <p className="home-description relative">
           {remainingTasks > 0
             ? `还剩 ${remainingTasks} 个学习动作，按顺序完成就好。${deferredCount ? `另有 ${deferredCount} 项已推迟。` : ''}`
             : deferredCount > 0
               ? `今天还有 ${deferredCount} 项被推迟到明天，已完成 ${completedCount}/${plan.totalCount} 项。`
               : '今天的学习闭环已完成，可以安心收工。'}
         </p>
-        <div className="relative grid grid-cols-3 gap-2 mt-5">
-          <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><Flame className="w-4 h-4 text-amber-300 mb-2" /><p className="text-xl font-bold">{snapshot.stats.streakDays || 0}</p><p className="text-[10px] text-slate-300">连续学习天</p></div>
-          <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><Layers className="w-4 h-4 text-sky-300 mb-2" /><p className="text-xl font-bold">{snapshot.dueWords}</p><p className="text-[10px] text-slate-300">{usingSampleData ? '示例词到期' : '今日到期词'}</p></div>
-          <div className="rounded-2xl bg-white/10 border border-white/10 p-3"><GraduationCap className="w-4 h-4 text-emerald-300 mb-2" /><p className="text-xl font-bold">{snapshot.course.reviewItems}</p><p className="text-[10px] text-slate-300">课程待复习</p></div>
+        <div className="home-metrics relative">
+          <div><Flame size={18} /><strong>{snapshot.stats.streakDays || 0}<small>天</small></strong><p>连续学习</p></div>
+          <div><Layers size={18} /><strong>{snapshot.dueWords}<small>词</small></strong><p>{usingSampleData ? '示例词到期' : '今日到期词'}</p></div>
+          <div><GraduationCap size={18} /><strong>{snapshot.course.reviewItems}<small>项</small></strong><p>课程待复习</p></div>
         </div>
       </div>
 
-      <div className="home-content px-4 -mt-3 relative z-10 space-y-4">
+      <div className="home-content px-4 relative z-10 space-y-4">
         {/* First run: the deck is demo content, so say so instead of presenting 30 due cards as
             the learner's own progress. */}
         {showDemoNotice && usingSampleData && (

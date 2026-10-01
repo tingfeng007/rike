@@ -580,7 +580,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   const missingMeaningCount = vocabulary.filter((word) => !word.translation?.trim()).length;
 
   return (
-    <div className="study-page flex flex-col h-full">
+    <div className="study-page vocab-page flex flex-col h-full">
       {activeTab === 'flashcard' ? (
         <header className="flex-none border-b border-stone-200 bg-[#fffdf8] px-4 py-2.5">
           <div className="flex items-center justify-between gap-2">
