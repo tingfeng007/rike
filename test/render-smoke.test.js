@@ -36,6 +36,7 @@ const PAGES = [
   ['NewConcept', '/src/components/NewConcept.jsx', { intent: null }],
   ['GrammarLab', '/src/components/GrammarLab.jsx', { onOpenSettings: () => {} }],
   ['Settings', '/src/components/Settings.jsx', {}],
+  ['Dictionary', '/src/components/Dictionary.jsx', { onNavigate: () => {} }],
 ];
 
 for (const [name, path, props] of PAGES) {

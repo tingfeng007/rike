@@ -9,11 +9,12 @@ const OralCoach = lazy(() => import('./components/OralCoach'));
 const SmartReader = lazy(() => import('./components/SmartReader'));
 const Settings = lazy(() => import('./components/Settings'));
 const NewConcept = lazy(() => import('./components/NewConcept'));
+const Dictionary = lazy(() => import('./components/Dictionary'));
 // 「生词 + 语法」合并为一个导航项（内部由 WordGrammarHub 切换板块）
 const WordGrammarHub = lazy(() => import('./components/WordGrammarHub'));
 
 // 'grammar' 保留在集合里只为兼容历史保存的 activeTab：它现在由「词法」板块承载。
-const VALID_TABS = new Set(['home', 'oral', 'reader', 'nce', 'vocab', 'settings']);
+const VALID_TABS = new Set(['home', 'oral', 'reader', 'nce', 'vocab', 'dictionary', 'settings']);
 
 function PageFallback() {
   return (
@@ -48,6 +49,7 @@ export default function App() {
   const [oralIntent, setOralIntent] = useState(null);
   // 「词法」板块内部的跳转意图（section: 'vocab' | 'grammar'）
   const [wordGrammarIntent, setWordGrammarIntent] = useState(null);
+  const [dictionaryIntent, setDictionaryIntent] = useState(null);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
 
@@ -92,6 +94,8 @@ export default function App() {
       setOralIntent({ token, scenarioId: options.scenarioId || '', practiceWords: options.practiceWords });
     } else if (tab === 'vocab') {
       setWordGrammarIntent({ token, section: options.section || 'vocab', wordIds: options.wordIds, taskId: options.taskId });
+    } else if (tab === 'dictionary') {
+      setDictionaryIntent({ token, query: options.query || '' });
     }
 
     setActiveTab(tab);
@@ -104,6 +108,7 @@ export default function App() {
     if (source.type === 'reader') navigate('reader', { articleId: source.id });
     else if (source.type === 'nce') navigate('nce', { lesson: source.id });
     else if (source.type === 'oral') navigate('oral', { scenarioId: source.id });
+    else if (source.type === 'dictionary') navigate('dictionary', { query: source.id });
   };
 
   // Check how many cards are due today for review
@@ -150,6 +155,7 @@ export default function App() {
             />
           )}
           {activeTab === 'settings' && <Settings />}
+          {activeTab === 'dictionary' && <Dictionary onNavigate={navigate} intent={dictionaryIntent} />}
         </Suspense>
         </ErrorBoundary>
       </main>

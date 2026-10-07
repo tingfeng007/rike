@@ -5,6 +5,7 @@ import {
   Home,
   Layers,
   MessageSquare,
+  Search,
   Settings,
   Sparkles,
 } from 'lucide-react';
@@ -54,6 +55,15 @@ export default function AppNavigation({
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        className="nav-dictionary"
+        aria-current={activeTab === 'dictionary' ? 'page' : undefined}
+        onClick={() => onNavigate('dictionary')}
+      >
+        <Search size={21} strokeWidth={1.9} />
+        <span>词典</span>
+      </button>
       <div className="nav-encouragement">
         <Sparkles size={20} />
         <strong>小小进步，也算数。</strong>

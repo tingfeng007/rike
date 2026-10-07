@@ -12,7 +12,7 @@ body { background: #e9eaf0; }
 .app-shell :is(input, textarea, select) { accent-color: #3478f6; }
 
 /* A compact floating tab bar on phones and a calm navigation rail on large screens. */
-.app-nav { flex: none; z-index: 30; padding: 6px 14px max(env(safe-area-inset-bottom, 0px), 12px); background: var(--paper); }
+.app-nav { flex: none; z-index: 30; display: flex; justify-content: center; align-items: center; gap: 8px; padding: 6px 14px max(env(safe-area-inset-bottom, 0px), 12px); background: var(--paper); }
 .app-navigation { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; max-width: 620px; padding: 7px 5px; margin-inline: auto; border: 1px solid #ffffffde; border-radius: 28px; background: #ffffffd9; backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 5px 24px -10px #30395126; }
 .nav-link { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 48px; color: #90939f; font-size: 10px; font-weight: 550; border-radius: 20px; }
 .nav-icon { position: relative; display: grid; place-items: center; width: 38px; height: 27px; border-radius: 12px; }
@@ -21,6 +21,12 @@ body { background: #e9eaf0; }
 .nav-link[aria-current="page"] svg { stroke-width: 2.3; }
 .nav-badge { position: absolute; top: -5px; right: -3px; min-width: 15px; border-radius: 12px; border: 2px solid #fff; background: #ff827b; color: #fff; padding: 0 3px; font-size: 9px; line-height: 13px; }
 .nav-brand, .nav-settings, .nav-caption, .nav-encouragement { display: none; }
+.app-navigation { flex: 1; margin-inline: 0; }
+.nav-dictionary { display: flex; flex: none; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 56px; height: 63px; border: 1px solid #ffffffde; border-radius: 23px; background: #ffffffd9; color: #90939f; font-size: 10px; box-shadow: 0 5px 24px -10px #30395126; }
+.nav-dictionary[aria-current="page"] { background: #e7efff; color: #3478f6; font-weight: 700; }
+.today-dictionary { display: flex; align-items: center; gap: 10px; width: 100%; padding: 15px 17px; border-radius: 17px; background: #fff; color: #9aabc4; text-align: left; }
+.today-dictionary > span:first-of-type { flex: 1; font-size: 12px; color: #919bad; }
+.today-dictionary > span:last-of-type { font-size: 9px; color: #a7b4c9; }
 
 /* iOS large titles with secondary status below, separate from actions. */
 .study-hero { border: 0; background: var(--paper); color: var(--ink); padding: max(env(safe-area-inset-top, 0px), 22px) 20px 12px; }
@@ -284,7 +290,7 @@ summary::-webkit-details-marker { display: none; }
 
 @media (min-width: 760px) {
   .today-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 28px; padding: 38px 32px; }
-  .today-heading, .today-overview, .today-notices, .today-footer { grid-column: 1 / -1; }
+  .today-heading, .today-dictionary, .today-overview, .today-notices, .today-footer { grid-column: 1 / -1; }
   .today-heading h1 { font-size: 38px; }
   .today-heading p { font-size: 13px; }
   .today-overview { justify-content: start; gap: 55px; padding-bottom: 5px; }
@@ -329,13 +335,15 @@ summary::-webkit-details-marker { display: none; }
 }
 @media (min-width: 1100px) {
   .app-shell { flex-direction: row; }
-  .app-nav { order: -1; display: flex; flex-direction: column; gap: 0; width: 208px; padding: 37px 18px 24px; border: 0; border-right: 1px solid #e8e9ef; background: #fbfbfd; }
+  .app-nav { order: -1; display: flex; flex-direction: column; align-items: stretch; gap: 0; width: 208px; padding: 37px 18px 24px; border: 0; border-right: 1px solid #e8e9ef; background: #fbfbfd; }
   .nav-brand { display: flex; align-items: center; gap: 10px; }
   .nav-brand-mark { display: grid; place-items: center; width: 42px; height: 42px; background: #3478f6; color: #fff; border-radius: 15px; box-shadow: 0 5px 12px #3478f629; }
   .nav-brand strong { font-size: 19px; color: #313747; font-weight: 750; letter-spacing: -.045em; }
   .nav-brand strong span { display: block; margin-top: 5px; font-size: 7px; font-weight: 550; color: #a0a6b5; letter-spacing: .08em; }
   .nav-caption { display: block; margin: 43px 0 12px 16px; font-size: 10px; color: #b5b8c4; }
-  .app-navigation { display: flex; flex-direction: column; padding: 0; gap: 9px; width: 100%; background: none; border: 0; box-shadow: none; backdrop-filter: none; margin: 0; }
+  .app-navigation { display: flex; flex: none; flex-direction: column; padding: 0; gap: 9px; width: 100%; background: none; border: 0; box-shadow: none; backdrop-filter: none; margin: 0; }
+  .nav-dictionary { flex-direction: row; justify-content: start; gap: 13px; width: 100%; height: 50px; margin-top: 9px; padding: 13px 17px; border: 0; background: none; border-radius: 16px; box-shadow: none; font-size: 13px; }
+  .nav-dictionary:hover { background: #f0f3fa; }
   .nav-link { flex-direction: row; justify-content: start; gap: 10px; font-size: 13px; padding: 13px 15px; min-height: 50px; border-radius: 16px; }
   .nav-icon { width: 24px; height: 25px; }
   .nav-link[aria-current="page"] { background: #e9efff; }

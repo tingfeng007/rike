@@ -11,6 +11,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   Settings,
+  Search,
   Sparkles,
   Timer,
 } from 'lucide-react';
@@ -105,6 +106,10 @@ export default function HomeTodayView({
             </button>
           </div>
         </header>
+
+        <button type="button" className="today-dictionary" onClick={() => onNavigate('dictionary')}>
+          <Search size={19} /><span>查个单词，读懂新表达</span><span>英汉词典</span><ArrowRight size={16} />
+        </button>
 
         <div className="today-overview" aria-label="学习概览">
           <div>
