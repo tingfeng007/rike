@@ -55,6 +55,7 @@ export default function Dictionary({ onNavigate = () => {}, intent = null }) {
   const [submitted, setSubmitted] = useState('');
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [onlineLookup, setOnlineLookup] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -144,6 +145,7 @@ export default function Dictionary({ onNavigate = () => {}, intent = null }) {
     setEntry(null);
     setError('');
     setLoading(true);
+    setOnlineLookup(online);
     setEnriching(false);
     try {
       const result = online
@@ -163,8 +165,12 @@ export default function Dictionary({ onNavigate = () => {}, intent = null }) {
       if (current.isCurrent())
         setError(
           cause.name === 'TimeoutError'
-            ? '词库加载超时，请检查网络后重试。'
-            : cause.message || '暂时无法查词，请稍后重试。',
+            ? online
+              ? '在线词典查询超时，请稍后重试。基础词库仍可直接查询。'
+              : '词库加载超时，请检查网络后重试。'
+            : cause.name === 'TypeError'
+              ? '词典连接失败，请检查网络后重试。'
+              : cause.message || '暂时无法查词，请稍后重试。',
         );
     } finally {
       if (current.isCurrent()) setLoading(false);
@@ -366,7 +372,10 @@ export default function Dictionary({ onNavigate = () => {}, intent = null }) {
                 <Search size={28} />
                 <h2>暂时没查到</h2>
                 <p>{error}</p>
-                <button type="button" onClick={() => search(query)}>
+                <button
+                  type="button"
+                  onClick={() => search(query, onlineLookup)}
+                >
                   重新查词
                 </button>
               </div>
