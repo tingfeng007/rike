@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
+  buildDictionaryWordPayload,
   clearDictionaryHistory,
   createDictionaryService,
   decodeDictionaryRow,
@@ -32,6 +33,22 @@ const row = [
 ];
 const fetchShard = async (url) =>
   new Response(await readFile(new URL(`../public${url}`, import.meta.url)));
+
+test('dictionary flashcards keep meanings, pronunciation and source without repeated POS labels', () => {
+  const payload = buildDictionaryWordPayload(decodeDictionaryRow(row));
+  assert.equal(payload.translation, '学习；学问');
+  assert.equal(payload.pos, 'v. / n.');
+  assert.equal(payload.phonetic, '/lɜːn/');
+  assert.equal(payload.sources[0].id, 'learn');
+  assert.equal(payload.sources[0].type, 'dictionary');
+  assert.equal(
+    buildDictionaryWordPayload({
+      ...decodeDictionaryRow(row),
+      englishOnly: true,
+    }).translation,
+    '',
+  );
+});
 
 test('dictionary query normalization accepts phrases and rejects unsuitable input', () => {
   assert.equal(

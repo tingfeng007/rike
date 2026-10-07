@@ -18,6 +18,7 @@ import { analyzeWordWithAI, describeAIError, hasApiKey } from '../services/ai';
 import { tts } from '../services/speech';
 import { createLatestRequest } from '../services/latestRequest';
 import {
+  buildDictionaryWordPayload,
   clearDictionaryHistory,
   createDictionaryService,
   DICTIONARY_WORD_COUNT,
@@ -234,24 +235,7 @@ export default function Dictionary({ onNavigate = () => {}, intent = null }) {
 
   function saveWord() {
     if (!entry) return;
-    const word = StorageService.addWord({
-      word: entry.word,
-      phonetic: entry.phonetic,
-      pos: entry.pos,
-      translation: entry.translation,
-      definitionEn: entry.definitionEn,
-      contextSentence: entry.contextSentence,
-      contextSentenceCn: entry.contextSentenceCn,
-      tags: ['词典查词'],
-      sources: [
-        {
-          type: 'dictionary',
-          id: normalizeDictionaryQuery(entry.word),
-          key: `dictionary:${normalizeDictionaryQuery(entry.word)}`,
-          label: '英汉词典',
-        },
-      ],
-    });
+    const word = StorageService.addWord(buildDictionaryWordPayload(entry));
     if (word) {
       setSavedWords(StorageService.getVocabulary());
       toast.success('已加入生词本，可以在闪卡里复习了。');

@@ -25,6 +25,30 @@ export function isDictionaryQuery(value) {
   return /^[a-z][a-z '.-]{0,63}$/i.test(normalizeDictionaryQuery(value));
 }
 
+export function buildDictionaryWordPayload(entry) {
+  return {
+    word: clean(entry.word),
+    phonetic: clean(entry.phonetic),
+    pos: clean(entry.pos),
+    // Flashcards already display POS separately; keep the saved translation free of duplicate labels.
+    translation: entry.englishOnly
+      ? ''
+      : entry.meanings.map((meaning) => clean(meaning.text)).join('；'),
+    definitionEn: clean(entry.definitionEn),
+    contextSentence: clean(entry.contextSentence),
+    contextSentenceCn: clean(entry.contextSentenceCn),
+    tags: ['词典查词'],
+    sources: [
+      {
+        type: 'dictionary',
+        id: normalizeDictionaryQuery(entry.word),
+        key: `dictionary:${normalizeDictionaryQuery(entry.word)}`,
+        label: '英汉词典',
+      },
+    ],
+  };
+}
+
 const formLabels = {
   d: '过去式',
   p: '过去分词',
