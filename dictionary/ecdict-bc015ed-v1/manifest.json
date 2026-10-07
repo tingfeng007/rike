@@ -1,0 +1,115 @@
+{
+  "version": "ecdict-bc015ed-v1",
+  "source": "https://github.com/skywind3000/ECDICT",
+  "commit": "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b",
+  "license": "MIT",
+  "shards": {
+    "a": {
+      "count": 3548,
+      "bytes": 653362
+    },
+    "b": {
+      "count": 3630,
+      "bytes": 634050
+    },
+    "c": {
+      "count": 5475,
+      "bytes": 1071621
+    },
+    "d": {
+      "count": 3433,
+      "bytes": 641166
+    },
+    "e": {
+      "count": 2360,
+      "bytes": 437638
+    },
+    "f": {
+      "count": 2409,
+      "bytes": 465831
+    },
+    "g": {
+      "count": 2048,
+      "bytes": 360690
+    },
+    "h": {
+      "count": 2442,
+      "bytes": 427993
+    },
+    "i": {
+      "count": 2390,
+      "bytes": 458141
+    },
+    "j": {
+      "count": 641,
+      "bytes": 108714
+    },
+    "k": {
+      "count": 702,
+      "bytes": 106517
+    },
+    "l": {
+      "count": 2047,
+      "bytes": 362575
+    },
+    "m": {
+      "count": 3614,
+      "bytes": 625403
+    },
+    "n": {
+      "count": 1355,
+      "bytes": 227944
+    },
+    "o": {
+      "count": 1420,
+      "bytes": 261534
+    },
+    "p": {
+      "count": 4452,
+      "bytes": 893599
+    },
+    "q": {
+      "count": 255,
+      "bytes": 50111
+    },
+    "r": {
+      "count": 3080,
+      "bytes": 613079
+    },
+    "s": {
+      "count": 6305,
+      "bytes": 1248574
+    },
+    "t": {
+      "count": 2882,
+      "bytes": 564079
+    },
+    "u": {
+      "count": 1775,
+      "bytes": 288384
+    },
+    "v": {
+      "count": 901,
+      "bytes": 167903
+    },
+    "w": {
+      "count": 1586,
+      "bytes": 286967
+    },
+    "x": {
+      "count": 40,
+      "bytes": 6117
+    },
+    "y": {
+      "count": 198,
+      "bytes": 32378
+    },
+    "z": {
+      "count": 148,
+      "bytes": 24021
+    }
+  },
+  "count": 59136,
+  "bytes": 11018391,
+  "sourceSha256": "1a6947e04785db63613a92e14903cdae7954f7e84860b10e68e5c7cbb3f9c3cf"
+}
