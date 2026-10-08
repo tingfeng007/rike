@@ -1,0 +1,74 @@
+/* Readable type, restrained surfaces, and layouts shared by every learning flow. */
+.app-startup { display: grid; place-items: center; min-height: 100dvh; color: #526079; font-size: 15px; }
+.storage-alert { display: flex; flex: none; align-items: center; gap: 10px; padding: 10px 16px; background: #fff3d9; color: #714708; font-size: 13px; z-index: 40; }
+.storage-alert span { flex: 1; }
+.storage-alert button { flex: none; font-weight: 650; }
+.nav-link, .nav-dictionary { color: #59677b; font-size: 12px; }
+.nav-caption, .nav-settings, .study-header-status, .study-header-description,
+.today-date, .today-heading p, .today-overview p, .today-overview small,
+.today-section-title > span, .explore-card p, .plan-footnote, .task-order { color: var(--text-secondary); }
+.study-header-status, .study-header-description, .today-heading p, .explore-card p { font-size: 13px; }
+.today-layout { gap: 20px; }
+.today-heading-row { margin-top: 10px; }
+.today-heading h1 { font-size: 29px; letter-spacing: -.035em; }
+.today-focus { padding: 22px; }
+.focus-eyebrow { font-size: 11px; letter-spacing: .04em; }
+.focus-start { margin-top: 16px; min-height: 44px; }
+.today-focus h2 { margin-top: 10px; }
+.focus-minutes, .focus-ring small { font-size: 11px; color: #f0f5ff; }
+.today-overview p { font-size: 12px; }
+.today-dictionary > span:first-of-type { font-size: 14px; color: #526079; }
+.today-dictionary > span:last-of-type { font-size: 11px; color: #526079; }
+.today-demo-intro { padding: 15px 17px; border: 1px solid #dce8fc; background: #edf4ff; border-radius: 18px; }
+.today-demo-intro p { font-size: 13px; line-height: 1.7; }
+.today-demo-intro button { min-height: 40px; }
+.explore-card { padding: 16px; }
+.explore-card strong { margin-top: 12px; }
+.grammar-page .study-card :is(p, li, ul) { font-size: 14px; line-height: 1.85; }
+.grammar-page .study-card h3 { font-size: 15px; }
+.grammar-topic { background: #fff; color: #526079; border-color: #e3e9f2; }
+.grammar-topic.is-active { background: #edf4ff; border-color: #a6c6ff; color: #205ec8; }
+.grammar-lesson { background: #fff; border-color: #e3e9f2; }
+.grammar-section { border-color: #e3e9f2; }
+.dictionary-sheet { height: 88dvh; max-height: 88dvh; }
+.dictionary-sheet > .overflow-y-auto { padding: 0; }
+.dictionary-page.is-embedded { height: auto; overflow: visible; background: #f5f7fb; }
+.is-embedded .dictionary-layout { padding: 16px; }
+.is-embedded .dictionary-header { margin-bottom: 14px; }
+.is-embedded .dictionary-header h1 { font-size: 22px; margin-top: 0; }
+.is-embedded .dictionary-header p, .is-embedded .dictionary-mark { display: none; }
+.is-embedded .dictionary-header div > span { color: #526079; }
+.dictionary-ipa-source { display: block; font-size: 11px; color: #59677b; margin-top: 7px; }
+.dictionary-page :is(.dictionary-header p, .dictionary-header div > span, .dictionary-entry-label) { color: #59677b; }
+.dictionary-page button { min-height: 40px; }
+.settings-section-nav { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; }
+.settings-section-nav button { min-height: 44px; padding: 7px 4px; border-radius: 12px; background: #fff; color: #246be8; font-size: 12px; font-weight: 650; }
+.settings-intro { font-size: 13px; color: #59677b; line-height: 1.7; }
+.settings-group { border-radius: 20px; background: #fff; overflow: hidden; scroll-margin-top: 12px; }
+.settings-group > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 18px; font-size: 15px; font-weight: 650; }
+.settings-group > summary span { color: #59677b; font-size: 12px; font-weight: 400; }
+.settings-group[open] > summary { border-bottom: 1px solid #e3e9f2; }
+@media (min-width: 760px) {
+  .today-demo-intro, .today-explore, .today-weekly { grid-column: 1 / -1; }
+  .today-focus { grid-column: 1; }
+  .today-plan { grid-column: 2; align-self: start; }
+  .today-explore .explore-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .today-weekly { margin-top: 0; }
+}
+@media (max-width: 759px) {
+  .today-layout { padding: max(env(safe-area-inset-top, 0px), 20px) 16px 22px; gap: 18px; }
+  .today-heading h1 { font-size: 27px; }
+  .today-focus { padding: 19px; border-radius: 23px; }
+  .today-focus h2 { font-size: 22px; }
+  .focus-ring { width: 76px; height: 76px; }
+  .today-overview { gap: 6px; }
+  .today-overview > div { gap: 7px; }
+  .overview-icon { width: 29px; height: 33px; }
+  .app-nav { padding-inline: 10px; gap: 6px; }
+  .nav-dictionary { width: 48px; }
+  .app-navigation { padding-inline: 3px; }
+  .storage-alert { font-size: 12px; padding: 8px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

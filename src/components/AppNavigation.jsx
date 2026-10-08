@@ -15,7 +15,7 @@ const destinations = [
   { id: 'oral', label: '口语', icon: MessageSquare },
   { id: 'reader', label: '精读', icon: BookOpen },
   { id: 'nce', label: '新概念', icon: GraduationCap },
-  { id: 'vocab', label: '词法', icon: Layers },
+  { id: 'vocab', label: '复习', icon: Layers },
 ];
 
 export default function AppNavigation({

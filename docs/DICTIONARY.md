@@ -36,3 +36,24 @@ translations, and the UI labels those results as English-only.
 Dictionary queries accept English words and phrases. Chinese reverse lookup is
 not included. Audio uses the existing non-course speech service. The original
 New Concept course recordings are unchanged.
+
+## Pronunciation data update (2026-10-08)
+
+Data version: `ecdict-bc015ed-ipa-v2`. Empty pronunciation fields were supplemented
+from the MIT-licensed [ipa-dict](https://github.com/open-dict-data/ipa-dict) General
+American dictionary, pinned to `43c3570eb3553bdd19fccd2bd0091534889af023`.
+The first listed variant is used; existing ECDICT pronunciation is preserved.
+Each supplemented row records its source in field 6, and the UI displays it.
+6,827 missing entries were filled; 4,503 still have no verified transcription.
+The app displays that absence explicitly and never generates an invented IPA.
+
+After the ECDICT build, run:
+
+```powershell
+python scripts/enrich-dictionary-ipa.py <en_US.txt-path> <ipa-dict-license-path>
+```
+
+The enrichment script records the source file hash, pinned commit, missing count
+and updated shard sizes in the manifest. Both licenses are distributed with the
+data. Old lookup results refresh to this version when online, retaining saved
+AI examples; cached results remain usable offline.

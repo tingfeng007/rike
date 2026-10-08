@@ -26,12 +26,14 @@ import NceExam from './NceExam';
 import NceReview from './NceReview';
 import { tts } from '../services/speech';
 import { StorageService } from '../services/storage';
-import { buildDictationItems, buildExercises, buildNceWordPayload, extractWords, parseLrc, safeAssetName } from '../services/nce';
+import { buildDictationItems, buildExercises, buildNceWordPayload, buildCourseCaptions, extractWords, parseLrc, safeAssetName } from '../services/nce';
 import { buildNceReviewQueue, resolveNceReviewMistake } from '../services/nceReview';
-import { getNceMastery, getNceNextReviewAt, isNceReviewDue } from '../services/nceMastery';
+import { completeNceRecall, getNceMastery, isNceReviewDue } from '../services/nceMastery';
+import { commitNceProgress, countCorrectNceAnswers, recordFirstNceAnswer } from '../services/nceProgress';
 import { cacheCourseAudio, getCachedCourseAudioUrl, supportsCourseCache, isCoursePackageReady } from '../services/offline';
 import { onEnterSubmit } from '../services/keyboard';
-import { analyzeWordWithAI, describeAIError } from '../services/ai';
+import { lookupLearningWord } from '../services/learningLookup';
+import { createLatestRequest } from '../services/latestRequest';
 import { useToast } from './ui/toastContext';
 import { IconButton } from './ui/IconButton';
 
@@ -104,6 +106,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   const [reviewUnitFilename, setReviewUnitFilename] = useState('');
   const [usingOfflineCopy, setUsingOfflineCopy] = useState(false);
   const [audioSourceUrl, setAudioSourceUrl] = useState('');
+  const [captionsUrl, setCaptionsUrl] = useState('');
   const [audioCacheState, setAudioCacheState] = useState('idle');
   const downloadAbortRef = useRef(null);
   const audioRef = useRef(null);
@@ -112,9 +115,16 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   const lastSavedSecondRef = useRef(-1);
   const requestSeqRef = useRef(0);
   const pendingLineIdRef = useRef('');
+  const handledIntentRef = useRef(null);
   const requestAbortRef = useRef(null);
   const sentenceLoopRef = useRef({ lineIndex: -1, remaining: 0 });
   const ttsLoopRef = useRef(0);
+  const wordLookupGate = useRef(createLatestRequest());
+  const exerciseAnswersRef = useRef({});
+  const exerciseAnswerLockRef = useRef('');
+  const exerciseCompletionRef = useRef(false);
+  const recallEvidenceRef = useRef(null);
+  const recallSessionRef = useRef('');
 
   useEffect(() => {
     progressRef.current = progress;
@@ -123,6 +133,8 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   useEffect(() => {
     let disposed = false;
     const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => { timedOut = true; controller.abort(); }, 12000);
     const cachedBook = StorageService.getNceCache().book;
 
     if (cachedBook?.units?.length) {
@@ -143,19 +155,21 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
         setUsingOfflineCopy(false);
       })
       .catch((err) => {
-        if (disposed || err.name === 'AbortError') return;
+        if (disposed || (err.name === 'AbortError' && !timedOut)) return;
         if (cachedBook?.units?.length) {
           setUsingOfflineCopy(true);
         } else {
-          setError(`${err.message}。请确认设备联网后重试。`);
+          setError(`${timedOut ? '课程目录加载超时' : err.message}。请确认设备联网后重试。`);
         }
       })
       .finally(() => {
+        window.clearTimeout(timeoutId);
         if (!disposed) setLoading(false);
       });
 
     return () => {
       disposed = true;
+      window.clearTimeout(timeoutId);
       controller.abort();
     };
   }, []);
@@ -163,6 +177,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   useEffect(() => () => {
     requestAbortRef.current?.abort();
     downloadAbortRef.current?.abort();
+    wordLookupGate.current.cancel();
     audioRef.current?.pause();
     ttsLoopRef.current += 1;
     sentenceLoopRef.current = { lineIndex: -1, remaining: 0 };
@@ -205,7 +220,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   const previousUnit = selectedUnitIndex > 0 ? units[selectedUnitIndex - 1] : null;
   const nextUnit = selectedUnitIndex >= 0 && selectedUnitIndex < units.length - 1 ? units[selectedUnitIndex + 1] : null;
   const currentProgress = selectedUnit ? progress[selectedUnit.filename] || {} : {};
-  const unsavedWordCount = lessonWords.filter((item) => !savedWords.has(item.word)).length;
+  const unsavedWordCount = lessonWords.filter((item) => !savedWords.get(item.word)?.translation).length;
   const bookmarkedLineIds = new Set(currentProgress.bookmarkedLineIds || []);
   const currentReviewCount = pendingReviewCount(currentProgress);
   const masterySteps = [
@@ -232,30 +247,36 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
     });
   }, [courseFilter, courseSearch, progress, units]);
 
-  const saveProgress = (filename, patch) => {
+  const saveProgress = (filename, patch, activity = null) => {
     const current = progressRef.current;
-    const mergedItem = { ...(current[filename] || {}), ...patch };
-    const mastery = getNceMastery(mergedItem);
-    const next = {
-      ...current,
-      [filename]: {
-        ...mergedItem,
-        masteryScore: mastery.score,
-        nextReviewAt: patch.nextReviewAt || mergedItem.nextReviewAt || (mastery.score > 0 ? getNceNextReviewAt(mergedItem) : 0),
-        lastStudiedAt: Date.now(),
-      },
-    };
+    const next = commitNceProgress(current, filename, patch, {
+      persist: (value) => StorageService.saveNceProgress(value),
+      recordActivity: (value) => StorageService.recordStudyActivity(value),
+      activity,
+    });
+    if (!next) {
+      setError('学习进度暂时无法保存。请导出备份或清理浏览器存储空间。');
+      return false;
+    }
     progressRef.current = next;
     setProgress(next);
-    if (!StorageService.saveNceProgress(next)) {
-      setError('学习进度暂时无法保存。请导出备份或清理浏览器存储空间。');
-    }
+    return true;
   };
 
   const openUnit = async (unit, { lineId = '' } = {}) => {
     // Remember which line to highlight once the subtitles arrive (used by the review page's
     // "回到该句" action). The existing activeLine effect scrolls it into view.
     downloadAbortRef.current?.abort();
+    wordLookupGate.current.cancel();
+    setAnalyzingWordKey('');
+    setWordAnalyses(new Map());
+    setIsSavingAllWords(false);
+    setSavedWords(new Map(StorageService.getVocabulary().map((word) => [word.word.toLowerCase(), word])));
+    exerciseAnswersRef.current = {};
+    exerciseAnswerLockRef.current = '';
+    exerciseCompletionRef.current = false;
+    recallEvidenceRef.current = null;
+    recallSessionRef.current = `${unit.filename}:${Date.now()}:${requestSeqRef.current + 1}`;
     pendingLineIdRef.current = lineId || '';
     const requestId = requestSeqRef.current + 1;
     requestSeqRef.current = requestId;
@@ -331,12 +352,15 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   // the course map instead of the lesson.
   useEffect(() => {
     if (!intent?.token || units.length === 0) return;
+    if (handledIntentRef.current === intent.token) return;
     setReviewTargets(intent.reviewIds || null);
     if (intent.entry) setView(intent.entry === 'exam' ? 'exam' : 'review');
 
-    if (!intent.lessonId) return;
-    const unit = units.find((item) => item.filename === intent.lessonId);
+    const requestedUnit = intent.lessonId || intent.unit;
+    if (!requestedUnit) { handledIntentRef.current = intent.token; return; }
+    const unit = units.find((item) => item.filename === requestedUnit);
     if (!unit) return;
+    handledIntentRef.current = intent.token;
     openUnit(unit, { lineId: intent.lineId });
     // openUnit intentionally runs once per explicit intent (guarded by the token).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -357,6 +381,9 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   }, [activeLine, followAudio]);
 
   const backToLessons = () => {
+    wordLookupGate.current.cancel();
+    downloadAbortRef.current?.abort();
+    setIsSavingAllWords(false);
     requestSeqRef.current += 1;
     requestAbortRef.current?.abort();
     audioRef.current?.pause();
@@ -401,16 +428,14 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
     const current = progressRef.current;
     const next = resolveNceReviewMistake(current, item);
     if (next === current) return false;
-    if (!StorageService.saveNceProgress(next)) return false;
-    progressRef.current = next;
-    setProgress(next);
-    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-review', entityId: item.unitId, label: '新概念错题复盘' });
-    return true;
+    return saveProgress(item.unitId, next[item.unitId], { type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-review', entityId: item.unitId, label: '新概念错题复盘' });
   };
 
   const handleExamComplete = (attempt) => {
     const previous = progressRef.current[attempt.unitId] || {};
-    saveProgress(attempt.unitId, {
+    if (previous.lastExamAttemptId === attempt.id) return true;
+    return saveProgress(attempt.unitId, {
+      lastExamAttemptId: attempt.id,
       examAttempts: (previous.examAttempts || 0) + 1,
       examScore: attempt.score,
       examBest: Math.max(previous.examBest || 0, attempt.score),
@@ -420,8 +445,15 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
         answer: result.answer,
         submitted: result.submitted,
       })),
-    });
+    }, { type: 'course', count: 1, source: 'nce-exam', entityId: attempt.unitId, label: '完成新概念单元测验', metadata: { score: attempt.score, attemptId: attempt.id } });
   };
+
+  useEffect(() => {
+    if (!lines.length) { setCaptionsUrl(''); return undefined; }
+    const url = URL.createObjectURL(new Blob([buildCourseCaptions(lines)], { type: 'text/vtt' }));
+    setCaptionsUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [lines]);
 
   const audioUrl = selectedUnit ? `${NCE1_BASE}/${safeAssetName(selectedUnit.filename)}.mp3` : '';
 
@@ -447,13 +479,20 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
       disposed = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [audioUrl]);
+  }, [audioUrl, selectedUnit]);
 
   const handleCacheAudio = async () => {
+    if (audioCacheState === 'caching') {
+      downloadAbortRef.current?.abort();
+      setAudioCacheState('idle');
+      return;
+    }
     if (!audioUrl || !selectedUnit || !supportsCourseCache()) { setAudioCacheState('unsupported'); return; }
     downloadAbortRef.current?.abort();
     const controller = new AbortController();
     downloadAbortRef.current = controller;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => { timedOut = true; controller.abort(); }, 60000);
     const unit = selectedUnit;
     setAudioCacheState('caching');
     try {
@@ -470,8 +509,11 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
         toast.success('本课离线包已就绪：课文、字幕和原版音频均已保存。');
       }
     } catch (error) {
-      if (!controller.signal.aborted) { setAudioCacheState('error'); toast.error(error.message || '离线包下载失败，请重试。'); }
-    } finally { if (downloadAbortRef.current === controller) downloadAbortRef.current = null; }
+      if (downloadAbortRef.current === controller && (!controller.signal.aborted || timedOut)) { setAudioCacheState('error'); toast.error(timedOut ? '离线包下载超时，请检查网络后重试。' : error.message || '离线包下载失败，请重试。'); }
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (downloadAbortRef.current === controller) downloadAbortRef.current = null;
+    }
   };
 
   const cancelSentenceLoop = (stopAudio = false) => {
@@ -545,13 +587,10 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   };
 
   const answerExercise = (answer) => {
-    if (!currentExercise || exerciseResult) return;
+    if (!currentExercise || exerciseResult || exerciseAnswerLockRef.current === currentExercise.id) return;
     const normalized = String(answer || '').trim().toLowerCase();
     if (!normalized) return;
-    setExerciseAnswer(answer);
     const isCorrect = normalized === currentExercise.answer;
-    setExerciseResult(isCorrect ? 'correct' : 'wrong');
-    if (isCorrect) setExerciseCorrectCount((value) => value + 1);
 
     if (selectedUnit) {
       const lessonProgress = progressRef.current[selectedUnit.filename] || {};
@@ -570,16 +609,25 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
           sourceText: currentExercise.sourceText || '',
         },
       ];
-      saveProgress(selectedUnit.filename, { exerciseMistakes });
+      if (!saveProgress(selectedUnit.filename, { exerciseMistakes })) return;
     }
+    exerciseAnswerLockRef.current = currentExercise.id;
+    exerciseAnswersRef.current = recordFirstNceAnswer(exerciseAnswersRef.current, currentExercise.id, isCorrect);
+    setExerciseCorrectCount(countCorrectNceAnswers(exercises, exerciseAnswersRef.current));
+    setExerciseAnswer(answer);
+    setExerciseResult(isCorrect ? 'correct' : 'wrong');
   };
 
   const retryExercise = () => {
+    exerciseAnswerLockRef.current = '';
     setExerciseResult(null);
     setExerciseAnswer('');
   };
 
   const resetExercise = () => {
+    exerciseAnswersRef.current = {};
+    exerciseAnswerLockRef.current = '';
+    exerciseCompletionRef.current = false;
     setExerciseIndex(0);
     setExerciseResult(null);
     setExerciseAnswer('');
@@ -588,27 +636,45 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
   };
 
   const nextExercise = () => {
-    setExerciseResult(null);
-    setExerciseAnswer('');
+    if (!exerciseResult || exerciseCompletionRef.current) return;
     if (exerciseIndex + 1 >= exercises.length) {
       if (selectedUnit) {
-        const bestScore = Math.max(currentProgress.exerciseScore || 0, exerciseCorrectCount);
-        if (!saveProgress(selectedUnit.filename, { exercisesCompleted: true, exerciseScore: bestScore, exerciseTotal: exercises.length })) return;
-        StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-exercise', entityId: selectedUnit.filename, label: '新概念句子练习' });
+        const correct = countCorrectNceAnswers(exercises, exerciseAnswersRef.current);
+        const bestScore = Math.min(exercises.length, Math.max(progressRef.current[selectedUnit.filename]?.exerciseScore || 0, correct));
+        if (!saveProgress(selectedUnit.filename, { exercisesCompleted: true, exerciseScore: bestScore, exerciseLastScore: correct, exerciseTotal: exercises.length },
+          { type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-exercise', entityId: selectedUnit.filename, label: '新概念句子练习', metadata: { sessionId: recallSessionRef.current } })) return;
+        const score = Math.round(correct / exercises.length * 100);
+        recallEvidenceRef.current = score >= 80 ? { score, source: 'exercise' } : null;
       }
+      exerciseCompletionRef.current = true;
       setExerciseFinished(true);
       return;
     }
+    exerciseAnswerLockRef.current = '';
+    setExerciseResult(null);
+    setExerciseAnswer('');
     setExerciseIndex((value) => value + 1);
   };
 
   const markComplete = () => {
     if (!selectedUnit) return;
+    const previous = progressRef.current[selectedUnit.filename] || {};
+    if (previous.status === 'completed') return;
     if (!saveProgress(selectedUnit.filename, {
       status: 'completed',
-      completedCount: (currentProgress.completedCount || 0) + 1,
-    })) return;
-    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-lesson', entityId: selectedUnit.filename, label: '完成新概念课程' });
+      completedCount: (previous.completedCount || 0) + 1,
+    }, { type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-lesson', entityId: selectedUnit.filename, label: '完成新概念课程' })) return;
+  };
+
+  const finishRecall = () => {
+    if (!selectedUnit || !recallEvidenceRef.current) return;
+    const previous = progressRef.current[selectedUnit.filename] || {};
+    if (pendingReviewCount(previous) > 0) { toast.info('请先纠正本课今天待复习的错题，再完成回忆复习。'); return; }
+    const patch = completeNceRecall(previous, { ...recallEvidenceRef.current, sessionId: recallSessionRef.current });
+    if (!patch) return;
+    if (!saveProgress(selectedUnit.filename, patch, { type: 'course', count: 1, source: 'nce-course-recall', entityId: selectedUnit.filename, label: '完成本课回忆复习', metadata: { score: recallEvidenceRef.current.score } })) return;
+    recallEvidenceRef.current = null;
+    toast.success('本次回忆复习已保存，下次复习日期已更新。');
   };
 
   const changeLearningView = (nextView) => {
@@ -628,7 +694,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
 
   const saveLessonNote = () => {
     if (!selectedUnit) return;
-    saveProgress(selectedUnit.filename, { note: noteDraft.trim(), noteUpdatedAt: Date.now() });
+    if (!saveProgress(selectedUnit.filename, { note: noteDraft.trim(), noteUpdatedAt: Date.now() })) return;
     setNoteSaved(true);
   };
 
@@ -637,7 +703,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
     const lessonProgress = progressRef.current[selectedUnit.filename] || {};
     const previousMistakes = lessonProgress.dictationMistakes || [];
     const remainingMistakes = previousMistakes.filter((mistake) => mistake.id !== item.id);
-    const dictationMistakes = result.score >= 90 ? remainingMistakes : [
+    const dictationMistakes = result.passed ? remainingMistakes : [
       ...remainingMistakes,
       {
         id: item.id,
@@ -651,17 +717,18 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
         lineId: item.lineId || '',
       },
     ];
-    saveProgress(selectedUnit.filename, { dictationMistakes });
+    return saveProgress(selectedUnit.filename, { dictationMistakes });
   };
 
-  const handleDictationComplete = (averageScore) => {
-    if (!selectedUnit) return;
+  const handleDictationComplete = (averageScore, { firstAnswersPassed = false } = {}) => {
+    if (!selectedUnit) return false;
     const lessonProgress = progressRef.current[selectedUnit.filename] || {};
     if (!saveProgress(selectedUnit.filename, {
       dictationCompleted: true,
       dictationBest: Math.max(lessonProgress.dictationBest || 0, averageScore),
-    })) return;
-    StorageService.recordStudyActivity({ type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-dictation', entityId: selectedUnit.filename, label: '新概念听写' });
+    }, { type: 'course', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'nce-dictation', entityId: selectedUnit.filename, label: '新概念听写', metadata: { sessionId: recallSessionRef.current } })) return false;
+    recallEvidenceRef.current = firstAnswersPassed && averageScore >= 90 && pendingReviewCount(progressRef.current[selectedUnit.filename]) === 0 ? { score: averageScore, source: 'dictation' } : null;
+    return true;
   };
 
   // N-01: the lesson word list showed only the word and its frequency — no meaning, phonetic or
@@ -673,7 +740,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
     const fetched = wordAnalyses.get(key);
     if (fetched) return fetched;
     const saved = savedWords.get(key);
-    if (saved && (saved.translation || saved.phonetic || saved.pos)) {
+    if (saved?.translation) {
       return {
         translation: saved.translation || '',
         phonetic: saved.phonetic || '',
@@ -686,63 +753,90 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
 
   const lookupWord = async (item) => {
     const key = item.word.toLowerCase();
-    if (analyzingWordKey || meaningFor(item)) return;
+    if (analyzingWordKey || isSavingAllWords || meaningFor(item)) return;
+    const request = wordLookupGate.current.start();
     setAnalyzingWordKey(key);
     try {
-      const analysis = await analyzeWordWithAI(item.word, item.sentence);
+      const analysis = await lookupLearningWord(item.word, item.sentence, { signal: request.signal, enrich: false });
+      if (!request.isCurrent()) return;
+      if (!analysis?.translation) { toast.info(`词库暂未收录 “${item.word}”，可以在词典中继续查询。`); return; }
       setWordAnalyses((previous) => new Map(previous).set(key, {
         translation: analysis?.translation || '',
         phonetic: analysis?.phonetic || '',
         pos: analysis?.pos || '',
         definitionEn: analysis?.definitionEn || '',
       }));
-      if (!analysis?.translation) {
-        toast.info(`没有查到 “${item.word}” 的释义，可以稍后重试。`);
-      }
     } catch (error) {
-      toast.error(describeAIError(error, { fallback: `查询 “${item.word}” 失败` }).message);
+      if (request.isCurrent()) toast.error(`查询 “${item.word}” 失败：${error.message || '请检查网络后重试。'}`);
     } finally {
-      setAnalyzingWordKey('');
+      if (request.isCurrent()) setAnalyzingWordKey('');
     }
   };
 
-  const buildWordPayload = (item) => buildNceWordPayload(item, {
-    unitId: selectedUnit?.filename,
-    unitTitle: displayUnitTitle(selectedUnit),
-    meaning: meaningFor(item),
-  });
-
-  const saveWord = (item) => {
-    const saved = StorageService.addWord(buildWordPayload(item));
-    if (!saved) {
-      setWordSaveError('设备存储空间不足，这个单词没有保存。请先导出备份或清理浏览器空间。');
-      return;
+  const saveWord = async (item) => {
+    const unit = selectedUnit;
+    if (!unit || analyzingWordKey || isSavingAllWords) return;
+    const request = wordLookupGate.current.start();
+    setAnalyzingWordKey(item.word.toLowerCase());
+    try {
+      const meaning = meaningFor(item) || await lookupLearningWord(item.word, item.sentence, { signal: request.signal, enrich: false });
+      if (!request.isCurrent()) return;
+      if (!meaning?.translation) { setWordSaveError('这个词暂时没有中文释义，请先在词典中查询或手动补齐后再复习。'); return; }
+      const saved = StorageService.addWord(buildNceWordPayload(item, { unitId: unit.filename, unitTitle: displayUnitTitle(unit), meaning }));
+      if (!saved) {
+        setWordSaveError('设备存储空间不足，这个单词没有保存。请先导出备份或清理浏览器空间。');
+        return;
+      }
+      setWordSaveError('');
+      StorageService.recordStudyActivity({ type: 'vocab', count: 1, source: 'nce-vocab', entityId: selectedUnit.filename, label: '收录新概念单词' });
+      setSavedWords(new Map(StorageService.getVocabulary().map((word) => [word.word.toLowerCase(), word])));
+    } catch (error) {
+      if (request.isCurrent()) setWordSaveError(error.message || '查词失败，请重试。');
+    } finally {
+      if (request.isCurrent()) setAnalyzingWordKey('');
     }
-    setWordSaveError('');
-    StorageService.recordStudyActivity({ type: 'vocab', count: 1, source: 'nce-vocab', entityId: selectedUnit.filename, label: '收录新概念单词' });
-    setSavedWords(new Map(StorageService.getVocabulary().map((word) => [word.word.toLowerCase(), word])));
   };
 
-  const saveAllWords = () => {
+  const saveAllWords = async () => {
     if (isSavingAllWords || unsavedWordCount === 0) return;
+    const request = wordLookupGate.current.start();
+    const unit = selectedUnit;
     setIsSavingAllWords(true);
     const nextSavedWords = new Map(savedWords);
     let addedCount = 0;
-    lessonWords.forEach((item) => {
-      if (nextSavedWords.has(item.word)) return;
-      const saved = StorageService.addWord(buildWordPayload(item));
-      if (saved) {
-        nextSavedWords.set(item.word, saved);
-        addedCount += 1;
+    let skippedCount = 0;
+    try {
+      for (const item of lessonWords) {
+        if (!request.isCurrent()) return;
+        if (nextSavedWords.get(item.word)?.translation) continue;
+        let meaning;
+        try {
+          meaning = meaningFor(item) || await lookupLearningWord(item.word, item.sentence, { signal: request.signal, enrich: false });
+        } catch {
+          if (!request.isCurrent()) return;
+          skippedCount += 1;
+          continue;
+        }
+        if (!request.isCurrent()) return;
+        if (!meaning?.translation) { skippedCount += 1; continue; }
+        const saved = StorageService.addWord(buildNceWordPayload(item, { unitId: unit.filename, unitTitle: displayUnitTitle(unit), meaning }));
+        if (saved) {
+          nextSavedWords.set(item.word, saved);
+          addedCount += 1;
+        } else skippedCount += 1;
       }
-    });
-    setSavedWords(nextSavedWords);
-    setIsSavingAllWords(false);
-    if (addedCount > 0) {
-      setWordSaveError('');
-      StorageService.recordStudyActivity({ type: 'vocab', count: addedCount, durationMinutes: studyClock.takeMinutes(), source: 'nce-vocab', entityId: selectedUnit.filename, label: '批量收录新概念单词' });
-    } else {
-      setWordSaveError('单词没有保存成功，请检查浏览器存储空间。');
+      setSavedWords(nextSavedWords);
+      setIsSavingAllWords(false);
+      if (addedCount > 0) {
+        setWordSaveError(skippedCount ? `已收录 ${addedCount} 个词，另有 ${skippedCount} 个未取得释义或保存失败，请稍后补齐。` : '');
+        StorageService.recordStudyActivity({ type: 'vocab', count: addedCount, durationMinutes: studyClock.takeMinutes(), source: 'nce-vocab', entityId: unit.filename, label: '批量收录新概念单词' });
+      } else {
+        setWordSaveError(`本次 ${skippedCount} 个词暂未取得可用释义或未能保存，请检查网络和本地存储后重试。`);
+      }
+    } catch (error) {
+      if (request.isCurrent()) { setSavedWords(new Map(StorageService.getVocabulary().map((word) => [word.word.toLowerCase(), word]))); setWordSaveError(error.message || '批量查词失败，已保存的词会保留。'); }
+    } finally {
+      if (request.isCurrent()) setIsSavingAllWords(false);
     }
   };
 
@@ -940,8 +1034,8 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
 
       <div className="sticky top-2 z-10 rounded-2xl bg-white/95 backdrop-blur-xl border border-white p-3 mb-3 shadow-lg shadow-slate-900/5">
         <div className="flex items-center justify-between gap-3 mb-2"><span className="text-xs font-semibold text-slate-700">听读训练</span><div className="flex items-center gap-2"><label className="text-[11px] text-slate-400" htmlFor="nce-playback-rate">速度</label><select id="nce-playback-rate" value={playbackRate} onChange={(event) => changePlaybackRate(Number(event.target.value))} className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-slate-600"><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></div></div>
-        <audio ref={audioRef} src={audioSourceUrl || audioUrl} controls preload="metadata" className="w-full" onLoadedMetadata={restoreAudioPosition} onTimeUpdate={handleAudioTimeUpdate} onError={() => setError('这课音频暂时无法加载；可以点击下方句子使用系统朗读。')} onEnded={handleAudioEnded} />
-        <div className="flex items-center gap-1.5 mt-2 overflow-x-auto no-scrollbar"><button type="button" onClick={playCurrentLine} className="flex-none text-xs text-sky-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50"><Play className="w-3.5 h-3.5" />{activeLine >= 0 ? '从当前句播放' : '从第一句开始'}</button><button type="button" onClick={toggleRepeatCurrentLine} disabled={lines.length === 0} className="flex-none text-xs text-amber-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 disabled:opacity-40"><Repeat2 className="w-3.5 h-3.5" />{repeatRemaining ? `停止循环 · ${repeatRemaining}` : '当前句 ×3'}</button><button type="button" onClick={toggleFollowAudio} aria-pressed={followAudio} className={`flex-none text-xs px-2 py-1 rounded-lg transition-colors ${followAudio ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400 bg-slate-50'}`}>{followAudio ? '跟随：开' : '跟随：关'}</button><button type="button" onClick={handleCacheAudio} disabled={audioCacheState === 'caching'} className={`flex-none text-xs px-2 py-1 rounded-lg flex items-center gap-1 ${audioCacheState === 'cached' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}><Download className="w-3.5 h-3.5" />{audioCacheState === 'caching' ? '缓存中…' : audioCacheState === 'cached' ? '已缓存' : audioCacheState === 'error' ? '缓存失败' : '缓存音频'}</button></div>
+        <audio ref={audioRef} src={audioSourceUrl || audioUrl} controls preload="metadata" aria-label="本课原版音频，英文及中文字幕在下方课文中同步显示" className="w-full" onLoadedMetadata={restoreAudioPosition} onTimeUpdate={handleAudioTimeUpdate} onError={() => setError('这课音频暂时无法加载；可以点击下方句子使用系统朗读。')} onEnded={handleAudioEnded} ><track kind="captions" src={captionsUrl || undefined} srcLang="en" label="English / 中文" default /></audio>
+        <div className="flex items-center gap-1.5 mt-2 overflow-x-auto no-scrollbar"><button type="button" onClick={playCurrentLine} className="flex-none text-xs text-sky-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50"><Play className="w-3.5 h-3.5" />{activeLine >= 0 ? '从当前句播放' : '从第一句开始'}</button><button type="button" onClick={toggleRepeatCurrentLine} disabled={lines.length === 0} className="flex-none text-xs text-amber-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 disabled:opacity-40"><Repeat2 className="w-3.5 h-3.5" />{repeatRemaining ? `停止循环 · ${repeatRemaining}` : '当前句 ×3'}</button><button type="button" onClick={toggleFollowAudio} aria-pressed={followAudio} className={`flex-none text-xs px-2 py-1 rounded-lg transition-colors ${followAudio ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400 bg-slate-50'}`}>{followAudio ? '跟随：开' : '跟随：关'}</button><button type="button" onClick={handleCacheAudio} className={`flex-none text-xs px-2 py-1 rounded-lg flex items-center gap-1 ${audioCacheState === 'cached' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}><Download className="w-3.5 h-3.5" />{audioCacheState === 'caching' ? '取消下载' : audioCacheState === 'cached' ? '已缓存' : audioCacheState === 'error' ? '缓存失败' : '缓存音频'}</button></div>
       </div>
 
       {wordSaveError && <div className="rounded-xl bg-rose-50 text-rose-700 text-xs p-3 mb-3">{wordSaveError}</div>}
@@ -979,7 +1073,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
           <div className="flex items-start justify-between gap-3 mb-3"><div><h2 className="font-semibold text-slate-800">本课重点词</h2><p className="text-xs text-slate-400 mt-1">按出现频率排序 · 已收录 {lessonWords.length - unsavedWordCount}/{lessonWords.length}</p></div><button type="button" onClick={saveAllWords} disabled={isSavingAllWords || unsavedWordCount === 0} className="text-xs px-2.5 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed">{isSavingAllWords ? '收录中…' : unsavedWordCount ? `一键收录 ${unsavedWordCount} 词` : '已全部收录'}</button></div>
           <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 mb-3"><Search className="w-4 h-4 text-slate-400" /><input value={wordFilter} onChange={(event) => setWordFilter(event.target.value)} placeholder="筛选本课单词" className="bg-transparent outline-none text-sm flex-1" /></div>
           {selectedUnit && lessonWords.length === 0 ? <div className="text-center py-8 text-sm text-slate-500">课文加载后会生成本课重点词。</div> : <div className="space-y-2">{filteredWords.map((item) => {
-            const saved = savedWords.has(item.word);
+            const saved = Boolean(savedWords.get(item.word)?.translation);
             const meaning = meaningFor(item);
             const isLookingUp = analyzingWordKey === item.word;
             return (
@@ -1029,15 +1123,19 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
       {view === 'exercise' && (
         <div className="rounded-2xl bg-white border border-slate-200 p-4">
           {exerciseFinished ? (
-            <div className="text-center py-5"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto"><CheckCircle2 className="w-8 h-8" /></div><h2 className="font-bold text-slate-900 mt-3">本课练习完成</h2><p className="text-sm text-slate-500 mt-1">本次答对 {exerciseScore}/{exercises.length} 题，复习得分已保存。</p><div className="flex gap-2 justify-center mt-4"><button type="button" onClick={resetExercise} className="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1"><RotateCcw className="w-3.5 h-3.5" />再做一次</button><button type="button" onClick={() => setView('lesson')} className="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold">回到课文</button></div></div>
+            <div className="text-center py-5"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto"><CheckCircle2 className="w-8 h-8" /></div><h2 className="font-bold text-slate-900 mt-3">本课练习完成</h2><p className="text-sm text-slate-500 mt-1">本次首答正确 {exerciseScore}/{exercises.length} 题，复习得分已保存。</p><div className="flex gap-2 justify-center mt-4"><button type="button" onClick={resetExercise} className="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1"><RotateCcw className="w-3.5 h-3.5" />再做一次</button><button type="button" onClick={() => setView('lesson')} className="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold">回到课文</button></div></div>
           ) : currentExercise ? (
-            <><div className="flex items-center justify-between mb-3"><span className="text-xs text-slate-400">练习 {exerciseIndex + 1}/{exercises.length} · 本次答对 {exerciseCorrectCount} 题</span><Sparkles className="w-4 h-4 text-amber-500" /></div><h2 className="font-semibold text-slate-800 mb-3">{currentExercise.prompt}</h2><p className="rounded-xl bg-slate-50 p-3 text-lg leading-8 mb-2">{currentExercise.sentence}</p><p className="text-xs text-slate-500 mb-4">{currentExercise.zh}</p>{currentExercise.type === 'choice' ? <div className="grid grid-cols-2 gap-2">{currentExercise.options.map((option) => { const isCorrect = option.toLowerCase() === currentExercise.answer; const isSelected = exerciseAnswer.trim().toLowerCase() === option.toLowerCase(); const style = exerciseResult && isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : exerciseResult && isSelected ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-slate-200 hover:border-sky-300'; return <button key={option} onClick={() => answerExercise(option)} disabled={Boolean(exerciseResult)} className={`p-2 rounded-xl border text-sm transition-colors ${style}`}>{option}</button>; })}</div> : <div className="flex gap-2"><input value={exerciseAnswer} onChange={(event) => setExerciseAnswer(event.target.value)} onKeyDown={onEnterSubmit(() => answerExercise(exerciseAnswer))} disabled={Boolean(exerciseResult)} placeholder="输入缺少的单词" className="flex-1 border border-slate-200 rounded-xl px-3 text-sm" /><button onClick={() => answerExercise(exerciseAnswer)} disabled={Boolean(exerciseResult)} className="px-4 rounded-xl bg-sky-600 text-white text-sm disabled:opacity-40">检查</button></div>}{exerciseResult && <div className={`mt-4 rounded-xl p-3 text-sm ${exerciseResult === 'correct' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}><p>{exerciseResult === 'correct' ? '答对了，可以继续。' : `再想想。答案是：${currentExercise.answer}`}</p><div className="flex gap-3 mt-2"><button type="button" onClick={nextExercise} className="font-semibold underline">{exerciseIndex + 1 >= exercises.length ? '完成练习' : '下一题'}</button>{exerciseResult === 'wrong' && <button type="button" onClick={retryExercise} className="font-semibold underline">再试一次</button>}</div></div>}</>
+            <><div className="flex items-center justify-between mb-3"><span className="text-xs text-slate-400">练习 {exerciseIndex + 1}/{exercises.length} · 本次首答正确 {exerciseCorrectCount} 题</span><Sparkles className="w-4 h-4 text-amber-500" /></div><h2 className="font-semibold text-slate-800 mb-3">{currentExercise.prompt}</h2><p className="rounded-xl bg-slate-50 p-3 text-lg leading-8 mb-2">{currentExercise.sentence}</p><p className="text-xs text-slate-500 mb-4">{currentExercise.zh}</p>{currentExercise.type === 'choice' ? <div className="grid grid-cols-2 gap-2">{currentExercise.options.map((option) => { const isCorrect = option.toLowerCase() === currentExercise.answer; const isSelected = exerciseAnswer.trim().toLowerCase() === option.toLowerCase(); const style = exerciseResult && isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : exerciseResult && isSelected ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-slate-200 hover:border-sky-300'; return <button key={option} onClick={() => answerExercise(option)} disabled={Boolean(exerciseResult)} className={`p-2 rounded-xl border text-sm transition-colors ${style}`}>{option}</button>; })}</div> : <div className="flex gap-2"><input value={exerciseAnswer} onChange={(event) => setExerciseAnswer(event.target.value)} onKeyDown={onEnterSubmit(() => answerExercise(exerciseAnswer))} disabled={Boolean(exerciseResult)} placeholder="输入缺少的单词" className="flex-1 border border-slate-200 rounded-xl px-3 text-sm" /><button onClick={() => answerExercise(exerciseAnswer)} disabled={Boolean(exerciseResult)} className="px-4 rounded-xl bg-sky-600 text-white text-sm disabled:opacity-40">检查</button></div>}{exerciseResult && <div className={`mt-4 rounded-xl p-3 text-sm ${exerciseResult === 'correct' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}><p>{exerciseResult === 'correct' ? '答对了，可以继续。' : `再想想。答案是：${currentExercise.answer}`}</p><div className="flex gap-3 mt-2"><button type="button" onClick={nextExercise} className="font-semibold underline">{exerciseIndex + 1 >= exercises.length ? '完成练习' : '下一题'}</button>{exerciseResult === 'wrong' && <button type="button" onClick={retryExercise} className="font-semibold underline">再试一次</button>}</div></div>}</>
           ) : <div className="text-center py-8 text-sm text-slate-500">课文加载后会自动生成句子练习。</div>}
         </div>
       )}
 
       <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-700">本课掌握度</span><span className="text-xs font-bold text-sky-700">{currentMastery.score}% · {currentMastery.label}</span></div><div className="grid grid-cols-5 gap-1.5 mt-2">{[['听读', masterySteps[0]], ['听写', masterySteps[1]], ['单词', masterySteps[2]], ['练习', masterySteps[3]], ['测验', currentMastery.examBonus]].map(([label, done]) => <div key={label} className="text-center"><div className={`h-1.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-slate-100'}`} /><span className={`text-[9px] mt-1 block ${done ? 'text-emerald-600' : 'text-slate-400'}`}>{label}</span></div>)}</div>{currentReviewCount > 0 && <p className="text-[11px] text-amber-700 mt-2">还有 {currentReviewCount} 项薄弱内容，改对后会自动移出复习列表。</p>}{currentProgress.nextReviewAt && <p className="text-[11px] text-slate-400 mt-2">下次课程复习：{new Date(currentProgress.nextReviewAt).toLocaleDateString('zh-CN')}</p>}</div>
-      <div className="flex gap-2 mt-3"><button onClick={playCurrentLine} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-sm flex items-center justify-center gap-1"><Play className="w-4 h-4" />{activeLine >= 0 ? '朗读当前句' : '从第一句开始'}</button><button onClick={markComplete} className={`flex-1 py-2.5 rounded-xl text-sm flex items-center justify-center gap-1 ${currentProgress.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 className="w-4 h-4" />{currentProgress.status === 'completed' ? '已完成本课' : masteryCount === 4 ? '完成本课' : '标记完成'}</button></div>
+      <div className="flex gap-2 mt-3"><button onClick={playCurrentLine} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-sm flex items-center justify-center gap-1"><Play className="w-4 h-4" />{activeLine >= 0 ? '朗读当前句' : '从第一句开始'}</button><button onClick={markComplete} disabled={currentProgress.status === 'completed'} className={`flex-1 py-2.5 rounded-xl text-sm flex items-center justify-center gap-1 ${currentProgress.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 className="w-4 h-4" />{currentProgress.status === 'completed' ? '已完成本课' : masteryCount === 4 ? '完成本课' : '标记完成'}</button></div>
+      <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
+        <button type="button" onClick={finishRecall} disabled={!recallEvidenceRef.current || currentProgress.lastRecallSessionId === recallSessionRef.current} className="w-full rounded-xl bg-sky-600 py-2.5 text-sm font-semibold text-white disabled:opacity-40">完成本课回忆复习</button>
+        <p className="mt-2 text-[11px] leading-5 text-sky-900/70">本次先完成听写（至少 90 分且关键词正确）或句子练习（至少 80%），纠正今天的错题，再更新复习日期。打开课文或播放音频不会延后日期。</p>
+      </div>
       {currentReviewCount > 0 && <button type="button" onClick={() => openReview(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 py-2.5 text-sm font-semibold text-sky-900"><RotateCcw className="w-4 h-4" />复盘本课 {currentReviewCount} 项</button>}
       <button type="button" onClick={() => openExam(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-semibold text-amber-900"><FileText className="w-4 h-4" />做本课试题</button>
       <div className="flex items-center justify-between gap-2 mt-3"><button type="button" onClick={() => goToAdjacentUnit(previousUnit)} disabled={!previousUnit} className="flex items-center gap-1 text-xs text-slate-500 disabled:opacity-30"><ChevronLeft className="w-4 h-4" />上一课</button><span className="text-[11px] text-slate-400">{selectedUnitIndex + 1}/{units.length || 72} 单元</span><button type="button" onClick={() => goToAdjacentUnit(nextUnit)} disabled={!nextUnit} className="flex items-center gap-1 text-xs text-slate-500 disabled:opacity-30">下一课<ChevronRight className="w-4 h-4" /></button></div>

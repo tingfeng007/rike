@@ -63,6 +63,18 @@ test('daily plan prioritizes due vocabulary, course review and unfinished oral p
   assert.ok(plan.tasks.every((task) => task.minutes >= 3));
 });
 
+test('daily plan schedules an overdue course recall and verifies only its explicit completion event', () => {
+  const now = new Date('2026-10-08T09:00:00');
+  const first = buildDailyPlan({ now, hasAiKey: false, nceProgress: { unit: { status: 'completed', nextReviewAt: 1 } } });
+  const task = first.tasks.find((item) => item.id === 'nce-course-recall');
+  assert.equal(task.entityId, 'unit');
+  const studyPlan = { days: { [first.dateKey]: { tasks: first.tasks, createdAt: now.getTime(), completedTaskIds: [], deferredTaskIds: [] } } };
+  const events = [{ at: now.getTime() + 1, type: 'course', entityId: 'unit', source: 'nce-exercise' }];
+  assert.equal(buildDailyPlan({ now, studyPlan, events }).tasks[0].done, false);
+  events.push({ at: now.getTime() + 2, type: 'course', entityId: 'unit', source: 'nce-course-recall' });
+  assert.equal(buildDailyPlan({ now, studyPlan, events }).tasks[0].done, true);
+});
+
 test('daily plan persists completion and deferral without losing other days', () => {
   const first = saveDailyTaskState({}, '2026-09-23', 'vocab-review', { status: 'completed' });
   const second = saveDailyTaskState(first, '2026-09-23', 'oral-practice', { status: 'deferred' });

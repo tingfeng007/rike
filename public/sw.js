@@ -45,9 +45,25 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) {
     return;
   }
+  // The dictionary owns and validates these shards. Keeping a second copy here doubles
+  // disk use and prevents its corruption-repair fetch from reaching the network.
+  if (new URL(request.url).pathname.includes('/dictionary/')) return;
 
   event.respondWith(
-    fetch(request)
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(request, { ignoreVary: true });
+      // Hashed chunks are immutable; use them immediately rather than waiting on weak Wi-Fi.
+      if (cached && /\/assets\/[^/]+-[^/]+\.(js|css)$/.test(new URL(request.url).pathname)) return cached;
+      const controller = new AbortController();
+      let timer;
+      try {
+        return await Promise.race([
+          fetch(request, { signal: controller.signal }),
+          new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Network timeout')); }, 2500); }),
+        ]);
+      } finally { clearTimeout(timer); }
+    })()
       .then((response) => {
         if (!response || response.status >= 400) throw new Error('Resource unavailable');
         if (response && response.status === 200) {

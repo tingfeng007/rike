@@ -2,10 +2,12 @@ import { VOCABULARY_CATEGORIES, sampleCategoryWords } from '../data/categoryVoca
 import { fillCategoryPhonetics } from '../data/categoryPhonetics';
 import { dueVocabulary, selectReviewSession } from '../services/reviewSession';
 import { useStudyClock } from '../hooks/useStudyClock';
-import React, { useState, useEffect, useRef } from 'react';
+import { useLearningSession } from '../hooks/useLearningSession';
+import { lookupLearningWord } from '../services/learningLookup';
+import { restoreVocabularySession, matchesVocabularySpelling, keyedVocabularyText } from '../services/vocabularySession';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Layers,
-  ListFilter,
   Volume2,
   Plus,
   Trash2,
@@ -16,8 +18,6 @@ import {
   Clock,
   CheckCircle,
   AlertTriangle,
-  Flame,
-  Target,
   Film,
   Headphones,
   BookPlus,
@@ -29,7 +29,6 @@ import {
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
 import {
-  analyzeWordWithAI,
   generateVocabularyQuiz,
   generateVocabStoryWithAI,
 } from '../services/ai';
@@ -66,19 +65,31 @@ function readSessionSize() {
   return [10, 20, 50].includes(numeric) ? numeric : DEFAULT_SESSION_SIZE;
 }
 
+function ratingTimestamp() { return Date.now(); }
+
+function initialVocabularyState(intent) {
+  const vocabulary = fillCategoryPhonetics(StorageService.getVocabulary());
+  const restored = restoreVocabularySession(StorageService.getLearningSession('vocabulary'), { vocabulary });
+  const planned = Array.isArray(intent?.wordIds) && intent.wordIds.length > 0;
+  if (!planned && restored.dueCards.length) return { ...restored, vocabulary };
+  const dueCards = selectReviewSession(vocabulary.filter((word) => word.translation?.trim()), { size: readSessionSize(), wordIds: planned ? intent.wordIds : undefined });
+  return { ...restored, activeTab: planned ? 'flashcard' : restored.activeTab, selectedCategory: 'personal', dueCards, currentIndex: 0, isFlipped: false, spellingAnswer: '', spellingChecked: false, reviewCompleted: !dueCards.length, vocabulary };
+}
+
 export default function VocabularySRS({ onOpenSource = null, sectionSwitch = null, intent = null }) {
   const toast = useToast();
   const studyClock = useStudyClock();
-  const [activeTab, setActiveTab] = useState('flashcard'); // 'flashcard' | 'list' | 'quiz'
-  const [vocabulary, setVocabulary] = useState([]);
+  const [restoredSession] = useState(() => initialVocabularyState(intent));
+  const [activeTab, setActiveTab] = useState(restoredSession.activeTab || 'flashcard');
+  const [vocabulary, setVocabulary] = useState(restoredSession.vocabulary);
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'learning' | 'review' | 'mastered'
   const [searchQuery, setSearchQuery] = useState('');
 
   // Flashcard states
-  const [dueCards, setDueCards] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [reviewCompleted, setReviewCompleted] = useState(false);
+  const [dueCards, setDueCards] = useState(restoredSession.dueCards || []);
+  const [currentIndex, setCurrentIndex] = useState(restoredSession.currentIndex || 0);
+  const [isFlipped, setIsFlipped] = useState(Boolean(restoredSession.isFlipped));
+  const [reviewCompleted, setReviewCompleted] = useState(Boolean(restoredSession.reviewCompleted));
   const [studyStats, setStudyStats] = useState(() => StorageService.getStudyStats());
   // Last rating, kept briefly so a mis-tap can be undone (word state + stats + event).
   const [undoState, setUndoState] = useState(null);
@@ -88,15 +99,25 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   // `reloadVocabulary` so that function stays independent of React state — otherwise every
   // caller (including the mount effect) would need `sessionSize` as a dependency.
   const [sessionSize, setSessionSize] = useState(() => readSessionSize());
-  const [dueTotal, setDueTotal] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState('personal');
-  const categoryRef = useRef('personal');
+  const [dueTotal, setDueTotal] = useState(() => dueVocabulary(restoredSession.vocabulary).length);
+  const [selectedCategory, setSelectedCategory] = useState(restoredSession.selectedCategory || 'personal');
+  const categoryRef = useRef(restoredSession.selectedCategory || 'personal');
+  const [showDeckSettings, setShowDeckSettings] = useState(false);
+  const [selectedLevel, setSelectedLevel] = useState(restoredSession.selectedLevel);
+  const [learningMode, setLearningMode] = useState(restoredSession.learningMode);
+  const [spellingAnswer, setSpellingAnswer] = useState(restoredSession.spellingAnswer);
+  const [spellingChecked, setSpellingChecked] = useState(restoredSession.spellingChecked);
+  const appliedIntentRef = useRef(intent?.token);
   const ratingAdvanceRef = useRef(null);
+  const flipButtonRef = useRef(null);
+  const spellingInputRef = useRef(null);
+  const answerPanelRef = useRef(null);
+  const focusRequestedRef = useRef(false);
   const category = VOCABULARY_CATEGORIES.find((item) => item.id === selectedCategory);
   const scopedVocabulary = (words) => categoryRef.current === 'personal' ? words : words.filter((word) =>
     word.sources?.some((source) => source.type === 'category' && source.id === categoryRef.current));
 
-  const startCategory = (categoryId) => {
+  const startCategory = (categoryId, level = selectedLevel, size = sessionSize) => {
     clearTimeout(ratingAdvanceRef.current);
     clearTimeout(undoTimerRef.current);
     setUndoState(null);
@@ -106,22 +127,17 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
     categoryRef.current = categoryId;
     setSelectedCategory(categoryId);
     if (categoryId === 'personal') { reloadVocabulary(); return; }
+    const words = StorageService.getVocabulary();
     const batch = sampleCategoryWords(categoryId, {
+      size: size === 'all' ? 32 : size,
+      level,
+      learnedWords: [
+        ...words.filter((word) => word.reviewCount > 0 || word.step > 0 || word.status === 'mastered'),
+        ...StorageService.getStudyEvents().filter((event) => event.type === 'category' && event.metadata?.quality !== 'again').map((event) => event.entityId),
+      ],
       previousWords: categoryId === selectedCategory ? dueCards.map((card) => card.word) : [],
     });
-    const savedCards = [];
-    for (const word of batch) {
-      const saved = StorageService.addWord(word);
-      if (!saved) {
-        setDataError('分类词卡未能全部保存，请检查浏览器存储空间后重试。');
-        setVocabulary(StorageService.getVocabulary());
-        setDueCards([]);
-        setReviewCompleted(true);
-        return;
-      }
-      savedCards.push(saved);
-    }
-    const words = StorageService.getVocabulary();
+    const savedCards = batch.map((word) => words.find((item) => item.word.toLowerCase() === word.word.toLowerCase()) || {...word, id:`explore:${categoryId}:${word.word}`, reviewCount:0, interval:0});
     setVocabulary(words);
     setDueTotal(dueVocabulary(scopedVocabulary(words)).length);
     setDueCards(savedCards);
@@ -129,9 +145,22 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
     setIsFlipped(false);
     setReviewCompleted(false);
     setDataError('');
+    setSpellingAnswer('');
+    setSpellingChecked(false);
+  };
+  const collectCategory = (single = null) => {
+    const candidates = single ? [single] : dueCards;
+    let savedCount = 0;
+    for (const candidate of candidates) {
+      const {id: _temporaryId, ...payload} = candidate;
+      if (!StorageService.addWord(payload)) { setDataError('有词卡尚未收藏成功，请检查存储空间后重试。'); break; }
+      savedCount += 1;
+    }
+    setVocabulary(StorageService.getVocabulary());
+    if (savedCount) toast.success(`已收藏 ${savedCount} 个词，可到“我的生词”间隔复习。`);
   };
   const lastRatedRef = useRef({ id: '', at: 0 });
-  const requeuedRef = useRef(new Set());
+  const requeuedRef = useRef(new Set(restoredSession.requeuedIds));
   const planTargetsRef = useRef(intent?.wordIds);
   const undoTimerRef = useRef(null);
 
@@ -203,7 +232,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
     // effects and event handlers (never during render), so the purity heuristic does not apply.
     // oxlint-disable-next-line react/purity
     const now = Date.now();
-    const pool = scopedVocabulary(words);
+    const pool = scopedVocabulary(words).filter((word) => word.translation?.trim());
     const due = dueVocabulary(pool, now);
     setDueTotal(due.length);
 
@@ -240,20 +269,45 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
     StorageService.saveAppState({ ...state, vocabSessionSize: size });
     setReviewCompleted(false);
     // Rebuild the queue with the new size (due list is recomputed from current storage).
-    setTimeout(() => reloadVocabulary(), 0);
+    if (categoryRef.current !== 'personal') startCategory(categoryRef.current, selectedLevel, size);
+    else reloadVocabulary();
   };
 
   useEffect(() => {
+    if (!intent?.wordIds?.length || intent.token === appliedIntentRef.current) return;
+    appliedIntentRef.current = intent.token;
     categoryRef.current = 'personal';
+    // External plan navigation changes the active queue; ordinary initialization is handled above.
+    // oxlint-disable-next-line react/set-state-in-effect
     setSelectedCategory('personal');
     planTargetsRef.current = intent?.wordIds;
     reloadVocabulary();
     setActiveTab('flashcard');
+  }, [intent]);
+
+  useEffect(() => {
     return () => {
       clearTimeout(ratingAdvanceRef.current);
       clearTimeout(undoTimerRef.current);
     };
-  }, [intent?.token]);
+  }, []);
+
+  const sessionSnapshot = useMemo(() => ({activeTab,selectedCategory,selectedLevel,dueCards,currentIndex,isFlipped,reviewCompleted,learningMode,spellingAnswer,spellingChecked}), [activeTab,selectedCategory,selectedLevel,dueCards,currentIndex,isFlipped,reviewCompleted,learningMode,spellingAnswer,spellingChecked]);
+  useLearningSession('vocabulary', sessionSnapshot, () => setDataError('本轮位置暂未保存，请保留当前页面并检查存储空间。'));
+
+  useEffect(() => {
+    if (!focusRequestedRef.current) return;
+    focusRequestedRef.current = false;
+    const target = isFlipped ? answerPanelRef.current : learningMode === 'spelling' ? spellingInputRef.current : flipButtonRef.current;
+    target?.focus({ preventScroll: true });
+  }, [isFlipped, currentIndex, learningMode]);
+
+  const flipCard = () => {
+    if (learningMode === 'spelling' && !isFlipped && !spellingAnswer.trim()) return;
+    focusRequestedRef.current = true;
+    if (learningMode === 'spelling' && !isFlipped) setSpellingChecked(true);
+    setIsFlipped((value) => !value);
+  };
 
   // Flashcard Rating: 'again' | 'hard' | 'good'
   const handleRateCard = (quality) => {
@@ -264,8 +318,23 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
     // Guard against a double tap: the next card is only shown after a 150ms delay, so a
     // second tap used to rate the *same* card twice (reviewCount/step +2, one card skipped).
     const lastRated = lastRatedRef.current;
-    if (lastRated.id === currentCard.id && Date.now() - lastRated.at < RATING_LOCK_MS) return;
-    lastRatedRef.current = { id: currentCard.id, at: Date.now() };
+    const at = ratingTimestamp();
+    if (lastRated.id === currentCard.id && at - lastRated.at < RATING_LOCK_MS) return;
+    lastRatedRef.current = { id: currentCard.id, at };
+    focusRequestedRef.current = true;
+
+    if (categoryRef.current !== 'personal') {
+      if (!StorageService.recordStudyActivity({type:'category', count:1, source:'category-practice',entityId:currentCard.word,label:'分类词练习',durationMinutes:studyClock.takeMinutes(),metadata:{quality}})) {
+        lastRatedRef.current = {id:'',at:0}; setDataError('本次练习记录未保存，请重试。'); return;
+      }
+      setStudyStats(StorageService.getStudyStats());
+      setIsFlipped(false); setSpellingAnswer(''); setSpellingChecked(false);
+      const requeue = quality === 'again' && !requeuedRef.current.has(currentCard.id);
+      if (requeue) { requeuedRef.current.add(currentCard.id); setDueCards((cards) => [...cards,currentCard]); }
+      if (requeue || currentIndex + 1 < dueCards.length) setCurrentIndex((index) => index + 1);
+      else setReviewCompleted(true);
+      return;
+    }
 
     // Snapshot the stored state so this rating can be undone (see handleUndoRating).
     const storedBefore = StorageService.getVocabulary().find((w) => w.id === currentCard.id) || null;
@@ -297,10 +366,14 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
         quality,
       });
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      // This mutable React ref is written only by the rating handler, never during render.
+      // oxlint-disable-next-line react/immutability
       undoTimerRef.current = setTimeout(() => setUndoState(null), UNDO_WINDOW_MS);
     }
 
     setIsFlipped(false);
+    setSpellingAnswer('');
+    setSpellingChecked(false);
 
     // "again" means relearn today: put the card back at the end of this session's queue
     // (bounded to one requeue per card so a forgotten word cannot loop forever).
@@ -363,7 +436,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
     setDataError('');
   };
 
-  // Add new word manually with AI enhancement
+  // Look up a word locally and keep the original context with the saved card.
   const handleAddWord = async () => {
     const word = inputWord.trim();
     if (!word) return;
@@ -372,9 +445,9 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
     try {
       let analysis = null;
       try {
-        analysis = await analyzeWordWithAI(word, inputContext);
+        analysis = await lookupLearningWord(word, inputContext);
       } catch {
-        // Offline / no key: keep the word but leave the meaning EMPTY. The placeholder text
+        // Lookup unavailable: keep the word but leave the meaning EMPTY. The placeholder text
         // used to be written here ("自主添加生词"), which looked complete and defeated the
         // app's own "需要释义" filter (studyView.js treats a blank translation as missing).
         analysis = {
@@ -486,6 +559,8 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       title: `${generatedStory.title} (${generatedStory.titleCn || '微剧场'})`,
       level: 'AI 生词微剧场',
       content: plainContent,
+      contentCn: generatedStory.storyCn || '',
+      targetWords: selectedStoryWords,
       tags: ['生词微剧场', storyGenre],
     });
     if (!saved) { toast.error('故事没有保存成功，请检查存储空间。'); return; }
@@ -577,7 +652,6 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   const filteredWords = filterVocabulary(vocabulary, searchQuery, filterStatus);
 
   const currentCard = dueCards[currentIndex];
-  const masteredCount = vocabulary.filter((word) => word.status === 'mastered').length;
   const missingMeaningCount = vocabulary.filter((word) => !word.translation?.trim()).length;
 
   return (
@@ -585,10 +659,10 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       <StudyHeader
         eyebrow="WORDS THAT STAY WITH YOU"
         title={activeTab === 'flashcard' ? '记忆词卡' : activeTab === 'list' ? '我的词库' : '巩固测验'}
-        status={`${vocabulary.length} 个词 · 今日已练 ${studyStats.todayReviewedCount || 0} 词`}
+        status={StorageService.isUsingSampleVocabulary() ? '示例词卡 · 收藏后开启个人复习' : `${vocabulary.length} 个词 · 今日复习 ${studyStats.todayReviewedCount || 0} 词`}
         actions={<>
           <details className="vocab-menu"><summary aria-label="词卡更多功能"><MoreHorizontal size={20} /></summary><div>
-            <button type="button" aria-current={activeTab === 'flashcard' ? 'page' : undefined} onClick={(event) => { setActiveTab('flashcard'); reloadVocabulary(); event.currentTarget.closest('details').open = false; }}>闪卡复习</button>
+            <button type="button" aria-current={activeTab === 'flashcard' ? 'page' : undefined} onClick={(event) => { setActiveTab('flashcard'); event.currentTarget.closest('details').open = false; }}>闪卡复习</button>
             <button type="button" aria-current={activeTab === 'list' ? 'page' : undefined} onClick={(event) => { setActiveTab('list'); event.currentTarget.closest('details').open = false; }}>生词库清单</button>
             <button type="button" aria-current={activeTab === 'quiz' ? 'page' : undefined} onClick={(event) => { setActiveTab('quiz'); if (!quizQuestions.length) handleGenerateQuiz(); event.currentTarget.closest('details').open = false; }}>AI 巩固测验</button>
             <button type="button" onClick={(event) => { setShowStatsDetail(true); event.currentTarget.closest('details').open = false; }}>查看学习统计</button>
@@ -599,14 +673,14 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       >
         {sectionSwitch}
         <div className="vocab-mode-tabs">
-          <button type="button" aria-current={activeTab === 'flashcard' ? 'page' : undefined} onClick={() => { setActiveTab('flashcard'); reloadVocabulary(); }}>闪卡复习</button>
+          <button type="button" aria-current={activeTab === 'flashcard' ? 'page' : undefined} onClick={() => setActiveTab('flashcard')}>闪卡复习</button>
           <button type="button" aria-current={activeTab === 'list' ? 'page' : undefined} onClick={() => setActiveTab('list')}>生词库清单</button>
           <button type="button" aria-current={activeTab === 'quiz' ? 'page' : undefined} onClick={() => { setActiveTab('quiz'); if (!quizQuestions.length) handleGenerateQuiz(); }}>AI 巩固测验</button>
         </div>
       </StudyHeader>
 
       {/* Main Body */}
-      <div className="flex-1 overflow-y-auto p-4 pb-20">
+      <div className="vocab-content flex-1 overflow-y-auto p-4 pb-20">
         {/* Write failures (quota / blocked storage) must be visible from every tab, not only
             on the flashcard: rating, adding, editing and deleting all write to localStorage. */}
         {dataError && (
@@ -621,19 +695,20 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
             <div className="vocab-deck-picker">
               <div className="deck-select-row flex items-center gap-2">
                 <label htmlFor="vocab-category" className="shrink-0 text-xs font-semibold text-slate-600">词库</label>
-                <select id="vocab-category" aria-label="词库" value={selectedCategory} onChange={(event) => startCategory(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 py-2 text-sm text-[#102a43]">
+                <select id="vocab-category" aria-label="选择词卡分类" value={selectedCategory} onChange={(event) => startCategory(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 py-2 text-sm text-[#102a43]">
                   <option value="personal">我的生词 · 到期复习</option>
                   {VOCABULARY_CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.icon} {item.label}</option>)}
                 </select>
                 {category && <button type="button" onClick={() => startCategory(selectedCategory)} className="shrink-0 rounded-lg bg-[#102a43] px-3 py-2 text-xs font-semibold text-white">换一组</button>}
               </div>
-              <div className="vocab-deck-chips no-scrollbar" aria-label="分类词库">{VOCABULARY_CATEGORIES.map((item) => <button key={item.id} type="button" aria-pressed={selectedCategory === item.id} onClick={() => startCategory(item.id)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>)}</div>
-              <p className="deck-hint">{category ? `内置 ${category.words.length} 词 · 抽到的词自动加入生词库，保留已有记忆进度。` : '没有生词也能练：选择分类，随机抽取 10 词开始。'}</p>
+              {category && showDeckSettings && <div className="vocab-level-row"><label htmlFor="vocab-learning-level">学习等级</label><select id="vocab-learning-level" value={selectedLevel} onChange={(event) => { const level = event.target.value; setSelectedLevel(level); startCategory(selectedCategory, level); }}><option value="all">全部等级 · 32 词</option><option value="starter">入门常用 · 8 词</option><option value="core">核心表达 · 16 词</option><option value="advanced">专业进阶 · 8 词</option></select></div>}
+              <div className="deck-action-row"><button type="button" aria-expanded={showDeckSettings} onClick={() => setShowDeckSettings((value) => !value)}>练习设置 · {learningMode === 'recall' ? '看词回忆' : '听音拼写'}</button>{category && <button type="button" onClick={() => collectCategory()}>收藏本组</button>}</div>
+              {showDeckSettings && <fieldset className="deck-settings"><legend>选择适合自己的练习</legend><label htmlFor="vocab-learning-mode">练习方式</label><select id="vocab-learning-mode" value={learningMode} onChange={(event) => {setLearningMode(event.target.value);setIsFlipped(false);setSpellingAnswer('');setSpellingChecked(false);}}><option value="recall">看词回忆</option><option value="spelling">听音拼写</option></select><span>每组数量</span><div className="flex gap-2">{SESSION_SIZE_OPTIONS.map((size) => <button key={String(size)} type="button" aria-pressed={sessionSize === size} onClick={() => changeSessionSize(size)}>{size === 'all' ? '全部' : size}</button>)}</div><p>{category ? `${category.description} 本类 ${category.words.length} 词，优先抽取未练过、未出现的词；遇见想记住的词再收藏。` : '缺少释义的词先留在“需要释义”清单，补齐后再复习。'}</p>{category && <ol className="vocab-learning-route">{category.learningRoute.map((stage) => <li key={stage.level}>{stage.title}</li>)}</ol>}</fieldset>}
             </div>
             {!reviewCompleted && currentCard ? (
               <>
                 {/* Progress Bar & Counter */}
-                <div className="flex items-center justify-between text-xs text-slate-600 mb-3 px-1">
+                <div className="vocab-progress-caption flex items-center justify-between text-xs text-slate-600 px-1">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-sky-600" />
                     <span>{category ? `${category.label} · 本组进度` : '今日复习进度'}</span>
@@ -650,7 +725,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     <span>
                       今天到期 {dueTotal} 个{ dueTotal > dueCards.length ? `，本次做 ${dueCards.length} 个` : '' }
                     </span>
-                    <span className="flex items-center gap-1">
+                    <span className="hidden">
                       <span className="text-slate-400">每组</span>
                       {SESSION_SIZE_OPTIONS.map((size) => (
                         <button
@@ -667,7 +742,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 )}
 
                 {/* Progress Track */}
-                <div className="w-full h-1.5 bg-slate-200/80 rounded-full mb-4 overflow-hidden">
+                <div className="vocab-progress-track w-full h-1.5 bg-slate-200/80 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-sky-500 to-blue-600 transition-all duration-300"
                     style={{
@@ -687,13 +762,9 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 )}
 
                 {/* 3D Flip Card Container */}
-                <div
-                  role="group"
-                  tabIndex={0}
-                  aria-label="翻转词卡，按回车或空格查看答案"
-                  onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setIsFlipped((value) => !value); } }}
-                  onClick={() => setIsFlipped(!isFlipped)}
-                  className="vocab-flip-card w-full flex-none h-[300px] md:h-[360px] cursor-pointer perspective-1000 relative select-none"
+                <fieldset
+                  aria-label="记忆词卡"
+                  className="vocab-flip-card w-full min-w-0 border-0 p-0 flex-none h-[300px] md:h-[360px] perspective-1000 relative select-none"
                 >
                   <div
                     className={`w-full h-full duration-500 transform-style-preserve-3d relative transition-transform rounded-3xl ${
@@ -701,7 +772,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     }`}
                   >
                     {/* --- FRONT SIDE --- */}
-                    <div className="absolute inset-0 backface-hidden bg-white/95 border border-white/90 rounded-3xl p-6 flex flex-col justify-between shadow-[0_8px_30px_-4px_rgba(15,23,42,0.08)] hover:shadow-xl transition-all">
+                    <div aria-hidden={isFlipped} inert={isFlipped} className="flashcard-front absolute inset-0 backface-hidden bg-white/95 border border-white/90 rounded-3xl p-6 flex flex-col justify-between shadow-[0_8px_30px_-4px_rgba(15,23,42,0.08)] hover:shadow-xl transition-all">
                       <div className="flex justify-between items-start">
                         <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-sky-50 text-sky-700 rounded-lg ring-1 ring-sky-200/60">
                           {currentCard.tags?.[0] || '生词闪卡'}
@@ -713,13 +784,15 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                           }}
                           className="p-2 text-sky-600 hover:bg-sky-50 rounded-full transition-colors active:scale-90"
                           title="发音朗读"
+                          aria-label="发音朗读"
                         >
                           <Volume2 className="w-5 h-5" />
                         </button>
                       </div>
 
                       {/* Main Word & Phonetic */}
-                      <div className="text-center py-6">
+                      <div className="text-center py-4">
+                        {learningMode === 'spelling' ? <div className="spelling-practice"><p>听发音，写出这个词</p><button type="button" onClick={() => tts.speak(currentCard.word)}>再听一遍</button><label htmlFor="spelling-answer" className="sr-only">拼写答案</label><input ref={spellingInputRef} id="spelling-answer" value={spellingAnswer} autoComplete="off" autoCapitalize="off" spellCheck={false} onKeyDown={(event) => { if (event.key === 'Enter' && spellingAnswer.trim()) flipCard(); }} onChange={(event) => {setSpellingAnswer(event.target.value);setSpellingChecked(false);}} /></div> : <>
                         <h2 className="text-3xl md:text-4xl font-bold font-serif text-slate-900 tracking-tight">
                           {currentCard.word}
                         </h2>
@@ -728,10 +801,11 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                             {currentCard.phonetic}
                           </p>
                         )}
+                        </>}
                       </div>
 
                       {/* Context Sentence (Crucial for Retention!) */}
-                      {currentCard.contextSentence ? (
+                      {learningMode === 'recall' && currentCard.contextSentence ? (
                         <div className="bg-slate-50/90 p-3.5 rounded-2xl border border-slate-200/60 text-xs text-slate-700 leading-relaxed text-center shadow-2xs font-serif">
                           <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-sans font-bold mb-1">
                             语境例句
@@ -744,12 +818,12 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
                       <div className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1">
                         <RotateCw className="w-3 h-3" />
-                        <span>轻触卡片翻转查看释义</span>
+                        <span>{learningMode === 'spelling' ? '完成拼写后查看参考答案' : '用下方按钮查看释义'}</span>
                       </div>
                     </div>
 
                     {/* --- BACK SIDE --- */}
-                    <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white/95 border border-amber-200/80 rounded-3xl p-6 flex flex-col justify-between shadow-[0_8px_30px_-4px_rgba(15,23,42,0.08)] overflow-y-auto">
+                    <div ref={answerPanelRef} tabIndex={-1} aria-label="词卡答案" aria-hidden={!isFlipped} inert={!isFlipped} className="flashcard-back absolute inset-0 backface-hidden rotate-y-180 bg-white/95 border border-amber-200/80 rounded-3xl p-6 flex flex-col justify-between shadow-[0_8px_30px_-4px_rgba(15,23,42,0.08)] overflow-y-auto">
                       <div>
                         <div className="flex justify-between items-start pb-3 border-b border-slate-100">
                           <div>
@@ -762,6 +836,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                             {currentCard.phonetic && <p className="mt-1 text-xs font-mono text-sky-700">{currentCard.phonetic}</p>}
                           </div>
                           <button
+                            aria-label="朗读答案单词"
                             onClick={(e) => {
                               e.stopPropagation();
                               tts.speak(currentCard.word);
@@ -774,6 +849,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
                         {/* Translation */}
                         <div className="mt-3.5">
+                          {spellingChecked && <output className="mb-2 block text-sm font-semibold">{matchesVocabularySpelling(spellingAnswer, currentCard.word) ? '拼写正确' : `你的拼写：${spellingAnswer}。对照正确单词再试一次。`}</output>}
                           <p className="text-base font-bold text-slate-900 leading-snug">
                             {currentCard.translation || '暂无详细中文释义'}
                           </p>
@@ -787,6 +863,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                               {currentCard.definitionEn}
                             </p>
                           )}
+                          {!!currentCard.collocations?.length && <p className="vocab-collocation">常用搭配 · {currentCard.collocations.join(' · ')}</p>}
                         </div>
 
                         {/* Context Sentence Breakdown */}
@@ -816,11 +893,13 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                       </div>
 
                       <div className="pt-2 text-center text-[10.5px] text-slate-400 font-medium">
-                        已复习: {currentCard.reviewCount || 0} 次 · 遗忘难度系数: {currentCard.easeFactor || 2.5} · 下次间隔: {currentCard.intervalDays || 1} 天
+                        {category ? '收藏后可加入个人间隔复习' : `已复习 ${currentCard.reviewCount || 0} 次 · 下次间隔 ${currentCard.intervalDays || 1} 天`}
                       </div>
                     </div>
                   </div>
-                </div>
+                </fieldset>
+
+                <div className="flashcard-tools"><button ref={flipButtonRef} type="button" disabled={learningMode === 'spelling' && !isFlipped && !spellingAnswer.trim()} onClick={flipCard}>{isFlipped ? '返回单词' : learningMode === 'spelling' ? '检查拼写' : '查看释义'}</button>{category && <button type="button" onClick={() => collectCategory(currentCard)}>收藏此词</button>}{onOpenSource && <button type="button" onClick={() => onOpenSource({type:'dictionary',id:currentCard.word})}>查词详情</button>}</div>
 
                 {/* SRS Evaluation Buttons (only meaningful once the answer is visible) */}
                 <div className="vocab-ratings mt-5 grid grid-cols-3 gap-2.5">
@@ -841,7 +920,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     className="flex flex-col items-center py-2.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-sm font-semibold">有点印象</span>
-                    <span className="text-[10px] text-amber-700 mt-0.5">+1~2 天</span>
+                    <span className="text-[10px] text-amber-700 mt-0.5">{category ? '稍后再加强' : '+1~2 天'}</span>
                   </button>
 
                   <button
@@ -851,11 +930,11 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     className="flex flex-col items-center py-2.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-sm font-semibold">记住了</span>
-                    <span className="text-[10px] text-emerald-700 mt-0.5">延长间隔</span>
+                    <span className="text-[10px] text-emerald-700 mt-0.5">{category ? '继续下一词' : '延长间隔'}</span>
                   </button>
                 </div>
                 {!isFlipped && (
-                  <p className="mt-2 text-center text-[11px] text-slate-400">先轻触卡片看释义，再选择掌握程度</p>
+                  <p className="vocab-rating-hint mt-2 text-center text-[11px] text-slate-400">{learningMode === 'spelling' ? '先完成拼写，再选择掌握程度' : '先查看释义，再选择掌握程度'}</p>
                 )}
               </>
             ) : (
@@ -872,20 +951,25 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                       : '太棒了！今日闪卡已全部搞定'}
                 </h3>
                 <p className="text-xs text-slate-600 max-w-xs mt-2 leading-relaxed">
-                  {category ? '本组进度已保存。可以再抽一组，或切换到“我的生词”按记忆间隔复习。' : vocabulary.length === 0
+                  {category ? '本组练习位置会保留。收藏想记住的词，再到“我的生词”按间隔复习。' : vocabulary.length === 0
                     ? '上方有 8 个内置分类，含中文释义和双语例句。也可以添加自己的生词。'
                     : dueTotal > 0
                       // Never claim the day is clear while cards are still due — offer the
                       // next batch instead (the reviewed ones already left the due list).
                       ? `今天还剩 ${dueTotal} 个到期词。可以再做一组，也可以明天继续——进度已经保存。`
-                      : '艾宾浩斯智能算法显示：当前所有生词均在记忆稳定期，今天无待复习单词。保持这个节奏，下一次复习将在明天到来！'}
+                      : '今天没有到期词。本应用按你的评分安排下一次复习；也可以继续练习分类词或补齐缺少的释义。'}
                 </p>
 
                 <div className="mt-6 flex flex-col w-full max-w-xs space-y-2">
-                  {category && <button type="button" onClick={() => startCategory(selectedCategory)} className="w-full rounded-xl bg-[#102a43] py-2.5 text-xs font-semibold text-white">再抽 10 词</button>}
+                  {category && <button type="button" onClick={() => startCategory(selectedCategory)} className="w-full rounded-xl bg-[#102a43] py-2.5 text-xs font-semibold text-white">再练一组</button>}
                   {!category && dueTotal > 0 && (
                     <button
-                      onClick={() => { planTargetsRef.current = null; reloadVocabulary(); }}
+                      onClick={() => {
+                        // Plan targets are an event-owned mutable ref, not a state dependency.
+                        // oxlint-disable-next-line react/immutability
+                        planTargetsRef.current = null;
+                        reloadVocabulary();
+                      }}
                       className="w-full py-2.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
                     >
                       <Clock className="w-3.5 h-3.5" />
@@ -926,6 +1010,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
             <div className="bg-white border border-slate-200/80 rounded-2xl px-3 py-2 flex items-center gap-2 shadow-2xs">
               <Search className="w-4 h-4 text-slate-400" />
               <input
+                aria-label="搜索生词、中文释义或笔记"
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -934,6 +1019,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               />
               {searchQuery && (
                 <button
+                  aria-label="清空生词搜索"
                   onClick={() => setSearchQuery('')}
                   className="p-0.5 text-slate-400 hover:text-slate-600"
                 >
@@ -1022,6 +1108,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                           </span>
                         )}
                         <button
+                          aria-label={`朗读单词 ${item.word}`}
                           onClick={() => tts.speak(item.word)}
                           className="p-1 text-sky-600 hover:bg-sky-50 rounded-full"
                         >
@@ -1153,7 +1240,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md">
-                          第 {qIdx + 1} 题 · 考察词: {q.targetWord}
+                          第 {qIdx + 1} 题{hasAnswered ? ` · 考察词：${q.targetWord}` : ''}
                         </span>
                       </div>
 
@@ -1167,7 +1254,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
                       {/* Options */}
                       <div className="grid grid-cols-2 gap-2 pt-1">
-                        {q.options.map((opt, optIdx) => {
+                        {keyedVocabularyText(q.options).map(({ text: opt, key, index: optIdx }) => {
                           const isSelected = userChoice === optIdx;
                           const isCorrect = optIdx === q.correctIndex;
 
@@ -1185,7 +1272,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
                           return (
                             <button
-                              key={optIdx}
+                              key={key}
                               disabled={hasAnswered}
                               onClick={() =>
                                 handleSelectOption(q.id, optIdx, q.correctIndex)
@@ -1252,7 +1339,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                       <button
                         onClick={() => {
                           setActiveTab('flashcard');
-                          reloadVocabulary();
+                          startCategory('personal');
                         }}
                         className="py-2 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1"
                       >
@@ -1279,6 +1366,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       <Modal
         open={showStoryModal}
         onClose={() => setShowStoryModal(false)}
+        ariaLabel="生词微剧场"
         size="lg"
         showCloseButton={false}
         bodyClassName="space-y-4 p-5"
@@ -1297,6 +1385,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 </div>
               </div>
               <button
+                aria-label="关闭生词微剧场"
                 onClick={() => {
                   tts.stop();
                   setIsPlayingStory(false);
@@ -1310,9 +1399,9 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
             {/* Genre Select */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-2">
+              <p className="block text-xs font-bold text-slate-700 mb-2">
                 第一步：选择剧场风格
-              </label>
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { id: 'mystery', icon: '🕵️‍♂️', label: '悬疑推理', desc: '深夜密室、暗藏线索' },
@@ -1320,30 +1409,32 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                   { id: 'romance', icon: '☕', label: '都市温情', desc: '街角咖啡、治愈遇见' },
                   { id: 'cyberpunk', icon: '🚀', label: '未来科幻', desc: '霓虹夜市、AI觉醒' },
                 ].map((g) => (
-                  <div
+                  <button
                     key={g.id}
+                    type="button"
+                    aria-pressed={storyGenre === g.id}
                     onClick={() => setStoryGenre(g.id)}
-                    className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
                       storyGenre === g.id
                         ? 'bg-amber-50 border-amber-400 text-amber-900 font-semibold shadow-xs ring-1 ring-amber-300'
                         : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <span className="flex items-center gap-1.5 text-xs font-bold">
                       <span>{g.icon}</span>
                       <span>{g.label}</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-0.5">{g.desc}</p>
-                  </div>
+                    </span>
+                    <span className="block text-[10px] text-slate-500 mt-0.5">{g.desc}</span>
+                  </button>
                 ))}
               </div>
             </div>
 
             {/* Words To Include */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              <p className="block text-xs font-bold text-slate-700 mb-1.5">
                 第二步：选择要融入剧场的生词 (点击切换)
-              </label>
+              </p>
               <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1">
                 {vocabulary.slice(0, 10).map((w) => {
                   const isChecked = selectedStoryWords.includes(w.word);
@@ -1351,6 +1442,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     <button
                       key={w.id}
                       type="button"
+                      aria-pressed={isChecked}
                       onClick={() => {
                         setSelectedStoryWords((prev) =>
                           isChecked ? prev.filter((item) => item !== w.word) : [...prev, w.word]
@@ -1419,8 +1511,8 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
                 {/* English Story Body */}
                 <div className="text-xs text-slate-800 leading-relaxed select-text space-y-2 font-serif">
-                  {generatedStory.storyEn.split('\n\n').map((para, idx) => (
-                    <p key={idx}>{para}</p>
+                  {keyedVocabularyText(generatedStory.storyEn.split('\n\n')).map(({text: para, key}) => (
+                    <p key={key}>{para}</p>
                   ))}
                 </div>
 
@@ -1469,6 +1561,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       <Modal
         open
         onClose={() => setEditingWord(null)}
+        ariaLabel="编辑词条与助记笔记"
         size="md"
         showCloseButton={false}
         bodyClassName="space-y-3.5 p-5"
@@ -1481,6 +1574,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 </h3>
               </div>
               <button
+                aria-label="关闭词条编辑"
                 onClick={() => setEditingWord(null)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
               >
@@ -1490,9 +1584,9 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <p className="block text-xs font-semibold text-slate-700 mb-1">
                   目标生词 (只读)
-                </label>
+                </p>
                 <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
                   <span className="font-bold font-serif text-slate-900 text-sm">
                     {editingWord.word}
@@ -1504,6 +1598,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                   )}
                   <button
                     type="button"
+                    aria-label="朗读编辑中的单词"
                     onClick={() => tts.speak(editingWord.word)}
                     className="p-1 text-sky-600 hover:bg-sky-100 rounded-full ml-auto"
                   >
@@ -1513,10 +1608,11 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="vocab-edit-meaning" className="block text-xs font-semibold text-slate-700 mb-1">
                   中文释义
                 </label>
                 <input
+                  id="vocab-edit-meaning"
                   type="text"
                   value={editTranslation}
                   onChange={(e) => setEditTranslation(e.target.value)}
@@ -1526,10 +1622,11 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="vocab-edit-context" className="block text-xs font-semibold text-slate-700 mb-1">
                   语境例句
                 </label>
                 <textarea
+                  id="vocab-edit-context"
                   rows={2}
                   value={editContextSentence}
                   onChange={(e) => setEditContextSentence(e.target.value)}
@@ -1539,11 +1636,12 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-amber-800 mb-1 flex items-center gap-1">
+                <label htmlFor="vocab-edit-note" className="block text-xs font-semibold text-amber-800 mb-1 flex items-center gap-1">
                   <StickyNote className="w-3.5 h-3.5 text-amber-600" />
                   <span>我的专属助记口诀 / 记忆心得 (卡片翻面立现)</span>
                 </label>
                 <textarea
+                  id="vocab-edit-note"
                   rows={2}
                   value={editUserNote}
                   onChange={(e) => setEditUserNote(e.target.value)}
@@ -1581,10 +1679,11 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       >
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label htmlFor="vocab-add-word" className="block text-xs font-medium text-slate-700 mb-1">
                   英文单词或短语 *
                 </label>
                 <input
+                  id="vocab-add-word"
                   type="text"
                   value={inputWord}
                   onChange={(e) => setInputWord(e.target.value)}
@@ -1594,10 +1693,11 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  原句或语境 (可选，AI将依此解析最准释义)
+                <label htmlFor="vocab-add-context" className="block text-xs font-medium text-slate-700 mb-1">
+                  原句或语境（可选，保存在词卡中）
                 </label>
                 <textarea
+                  id="vocab-add-context"
                   rows={3}
                   value={inputContext}
                   onChange={(e) => setInputContext(e.target.value)}
@@ -1619,7 +1719,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 disabled={isAddingWord || !inputWord.trim()}
                 className="flex-1 py-2 text-xs font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1"
               >
-                {isAddingWord ? 'AI 分析中...' : '智能添加'}
+                {isAddingWord ? '查词中...' : '查词并添加'}
               </button>
             </div>
       </Modal>
@@ -1628,6 +1728,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
       <Modal
         open={showStatsDetail}
         onClose={() => setShowStatsDetail(false)}
+        ariaLabel="今日学习统计"
         size="sm"
         showCloseButton={false}
         bodyClassName="space-y-3.5 p-5"
@@ -1645,6 +1746,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 </div>
               </div>
               <button
+                aria-label="关闭今日学习统计"
                 onClick={() => setShowStatsDetail(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
               >

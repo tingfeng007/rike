@@ -1,6 +1,31 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
+const backgroundLocks = new WeakMap();
+const scrollLocks = new WeakMap();
+const focusOrigins = new WeakMap();
+function lockBackground(node) {
+  const previous = backgroundLocks.get(node) || { count: 0, inert: node.inert };
+  previous.count += 1;
+  backgroundLocks.set(node, previous);
+  node.inert = true;
+  return () => {
+    previous.count -= 1;
+    if (!previous.count) { node.inert = previous.inert; backgroundLocks.delete(node); }
+  };
+}
+
+function lockBodyScroll(body) {
+  const previous = scrollLocks.get(body) || { count: 0, overflow: body.style.overflow };
+  previous.count += 1;
+  scrollLocks.set(body, previous);
+  body.style.overflow = 'hidden';
+  return () => {
+    previous.count -= 1;
+    if (!previous.count) { body.style.overflow = previous.overflow; scrollLocks.delete(body); }
+  };
+}
+
 /**
  * Base dialog for the whole app.
  *
@@ -28,10 +53,13 @@ export function Modal({
   open,
   onClose,
   title,
+  ariaLabel,
+  labelledBy,
   description,
   children,
   footer,
   placement = 'center',
+  variant = 'dialog',
   size = 'md',
   closeOnBackdrop = true,
   showCloseButton = true,
@@ -51,12 +79,32 @@ export function Modal({
   useEffect(() => {
     if (!open) return undefined;
 
+    const openedPanel = panelRef.current;
     restoreFocusRef.current = typeof document !== 'undefined' ? document.activeElement : null;
+    if (openedPanel) focusOrigins.set(openedPanel, restoreFocusRef.current);
+    const unlock = [];
+    let branch = panelRef.current?.parentElement;
+    while (branch && branch !== document.body) {
+      for (const sibling of branch.parentElement?.children || []) {
+        if (sibling !== branch && !['SCRIPT', 'STYLE'].includes(sibling.tagName)) unlock.push(lockBackground(sibling));
+      }
+      branch = branch.parentElement;
+    }
+    if (!title && !labelledBy && !ariaLabel) {
+      const heading = panelRef.current?.querySelector('h1, h2, h3, [role="heading"]');
+      if (heading) {
+        heading.id ||= `${titleId}-custom`;
+        panelRef.current.setAttribute('aria-labelledby', heading.id);
+        panelRef.current.removeAttribute('aria-label');
+      }
+    }
 
     const handleKeyDown = (event) => {
+      const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (dialogs.length && dialogs[dialogs.length - 1] !== panelRef.current) return;
       if (event.key === 'Tab') {
         const panel = panelRef.current;
-        const targets = Array.from(panel?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]') || []).filter((node) => node.getClientRects().length);
+        const targets = Array.from(panel?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]') || []).filter((node) => node.getClientRects().length && !node.closest('[inert], [aria-hidden="true"]'));
         const first = targets[0];
         const last = targets.at(-1);
         if (!first) { event.preventDefault(); panel?.focus(); }
@@ -71,8 +119,7 @@ export function Modal({
     document.addEventListener('keydown', handleKeyDown);
 
     // Keep the page behind the dialog from scrolling while it is open.
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlockScroll = lockBodyScroll(document.body);
 
     // Move focus into the dialog so keyboard/screen-reader users land inside it.
     const focusTarget = panelRef.current?.querySelector('[data-autofocus]') || panelRef.current;
@@ -80,15 +127,27 @@ export function Modal({
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      restoreFocusRef.current?.focus?.({ preventScroll: true });
+      unlockScroll();
+      unlock.forEach((release) => release());
+      const remaining = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).filter((node) => node !== openedPanel && !node.closest('[inert]'));
+      const topDialog = remaining.at(-1);
+      let target = restoreFocusRef.current;
+      const visited = new Set();
+      // A dialog beneath this one may already have closed. Follow its original trigger.
+      while (target && !target.isConnected && !visited.has(target)) {
+        visited.add(target);
+        target = focusOrigins.get(target.closest?.('[role="dialog"]')) || null;
+      }
+      if (topDialog && !topDialog.contains(target)) target = topDialog;
+      if (target?.isConnected && !target.closest?.('[inert]')) target.focus?.({ preventScroll: true });
     };
-  }, [open]);
+  }, [open, title, labelledBy, ariaLabel, titleId]);
 
   if (!open) return null;
 
   const widths = { sm: 'max-w-xs', md: 'max-w-md', lg: 'max-w-2xl' };
-  const isBottom = placement === 'bottom';
+  const isSheet = variant === 'sheet';
+  const isBottom = placement === 'bottom' || isSheet;
 
   return (
     <div
@@ -114,18 +173,19 @@ export function Modal({
         // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         role="dialog"
         aria-modal="true"
-        aria-labelledby={title ? titleId : undefined}
+        aria-labelledby={labelledBy || (title ? titleId : undefined)}
+        aria-label={!title && !labelledBy ? ariaLabel || '对话框' : undefined}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={[
           'relative z-10 flex w-full flex-col shadow-2xl outline-none',
           panelClassName,
-          widths[size] || widths.md,
-          isBottom ? 'rounded-t-3xl' : 'rounded-3xl',
+          isSheet ? 'max-w-2xl lg:ml-auto lg:h-full lg:max-w-2xl' : widths[size] || widths.md,
+          isBottom ? `rounded-t-3xl ${isSheet ? 'lg:rounded-l-3xl lg:rounded-tr-none' : ''}` : 'rounded-3xl',
           className,
         ].join(' ')}
         style={{
-          maxHeight: isBottom ? 'min(88dvh, 720px)' : 'min(86dvh, 680px)',
+          maxHeight: isSheet ? '92dvh' : isBottom ? 'min(88dvh, 720px)' : 'min(86dvh, 680px)',
           paddingBottom: isBottom ? 'max(0px, var(--safe-area-inset-bottom, 0px))' : undefined,
         }}
       >

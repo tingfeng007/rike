@@ -1,10 +1,12 @@
+import { normalizeDictionaryQuery, isDictionaryQuery, readDictionaryState } from './dictionaryState.js';
+export { normalizeDictionaryQuery, isDictionaryQuery, readDictionaryState, rememberDictionaryEntry, clearDictionaryHistory } from './dictionaryState.js';
 import { VOCABULARY_CATEGORIES } from '../data/categoryVocabulary.js';
 import { DEFAULT_SAMPLE_WORDS } from '../data/samples.js';
+import { createTimedRequest } from './requestTimeout.js';
 
-export const DICTIONARY_VERSION = 'ecdict-bc015ed-v1';
+export const DICTIONARY_VERSION = 'ecdict-bc015ed-ipa-v2';
 export const DICTIONARY_WORD_COUNT = 59136;
 export const DICTIONARY_CACHE = 'lingoflow-dictionary-v1';
-const STATE_KEY = 'lingoflow_dictionary_v1';
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
 const curated = [
   ...VOCABULARY_CATEGORIES.flatMap((category) => category.words),
@@ -17,13 +19,6 @@ const lines = (value) =>
     .map((line) => line.trim())
     .filter(Boolean);
 
-export function normalizeDictionaryQuery(value) {
-  return clean(value).replace(/[‘’]/g, "'").replace(/\s+/g, ' ').toLowerCase();
-}
-
-export function isDictionaryQuery(value) {
-  return /^[a-z][a-z '.-]{0,63}$/i.test(normalizeDictionaryQuery(value));
-}
 
 export function buildDictionaryWordPayload(entry) {
   return {
@@ -97,6 +92,8 @@ export function decodeDictionaryRow(row) {
     forms,
     tags: clean(tags).split(' ').filter(Boolean),
     source: 'ECDICT',
+    phoneticSource: clean(row[6]) || 'ECDICT',
+    dictionaryVersion: DICTIONARY_VERSION,
   };
 }
 
@@ -114,6 +111,7 @@ function fromLearningWord(word) {
     contextSentence: clean(word.contextSentence),
     contextSentenceCn: clean(word.contextSentenceCn),
     source: '学习词库',
+    phoneticSource: '学习词库',
   };
 }
 
@@ -133,105 +131,13 @@ function withLearningContext(entry, local) {
       )
       .join('\n'),
     phonetic: local.phonetic || entry.phonetic,
+    phoneticSource: local.phonetic ? '学习词库' : entry.phoneticSource,
     definitionEn: entry.definitionEn || local.definitionEn,
     contextSentence: local.contextSentence || entry.contextSentence,
     contextSentenceCn: local.contextSentenceCn || entry.contextSentenceCn,
   };
 }
 
-export function readDictionaryState(storage = globalThis.localStorage) {
-  try {
-    const raw = JSON.parse(storage?.getItem(STATE_KEY) || '{}');
-    const history = Array.isArray(raw?.history)
-      ? raw.history.filter(isDictionaryQuery).slice(0, 12)
-      : [];
-    const entries = Array.isArray(raw?.entries)
-      ? raw.entries
-          .filter(
-            (item) =>
-              item &&
-              isDictionaryQuery(item.word) &&
-              typeof item.translation === 'string' &&
-              (item.translation ||
-                (item.englishOnly && clean(item.definitionEn))) &&
-              Array.isArray(item.meanings) &&
-              item.meanings.every(
-                (meaning) => typeof meaning?.text === 'string',
-              ) &&
-              Array.isArray(item.forms) &&
-              item.forms.every(
-                (form) =>
-                  typeof form?.word === 'string' &&
-                  typeof form?.label === 'string',
-              ),
-          )
-          .slice(0, 40)
-          .map((item) => ({
-            ...item,
-            word: clean(item.word),
-            phonetic: clean(item.phonetic),
-            pos: clean(item.pos),
-            definitionEn: clean(item.definitionEn),
-            contextSentence: clean(item.contextSentence),
-            contextSentenceCn: clean(item.contextSentenceCn),
-            memoryTip: clean(item.memoryTip),
-            source: clean(item.source),
-            meanings: item.meanings.map((meaning) => ({
-              pos: clean(meaning.pos),
-              text: clean(meaning.text),
-            })),
-            tags: Array.isArray(item.tags)
-              ? item.tags.filter((tag) => typeof tag === 'string')
-              : [],
-            collocations: Array.isArray(item.collocations)
-              ? item.collocations.filter((text) => typeof text === 'string')
-              : [],
-          }))
-      : [];
-    return { history, entries };
-  } catch {
-    return { history: [], entries: [] };
-  }
-}
-
-export function rememberDictionaryEntry(
-  entry,
-  storage = globalThis.localStorage,
-) {
-  const state = readDictionaryState(storage);
-  const key = normalizeDictionaryQuery(entry.word);
-  const next = {
-    history: [key, ...state.history.filter((word) => word !== key)].slice(
-      0,
-      12,
-    ),
-    entries: [
-      entry,
-      ...state.entries.filter(
-        (word) => normalizeDictionaryQuery(word.word) !== key,
-      ),
-    ].slice(0, 40),
-  };
-  // Leave room for the user's flashcards and articles, even for unusually long entries.
-  while (JSON.stringify(next).length > 300000 && next.entries.length > 1)
-    next.entries.pop();
-  try {
-    storage?.setItem(STATE_KEY, JSON.stringify(next));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function clearDictionaryHistory(storage = globalThis.localStorage) {
-  const state = readDictionaryState(storage);
-  try {
-    storage?.setItem(STATE_KEY, JSON.stringify({ ...state, history: [] }));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function editDistance(left, right) {
   let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
@@ -289,28 +195,28 @@ export function createDictionaryService({
     } catch {
       /* Private browsing may disable Cache Storage; normal lookup still works. */
     }
-    if (!response) {
-      response = await fetchImpl(shardUrl(letter), {
-        signal: signal
-          ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
-          : AbortSignal.timeout(15000),
-      });
-      if (!response.ok)
-        throw new Error(
-          '词库暂时无法加载，请检查网络后重试。已查过的词仍可离线查看。',
-        );
+    const validate = async (candidate) => {
+      if (!candidate.ok) throw new Error('词库暂时无法加载，请检查网络后重试。已查过的词仍可离线查看。');
+      const data = await candidate.json();
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('词库数据无法读取，请重新加载页面。');
+      const valid = Object.fromEntries(Object.entries(data).filter(([key, row]) => key.startsWith(letter) && decodeDictionaryRow(row)));
+      if (!Object.keys(valid).length) throw new Error('词库数据无法读取，请重新加载页面。');
+      return valid;
+    };
+    let valid;
+    let copy;
+    if (response) {
+      try { copy = response.clone(); valid = await validate(response); }
+      catch { await cache?.delete(shardUrl(letter)); response = null; }
     }
-    const copy = response.clone();
-    const data = await response.json();
-    if (!data || typeof data !== 'object' || Array.isArray(data))
-      throw new Error('词库数据无法读取，请重新加载页面。');
-    const valid = Object.fromEntries(
-      Object.entries(data).filter(
-        ([key, row]) => key.startsWith(letter) && decodeDictionaryRow(row),
-      ),
-    );
-    if (!Object.keys(valid).length)
-      throw new Error('词库数据无法读取，请重新加载页面。');
+    if (!response) {
+      const request = createTimedRequest(signal, 15000);
+      try {
+        response = await fetchImpl(shardUrl(letter), { signal: request.signal });
+        copy = response.clone();
+        valid = await validate(response);
+      } finally { request.cleanup(); }
+    }
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     shards.set(letter, valid);
     try {
@@ -336,17 +242,18 @@ export function createDictionaryService({
           (word) => normalizeDictionaryQuery(word.word) === key,
         ),
       );
-      if (cached) return withLearningContext(cached, local);
+      if (cached?.dictionaryVersion === DICTIONARY_VERSION) return withLearningContext(cached, local);
       let data;
       try {
         data = await loadShard(key[0], signal);
       } catch (error) {
-        if (local && !signal?.aborted) return local;
+        if (!signal?.aborted && (cached || local)) return cached ? withLearningContext(cached, local) : local;
         throw error;
       }
       const entry = decodeDictionaryRow(data[key]);
-      if (!entry) return local;
-      return withLearningContext(entry, local);
+      if (!entry) return cached || local;
+      const refreshed = cached ? { ...entry, ...cached, phonetic: entry.phonetic || cached.phonetic, phoneticSource: entry.phoneticSource, dictionaryVersion: DICTIONARY_VERSION } : entry;
+      return withLearningContext(refreshed, local);
     },
     async suggest(query, { signal, fuzzy = false } = {}) {
       const key = normalizeDictionaryQuery(query);
@@ -369,6 +276,11 @@ export function createDictionaryService({
         );
         completed += 1;
         onProgress(Math.round((completed / LETTERS.length) * 100));
+      }
+      const cache = await cacheStorage.open(DICTIONARY_CACHE);
+      for (const request of await cache.keys()) {
+        const url = typeof request === 'string' ? request : request.url;
+        if (url.includes('/dictionary/') && !url.includes(`/dictionary/${DICTIONARY_VERSION}/`)) await cache.delete(request);
       }
     },
     async isDownloaded() {
@@ -395,12 +307,12 @@ export async function lookupOnlineDictionary(
 ) {
   const key = normalizeDictionaryQuery(query);
   if (!isDictionaryQuery(key)) throw new Error('请输入英文单词或短语。');
+  const request = createTimedRequest(signal, 12000);
+  try {
   const response = await fetchImpl(
     `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(key)}`,
     {
-      signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(12000)])
-        : AbortSignal.timeout(12000),
+      signal: request.signal,
     },
   );
   if (response.status === 404) return null;
@@ -445,4 +357,5 @@ export async function lookupOnlineDictionary(
     source: 'Free Dictionary API',
     englishOnly: true,
   };
+  } finally { request.cleanup(); }
 }

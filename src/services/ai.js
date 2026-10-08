@@ -84,6 +84,22 @@ function asStringList(value, predicate = () => true) {
   return value.map((item) => asText(item)).filter((item) => item && predicate(item));
 }
 
+export function normalizeOralResponse(raw) {
+  if (!raw || typeof raw !== 'object' || typeof raw.replyText !== 'string' || !raw.replyText.trim()) {
+    throw new Error('口语回复格式不完整，请重试这条消息');
+  }
+  const feedback = raw.feedback && typeof raw.feedback === 'object' ? raw.feedback : {};
+  const shaped = Object.fromEntries(['userOriginal', 'corrected', 'explanationZh', 'betterAlternative']
+    .map((key) => [key, typeof feedback[key] === 'string' ? feedback[key] : '']));
+  return {
+    replyText: raw.replyText.trim(),
+    replyTextCn: typeof raw.replyTextCn === 'string' ? raw.replyTextCn : '',
+    feedback: { ...shaped, hasSlip: feedback.hasSlip === true && Boolean(shaped.corrected && shaped.userOriginal) },
+    suggestedReplies: Array.isArray(raw.suggestedReplies)
+      ? raw.suggestedReplies.filter((item) => typeof item === 'string' && item.trim()).slice(0, 3) : [],
+  };
+}
+
 /**
  * Normalize `{ questions: [...] }` from the quiz generator.
  * Invalid questions are dropped rather than crashing the reviewer; the surviving
@@ -624,7 +640,7 @@ ${contextSentence ? `该词出现在以下上下文中: "${contextSentence}"` : 
 /**
  * 2. Deep Sentence & Grammar Breakdown
  */
-export async function analyzeSentenceWithAI(sentence) {
+export async function analyzeSentenceWithAI(sentence, { signal } = {}) {
   const prompt = `你是一位富有洞察力的资深英语私教。请为学习者深入浅出地剖析以下英文句子：
 "${sentence}"
 
@@ -653,7 +669,7 @@ export async function analyzeSentenceWithAI(sentence) {
     { role: 'user', content: prompt },
   ];
 
-  const raw = await callAICompletion({ messages, temperature: 0.3, responseFormatJson: true });
+  const raw = await callAICompletion({ messages, temperature: 0.3, responseFormatJson: true, signal });
   return normalizeSentenceAnalysis(extractJson(raw), { sentence });
 }
 
@@ -764,7 +780,7 @@ CRITICAL: You must return your response in strictly valid JSON format matching t
   });
 
   try {
-    return extractJson(fullRaw);
+    return normalizeOralResponse(extractJson(fullRaw));
   } catch (err) {
     const fallbackText = extractPartialReplyText(fullRaw);
     if (fallbackText) {
@@ -832,7 +848,7 @@ CRITICAL: You must return your response in strictly valid JSON format matching t
     responseFormatJson: true,
   });
 
-  return extractJson(raw);
+  return normalizeOralResponse(extractJson(raw));
 }
 
 /**

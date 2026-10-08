@@ -1,4 +1,5 @@
 const NCE_AUDIO_CACHE = 'lingoflow-nce-audio-v1';
+import { createTimedRequest } from './requestTimeout.js';
 
 export function supportsCourseCache() {
   return typeof window !== 'undefined' && 'caches' in window && typeof window.fetch === 'function';
@@ -6,11 +7,14 @@ export function supportsCourseCache() {
 
 export async function cacheCourseAudio(url, { signal } = {}) {
   if (!supportsCourseCache()) throw new Error('当前浏览器不支持离线音频缓存');
-  const response = await fetch(url, { mode: 'cors', signal });
-  if (!response.ok) throw new Error(`音频下载失败（${response.status}）`);
-  const cache = await window.caches.open(NCE_AUDIO_CACHE);
-  await cache.put(url, response.clone());
-  return true;
+  const request = createTimedRequest(signal, 30000);
+  try {
+    const response = await fetch(url, { mode: 'cors', signal: request.signal });
+    if (!response.ok) throw new Error(`音频下载失败（${response.status}）`);
+    const cache = await window.caches.open(NCE_AUDIO_CACHE);
+    await cache.put(url, response.clone());
+    return true;
+  } finally { request.cleanup(); }
 }
 
 export async function getCachedCourseAudioUrl(url) {

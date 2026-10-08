@@ -1,4 +1,5 @@
 import { categoryPhonetic } from './categoryPhonetics.js';
+import { CATEGORY_EXPANSION, CATEGORY_ROUTES, CORE_COLLOCATIONS } from './categoryExpansion.js';
 // Curated starter decks. Examples describe the selected sense, not every possible meaning.
 const decks = [
   ['business', '商务英语', '💼', [
@@ -149,23 +150,38 @@ const decks = [
 
 export const VOCABULARY_CATEGORIES = decks.map(([id, label, icon, rows]) => ({
   id, label, icon,
-  words: rows.map(([word, pos, translation, contextSentence, contextSentenceCn]) => ({
+  description: CATEGORY_ROUTES[id].description,
+  learningRoute: CATEGORY_ROUTES[id].route.map((title, index) => ({ level: ['starter', 'core', 'advanced'][index], title })),
+  words: [...rows.map((row) => [...row, CORE_COLLOCATIONS[row[0]], 'core']),
+    ...CATEGORY_EXPANSION[id].map((row, index) => [...row, index < 8 ? 'starter' : 'advanced'])]
+    .map(([word, pos, translation, contextSentence, contextSentenceCn, collocation, level]) => ({
     word, pos, translation, contextSentence, contextSentenceCn, phonetic: categoryPhonetic(word),
+    level, learningSense: translation, collocations: [collocation],
     tags: [label],
     sources: [{ type: 'category', id, key: `category:${id}`, label: `分类词库 · ${label}` }],
   })),
 }));
 
-export function sampleCategoryWords(categoryId, { size = 10, previousWords = [], random = Math.random } = {}) {
+export function sampleCategoryWords(categoryId, { size = 10, level = 'all', previousWords = [], learnedWords = [], knownWords = [], random = Math.random } = {}) {
   const category = VOCABULARY_CATEGORIES.find((item) => item.id === categoryId);
   if (!category || !Number.isInteger(size) || size <= 0) return [];
-  const shuffled = [...category.words];
+  if (!['all', 'starter', 'core', 'advanced'].includes(level)) return [];
+  const shuffled = category.words.filter((word) => level === 'all' || word.level === level);
   for (let i = shuffled.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(random() * (i + 1));
+    const value = Number(random());
+    const j = Math.floor(Math.max(0, Math.min(0.999999999, Number.isFinite(value) ? value : 0)) * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   // Prefer words outside the last batch, then fill without duplicates.
-  const previous = new Set(previousWords.map((word) => word.toLowerCase()));
-  return [...shuffled.filter((item) => !previous.has(item.word.toLowerCase())),
-    ...shuffled.filter((item) => previous.has(item.word.toLowerCase()))].slice(0, size);
+  const normalizeWords = (values) => new Set((Array.isArray(values) ? values : []).map((word) => String(typeof word === 'string' ? word : word?.word || '').toLowerCase().trim()).filter(Boolean));
+  const previous = normalizeWords(previousWords);
+  const learned = normalizeWords([...(Array.isArray(learnedWords) ? learnedWords : []), ...(Array.isArray(knownWords) ? knownWords : [])]);
+  const buckets = [[], [], [], []];
+  for (const item of shuffled) {
+    const word = item.word.toLowerCase();
+    // Unseen and unlearned first, then unlearned repeats, then already-learned words.
+    const bucket = (learned.has(word) ? 2 : 0) + (previous.has(word) ? 1 : 0);
+    buckets[bucket].push(item);
+  }
+  return buckets.flat().slice(0, size);
 }

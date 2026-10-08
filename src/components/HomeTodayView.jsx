@@ -107,6 +107,17 @@ export default function HomeTodayView({
           </div>
         </header>
 
+        {showDemoNotice && usingSampleData && (
+          <div className="today-demo today-demo-intro">
+            <strong>欢迎，先试一小步</strong>
+            <p>内置词卡和文章供你体验。分类词卡可自由练习，收藏之后才进入你的生词本。</p>
+            <div>
+              <button type="button" onClick={dismissDemoNotice}>知道了，开始学习</button>
+              <button type="button" onClick={startWithMyOwnDeck}>移除演示生词</button>
+            </div>
+          </div>
+        )}
+
         <button type="button" className="today-dictionary" onClick={() => onNavigate('dictionary')}>
           <Search size={19} /><span>查个单词，读懂新表达</span><span>英汉词典</span><ArrowRight size={16} />
         </button>
@@ -154,7 +165,7 @@ export default function HomeTodayView({
           <div className="focus-copy">
             <span className="focus-eyebrow">
               <span />
-              {dayIsFinished ? '今日计划已完成' : 'YOUR DAILY FLOW'}
+              {dayIsFinished ? '今日计划已完成' : '现在，专注这一小步'}
             </span>
             <h2>
               {nextTask?.title ||
@@ -220,34 +231,6 @@ export default function HomeTodayView({
           </div>
         </section>
 
-        <section className="today-explore">
-          <div className="today-section-title">
-            <h2>换个方式学</h2>
-            <span>找到你的学习节奏</span>
-          </div>
-          <div className="explore-grid">
-            {modules.map(({ id, title, subtitle, icon: Icon, tone }) => (
-              <button
-                type="button"
-                key={id}
-                className={`explore-card ${tone}`}
-                onClick={() =>
-                  id === 'grammar'
-                    ? onNavigate('vocab', { section: 'grammar' })
-                    : onNavigate(id)
-                }
-              >
-                <span className="explore-icon">
-                  <Icon size={24} strokeWidth={1.8} />
-                </span>
-                <ArrowRight size={17} className="explore-arrow" />
-                <strong>{title}</strong>
-                <p>{subtitle}</p>
-              </button>
-            ))}
-          </div>
-        </section>
-
         <section className="today-plan">
           <div className="today-section-title">
             <h2>今天的小目标</h2>
@@ -278,7 +261,7 @@ export default function HomeTodayView({
             </div>
           </div>
           <div className="today-task-list">
-            {plan.tasks.map((task, index) => {
+            {plan.tasks.filter((task) => task.id !== nextTask?.id).map((task, index) => {
               const Icon = taskIcons[task.type] || Headphones;
               return (
                 <div
@@ -366,6 +349,34 @@ export default function HomeTodayView({
           </p>
         </section>
 
+        <section className="today-explore">
+          <div className="today-section-title">
+            <h2>换个方式学</h2>
+            <span>找到你的学习节奏</span>
+          </div>
+          <div className="explore-grid">
+            {modules.map(({ id, title, subtitle, icon: Icon, tone }) => (
+              <button
+                type="button"
+                key={id}
+                className={`explore-card ${tone}`}
+                onClick={() =>
+                  id === 'grammar'
+                    ? onNavigate('vocab', { section: 'grammar' })
+                    : onNavigate(id)
+                }
+              >
+                <span className="explore-icon">
+                  <Icon size={24} strokeWidth={1.8} />
+                </span>
+                <ArrowRight size={17} className="explore-arrow" />
+                <strong>{title}</strong>
+                <p>{subtitle}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+
         <section className="today-weekly">
           <button
             type="button"
@@ -425,22 +436,6 @@ export default function HomeTodayView({
         </section>
 
         <div className="today-notices">
-          {showDemoNotice && usingSampleData && (
-            <div className="today-demo">
-              <strong>先用示例内容，试试手感</strong>
-              <p>
-                30 个演示生词和 8 篇示例文章供你体验，它们不是你的学习记录。
-              </p>
-              <div>
-                <button type="button" onClick={dismissDemoNotice}>
-                  先保留，我看看
-                </button>
-                <button type="button" onClick={startWithMyOwnDeck}>
-                  清空示例，从零开始
-                </button>
-              </div>
-            </div>
-          )}
           {!hasKey && (
             <ApiKeyNotice onOpenSettings={() => onNavigate('settings')} />
           )}

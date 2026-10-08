@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, BookOpen, ChevronLeft, ChevronRight, Clock3, FileText, RotateCcw, Trophy } from 'lucide-react';
 import { StorageService } from '../services/storage';
-import { buildNceExamQuestions, gradeNceExam } from '../services/nceExam';
+import { buildNceExamQuestions, commitNceExamAttempt, gradeNceExam } from '../services/nceExam';
 import { parseLrc, safeAssetName } from '../services/nce';
 
 function unitTitle(unit) {
@@ -24,18 +24,23 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
   const abortRef = useRef(null);
+  const automaticSubmitFailed = useRef(false);
 
   const persist = useCallback((next) => {
+    if (!StorageService.saveNceExams(next)) {
+      setSaveError('本次答卷未能保存到设备。答案和草稿仍在当前页面，请检查浏览器存储空间后重试。');
+      return false;
+    }
     dataRef.current = next;
     setData(next);
-    setSaveError(StorageService.saveNceExams(next)
-      ? '' : '本次答卷未能保存到设备。请检查浏览器存储空间。');
+    setSaveError('');
+    return true;
   }, []);
 
   const finishExam = useCallback((expired = false) => {
     const current = dataRef.current;
     const draft = current.draft;
-    if (!draft) return;
+    if (!draft || (expired && automaticSubmitFailed.current)) return;
     const graded = gradeNceExam(draft.questions, draft.answers);
     const attempt = {
       ...graded,
@@ -46,13 +51,24 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
       submittedAt: Date.now(),
       expired,
     };
-    persist({ attempts: [attempt, ...current.attempts].slice(0, 30), draft: null });
-    onComplete?.(attempt);
-    StorageService.recordStudyActivity({ type: 'course', count: 1, source: 'nce-exam', entityId: attempt.unitId, label: '完成新概念单元测验', metadata: { score: attempt.score } });
+    const next = commitNceExamAttempt(current, attempt, {
+      persist: (value) => StorageService.saveNceExams(value),
+      onComplete: (value) => onComplete
+        ? onComplete(value)
+        : Boolean(StorageService.recordStudyActivity({ type: 'course', count: 1, source: 'nce-exam', entityId: value.unitId, label: '完成新概念单元测验', metadata: { score: value.score, attemptId: value.id } })),
+    });
+    if (!next) {
+      automaticSubmitFailed.current = true;
+      setSaveError('交卷或课程记录没有保存成功，答案和草稿已保留，请检查存储空间后重试交卷。');
+      return;
+    }
+    dataRef.current = next;
+    setData(next);
+    setSaveError('');
     setSelectedAttemptId(attempt.id);
     setShowAllResults(false);
     setScreen('results');
-  }, [persist, onComplete]);
+  }, [onComplete]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -81,6 +97,7 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
       controller.abort();
     }, 12000);
     setPreparing(true);
+    automaticSubmitFailed.current = false;
     setLoadError('');
 
     try {
@@ -103,7 +120,7 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
       if (questions.length < 3) throw new Error('本单元可生成的试题不足，请选择另一单元');
       const startedAt = Date.now();
       const minutes = Math.max(5, Math.ceil(questions.length * 1.25));
-      persist({ ...dataRef.current, draft: {
+      if (!persist({ ...dataRef.current, draft: {
         unitId: unit.filename,
         title: unitTitle(unit),
         questions,
@@ -111,7 +128,7 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
         currentIndex: 0,
         startedAt,
         deadline: startedAt + minutes * 60_000,
-      } });
+      } })) return;
       setNow(startedAt);
       setScreen('paper');
     } catch (error) {
@@ -133,7 +150,12 @@ export default function NceExam({ units, baseUrl, initialUnitFilename, onBack, o
   const updateDraft = (patch) => {
     const current = dataRef.current;
     if (!current.draft) return;
-    persist({ ...current, draft: { ...current.draft, ...patch } });
+    const next = { ...current, draft: { ...current.draft, ...patch } };
+    if (!persist(next)) {
+      // Editing is allowed to remain an unsaved draft; it must never be presented as submitted.
+      dataRef.current = next;
+      setData(next);
+    }
   };
 
   const draft = data.draft;

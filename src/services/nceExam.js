@@ -113,3 +113,14 @@ export function gradeNceExam(questions, answers) {
     results,
   };
 }
+
+/** Commit the paper and course completion together; failed submissions keep their draft. */
+export function commitNceExamAttempt(current, attempt, { persist, onComplete } = {}) {
+  if (!current?.draft || current.attempts?.some((item) => item.id === attempt.id)) return null;
+  const next = { attempts: [attempt, ...(current.attempts || [])].slice(0, 30), draft: null };
+  if (!persist(next)) return null;
+  try {
+    if (onComplete?.(attempt) === false) { persist(current); return null; }
+  } catch { persist(current); return null; }
+  return next;
+}

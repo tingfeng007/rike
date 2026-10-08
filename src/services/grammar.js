@@ -142,7 +142,7 @@ function tokensAfterVerb(tokens, verbIndex) {
 
 /** 常见形容词（用于区分"宾补"与"双宾"这两种都跟两个成分的结构）。 */
 const COMMON_ADJECTIVES = new Set([
-  'empty', 'happy', 'closed', 'open', 'clean', 'tired', 'ready', 'clear', 'quiet', 'busy',
+  'empty', 'happy', 'closed', 'open', 'clean', 'tired', 'ready', 'clear', 'quiet', 'busy', 'calm',
   'sure', 'sorry', 'interesting', 'interested', 'delicious', 'beautiful', 'good', 'well',
   'kind', 'nice', 'safe', 'angry', 'proud', 'yellow', 'red', 'green', 'blue', 'cold',
   'warm', 'hot', 'young', 'old', 'easy', 'hard', 'true', 'false', 'president', 'chairman',
@@ -170,6 +170,10 @@ export function detectSentencePattern(sentence) {
   const unknown = (reason) => ({ pattern: 'unknown', reason, verbIndex: -1 });
 
   if (tokens.length < 2) return unknown('句子太短，至少需要一个主语和一个谓语。');
+  // Authored examples are checked annotations; arbitrary sentences need stronger evidence.
+  const annotated = getAllGrammarExamples().find((example) => tokenize(example.en).join(' ').toLowerCase() === lower.join(' '));
+  if (annotated) return { pattern: annotated.patternId, reason: '这句与人工标注例句一致：' + annotated.parts.map((part) => `${part.text}（${part.role}）`).join(' + '), verbIndex: lower.findIndex((word, index) => index > 0 && (BE_FORMS.has(word) || COMMON_VERBS.has(word) || LINKING_VERBS.has(word) || DITRANSITIVE_VERBS.has(word) || STRICT_COMPLEX_VERBS.has(word))) };
+  if (lower.some((word) => ['because', 'although', 'if', 'who', 'which', 'that', 'and', 'but', 'or'].includes(word)) || /[;:]/.test(sentence)) return unknown('这句可能包含从句、并列结构或歧义，需要结合语境拆解。');
 
   // There be
   if (lower[0] === 'there' && (BE_FORMS.has(lower[1]) || LINKING_VERBS.has(lower[1]))) {
@@ -192,23 +196,17 @@ export function detectSentencePattern(sentence) {
       break;
     }
   }
-  // 兜底：没命中词表时，认第一个带常见动词词尾的词（cried / played / running…）。
-  if (verbIndex === -1) {
-    for (let i = 1; i < tokens.length; i += 1) {
-      const word = lower[i];
-      if (DETERMINERS.has(lower[i - 1]) && NOUN_VERB_HOMOGRAPHS.has(word)) continue;
-      if (/(?:s|es|ed|ing)$/.test(word)) {
-        verbIndex = i;
-        break;
-      }
-    }
-  }
   if (verbIndex === -1) {
     return unknown('没有识别出谓语动词，可换一种写法或改用 AI 拆句。');
   }
 
   let verb = lower[verbIndex];
   let tail = tokensAfterVerb(tokens, verbIndex);
+  // A word ending in -s/-ed is not enough evidence to invent a predicate.
+  if (lower.slice(0, verbIndex).some((word) => ['can', 'could', 'will', 'would', 'may', 'might', 'must', 'do', 'does', 'did', 'not'].includes(word))) return unknown('助动词或否定结构需要识别完整谓语，当前规则不能可靠判定。');
+  const timeWords = new Set(['yesterday', 'today', 'tomorrow', 'tonight']);
+  const timeIndex = tail.findIndex((word, index) => timeWords.has(word.toLowerCase()) || (['every', 'last', 'next', 'this'].includes(word.toLowerCase()) && ['day', 'night', 'week', 'month', 'year', 'morning', 'evening'].includes(tail[index + 1]?.toLowerCase())));
+  if (timeIndex >= 0) tail = tail.slice(0, timeIndex);
 
   // be + 现在分词是进行时，"is sleeping"整体是谓语，不是"系动词 + 表语"。
   if (BE_FORMS.has(verb) && tail.length > 0 && /ing$/.test(tail[0].toLowerCase())) {
@@ -216,6 +214,11 @@ export function detectSentencePattern(sentence) {
     verb = tail[0].toLowerCase();
     tail = tail.slice(1);
   }
+
+  const objectPronouns = new Set(['me', 'you', 'him', 'her', 'it', 'us', 'them']);
+  const bareNouns = new Set(['music', 'english', 'french', 'books', 'tea', 'coffee', 'water', 'football', 'dinner', 'lunch', 'breakfast']);
+  const isNounPhrase = (words) => words.length > 0 && (words.length === 1 && (bareNouns.has(words[0].toLowerCase()) || objectPronouns.has(words[0].toLowerCase())) || DETERMINERS.has(words[0].toLowerCase()) && words.length >= 2 && !isLikelyAdjective(words.at(-1)) && !words.slice(1).some((word) => DETERMINERS.has(word.toLowerCase()) || objectPronouns.has(word.toLowerCase())));
+  const adjectiveTail = tail.length === 1 && isLikelyAdjective(tail[0]);
 
   if (BE_FORMS.has(verb) || LINKING_VERBS.has(verb)) {
     // be + 过去分词多半是被动语态，不属于五大基本句型，宁可说"不确定"。
@@ -226,13 +229,14 @@ export function detectSentencePattern(sentence) {
     // keep / get / have / find 等既是系动词也能带宾补："She kept calm"（主系表）与
     // "She kept the door closed"（主谓宾补）靠后面成分的数量与词性区分。
     const ambiguousMulti = AMBIGUOUS_MULTI_VERBS.has(verb);
-    if (!(ambiguousMulti && tail.length >= 2)) {
+    if (BE_FORMS.has(verb) || adjectiveTail || (!ambiguousMulti && ['become', 'becomes', 'became', 'remain', 'remains', 'seem', 'seems'].includes(verb) && isNounPhrase(tail))) {
       const hasFollowingTokens = tokens.length > verbIndex + 1;
       if (tail.length === 0 && !hasFollowingTokens) {
         return unknown('系动词后面缺表语，句子可能不完整。');
       }
       return { pattern: 'svp', reason: '系动词后面的成分说明主语的身份 / 性质 / 状态，是表语。', verbIndex };
     }
+    if (tail.length === 0) return unknown('这个动词可能有动作义或系动词义，需要结合后面的介词与语境判定。');
   }
 
   const inStrictComplex = STRICT_COMPLEX_VERBS.has(verb);
@@ -243,19 +247,22 @@ export function detectSentencePattern(sentence) {
     const lastWord = tail[tail.length - 1];
     // find / get / keep 既能带双宾（find me a seat）也能带宾补（find the room empty），
     // 只能靠末位成分是不是形容词 / 分词来区分。
-    if (inStrictComplex || isLikelyAdjective(lastWord)) {
+    const objectIsPronoun = objectPronouns.has(tail[0].toLowerCase());
+    const complement = tail.slice(1);
+    if ((inStrictComplex && objectIsPronoun && (isNounPhrase(complement) || isLikelyAdjective(lastWord) || ['president', 'chairman', 'doctor', 'teacher'].includes(lastWord.toLowerCase()))) || (isLikelyAdjective(lastWord) && (objectIsPronoun || isNounPhrase(tail.slice(0, -1))))) {
       return { pattern: 'svoc', reason: '宾语后面的成分补充说明宾语（可在两者之间加 be 检验）。', verbIndex };
     }
-    if (inDitransitive) {
+    if (inDitransitive && objectIsPronoun && isNounPhrase(complement)) {
       return { pattern: 'svoo', reason: '动词后面跟了“给谁”和“给了什么”两个宾语。', verbIndex };
     }
-    return { pattern: 'svo', reason: '动词需要一个承受动作的宾语。', verbIndex };
+    if (isNounPhrase(tail)) return { pattern: 'svo', reason: '动词后面是一个完整名词短语作宾语，不按单词数量把它拆成两个宾语。', verbIndex };
+    return unknown('这里的宾语、补足语或名词修饰关系无法可靠区分，请结合语境拆句。');
   }
 
-  if (tail.length >= 1) {
-    return { pattern: 'svo', reason: '动词需要一个承受动作的宾语，去掉后句子不完整。', verbIndex };
-  }
-  return { pattern: 'sv', reason: '动词是不及物动词，后面不需要宾语。', verbIndex };
+  const intransitive = new Set(['arrive', 'arrives', 'arrived', 'sleep', 'sleeps', 'slept', 'happen', 'happens', 'happened', 'fly', 'flies', 'flew', 'go', 'goes', 'went', 'come', 'comes', 'came', 'fall', 'falls', 'fell', 'cry', 'cries', 'cried', 'laugh', 'laughs', 'laughed', 'listen', 'listens', 'listened', 'sleeping']);
+  if (intransitive.has(verb)) return tail.length === 0 ? { pattern: 'sv', reason: '这里动词不带直接宾语，时间、地点或方式只补充动作信息。', verbIndex } : unknown('这个动词通常不直接带宾语，句子可能需要介词或额外语境。');
+  if (isNounPhrase(tail)) return { pattern: 'svo', reason: '动词后面有一个名词短语作宾语，描述动作涉及的人或事物。', verbIndex };
+  return unknown('目前没有足够证据可靠区分宾语、表语和状语，请结合语境或使用 AI 拆句。');
 }
 
 // --- 练习生成 -------------------------------------------------------------------------
@@ -397,39 +404,7 @@ export function splitHighlight(text, highlight) {
 // --- 进度 -----------------------------------------------------------------------------
 
 /** 纯函数：把一次答题结果并入进度对象（写盘交给 storage）。 */
-export function applyGrammarAnswer(progress, { patternId, correct, questionId = '', sentence = '', at = Date.now() } = {}) {
-  const base = progress && typeof progress === 'object' ? progress : {};
-  const answers = { ...(base.answers || {}) };
-  const key = patternId || 'unknown';
-  const current = answers[key] || { correct: 0, total: 0 };
-  answers[key] = {
-    correct: current.correct + (correct ? 1 : 0),
-    total: current.total + 1,
-  };
-
-  const missed = Array.isArray(base.missed) ? [...base.missed] : [];
-  if (!correct && questionId) {
-    const existingIndex = missed.findIndex((item) => item.questionId === questionId);
-    const entry = { questionId, sentence, patternId: key, at };
-    if (existingIndex >= 0) missed[existingIndex] = entry;
-    else missed.unshift(entry);
-  } else if (correct && questionId) {
-    const index = missed.findIndex((item) => item.questionId === questionId);
-    if (index >= 0) missed.splice(index, 1);
-  }
-
-  const totalAnswered = Object.values(answers).reduce((sum, item) => sum + item.total, 0);
-  const totalCorrect = Object.values(answers).reduce((sum, item) => sum + item.correct, 0);
-
-  return {
-    answers,
-    missed: missed.slice(0, 50),
-    totalAnswered,
-    totalCorrect,
-    accuracy: totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0,
-    updatedAt: at,
-  };
-}
+export { applyGrammarAnswer } from './grammarProgress.js';
 
 /**
  * 汇总每个句型的掌握情况，供进度条与错题复习使用。

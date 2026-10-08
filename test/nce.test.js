@@ -4,12 +4,13 @@ import {
   buildDictationItems,
   buildExercises,
   buildNceWordPayload,
+  buildCourseCaptions,
   extractWords,
   parseLrc,
   safeAssetName,
   scoreDictation,
 } from '../src/services/nce.js';
-import { buildNceExamQuestions, gradeNceExam } from '../src/services/nceExam.js';
+import { buildNceExamQuestions, commitNceExamAttempt, gradeNceExam } from '../src/services/nceExam.js';
 import { buildNceReviewQueue, gradeNceReview, resolveNceReviewMistake } from '../src/services/nceReview.js';
 
 const SAMPLE_LRC = `[00:01.50]Excuse me! | 打扰一下！
@@ -211,6 +212,37 @@ test('scoreDictation ignores case and punctuation while exposing missing words',
   assert.deepEqual(partial.missingWords, ['very']);
 });
 
+test('course captions use the original bilingual lines and timestamps in WebVTT', () => {
+  const captions = buildCourseCaptions(parseLrc(SAMPLE_LRC));
+  assert.ok(captions.startsWith('WEBVTT\n'));
+  assert.ok(captions.includes('00:00:01.500 --> 00:00:03.000'));
+  assert.ok(captions.includes('Excuse me!\n打扰一下！'));
+});
+
+test('dictation and mistake review reject changed negation, quantities and action words despite 90% similarity', () => {
+  const target = 'I did not want to leave the hotel before breakfast today.';
+  const opposite = 'I did want to leave the hotel before breakfast today.';
+  const result = scoreDictation(target, opposite);
+  assert.ok(result.score >= 90);
+  assert.equal(result.passed, false);
+  assert.ok(result.criticalErrors.includes('not'));
+  assert.equal(gradeNceReview({ kind: 'dictation', answer: target }, opposite).correct, false);
+  const numeric = scoreDictation('We booked 3 rooms at the hotel for our family yesterday.', 'We booked 4 rooms at the hotel for our family yesterday.');
+  assert.ok(numeric.score >= 90);
+  assert.equal(numeric.passed, false);
+  const action = scoreDictation('We bought the tickets at the station before the trip yesterday.', 'We sold the tickets at the station before the trip yesterday.');
+  assert.equal(action.passed, false);
+  assert.equal(scoreDictation(target, target.toUpperCase()).passed, true);
+});
+
+test('exercise and exam mistake review require the full answer, while dictation may tolerate a minor article', () => {
+  const answer = 'I put the small suitcase in the room before breakfast today.';
+  const attempt = 'I put small suitcase in the room before breakfast today.';
+  assert.equal(gradeNceReview({ kind: 'dictation', answer }, attempt).correct, true);
+  assert.equal(gradeNceReview({ kind: 'exam', answer }, attempt).correct, false);
+  assert.equal(gradeNceReview({ kind: 'exercise', answer: 'handbag' }, 'handbag!').correct, true);
+});
+
 test('buildDictationItems excludes course metadata and keeps source line indexes', () => {
   const lines = parseLrc(`[00:00.00]Lesson 1 | 第1课
 [00:01.00]Listen to the tape then answer this question. | 听录音，然后回答问题。
@@ -259,6 +291,23 @@ test('NCE exam grades unanswered items and ignores case and punctuation', () => 
   assert.equal(result.score, 67);
   assert.equal(result.results[2].isCorrect, false);
   assert.equal(gradeNceExam(questions, {}).score, 0);
+});
+
+test('exam submission retains draft when paper save or course completion fails, and commits only once', () => {
+  const current = { draft: { answers: { q1: 'handbag' } }, attempts: [] };
+  const attempt = { id: 'attempt-1', unitId: 'unit' };
+  let completed = 0;
+  assert.equal(commitNceExamAttempt(current, attempt, { persist: () => false, onComplete: () => { completed += 1; } }), null);
+  assert.equal(completed, 0);
+  const writes = [];
+  assert.equal(commitNceExamAttempt(current, attempt, { persist: (next) => { writes.push(next); return true; }, onComplete: () => false }), null);
+  assert.equal(writes.at(-1), current);
+  assert.equal(current.draft.answers.q1, 'handbag');
+  const next = commitNceExamAttempt(current, attempt, { persist: () => true, onComplete: () => { completed += 1; return true; } });
+  assert.equal(next.draft, null);
+  assert.equal(next.attempts.length, 1);
+  assert.equal(commitNceExamAttempt(next, attempt, { persist: () => true, onComplete: () => { completed += 1; } }), null);
+  assert.equal(completed, 1);
 });
 
 test('review queue combines exam, dictation and exercise mistakes without exposing dictation text', () => {

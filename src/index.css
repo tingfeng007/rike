@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 @layer base {
   :root {
@@ -236,4 +235,51 @@
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Vocabulary workspace: compact controls leave the card as the main activity. */
+.vocab-page .vocab-content { padding-top: 8px; }
+.vocab-page .flashcard-workspace { gap: 8px; padding-top: 0; }
+.vocab-page .vocab-deck-picker { display: grid; gap: 7px; padding-bottom: 3px; }
+.vocab-page .deck-select-row,
+.vocab-page .vocab-level-row { display: flex; align-items: center; gap: 8px; }
+.vocab-page .vocab-level-row label { flex: none; font-size: 12px; color: #64748b; }
+.vocab-page .vocab-level-row select { min-width: 0; flex: 1; min-height: 38px; padding: 6px 11px; border: 1px solid #e4eaf5; border-radius: 12px; background: #f9fbff; color: #465676; font-size: 13px !important; }
+.vocab-page .deck-action-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vocab-page .deck-action-row button { min-height: 36px; color: #3478f6; font-size: 12px; font-weight: 600; padding: 6px 4px; }
+.vocab-page .deck-settings { margin: 0; padding: 12px; border: 1px solid #e2eafa; border-radius: 16px; background: #f7faff; display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; align-items: center; font-size: 12px; }
+.vocab-page .deck-settings legend { padding: 0 6px; color: #4f6793; font-size: 11px; }
+.vocab-page .deck-settings select { min-width: 0; border-radius: 10px; padding: 7px 9px; background: #fff; border: 1px solid #e0e8f5; }
+.vocab-page .deck-settings button { flex: 1; min-height: 36px; border-radius: 9px; color: #65718b; background: #fff; border: 1px solid #e1e8f5; }
+.vocab-page .deck-settings button[aria-pressed="true"] { color: #2466d8; background: #e6efff; border-color: #bbd2fb; }
+.vocab-page .deck-settings p,
+.vocab-page .vocab-learning-route { grid-column: 1 / -1; color: #64748b; line-height: 1.7; }
+.vocab-page .vocab-learning-route { list-style: decimal; padding-left: 18px; margin: 0; }
+.vocab-page .vocab-progress-caption { margin: 0; }
+.vocab-page .vocab-progress-track { margin: 0 0 3px; }
+.vocab-page .vocab-flip-card { margin: 0; }
+.vocab-page .vocab-flip-card > div > div { border: 1px solid #e4eaf5; border-radius: 26px; background: #fff; box-shadow: 0 12px 30px -18px #34416940; }
+.vocab-page .flashcard-tools { display: flex; gap: 7px; }
+.vocab-page .flashcard-tools button { flex: 1; min-height: 42px; padding: 9px 7px; border-radius: 12px; background: #edf3ff; color: #3478f6; font-size: 12px; font-weight: 600; }
+.vocab-page .flashcard-tools button:first-child { background: #3478f6; color: #fff; }
+.vocab-page .flashcard-tools button:disabled { opacity: .45; }
+.vocab-page .vocab-ratings { margin-top: 2px; }
+.vocab-page .vocab-rating-hint { margin-top: 0; }
+.vocab-page .vocab-collocation { margin-top: 10px; font-size: 12px; line-height: 1.7; color: #4e6d9f; }
+.vocab-page .spelling-practice { display: grid; gap: 9px; }
+.vocab-page .spelling-practice p { font-size: 16px; font-weight: 650; color: #334155; }
+.vocab-page .spelling-practice button { min-height: 38px; font-size: 12px; color: #3478f6; }
+.vocab-page .spelling-practice input { width: 100%; min-width: 0; border: 1px solid #c9d9f5; border-radius: 11px; padding: 10px 12px; text-align: center; background: #f8faff; }
+@media (max-width: 639px) {
+  .vocab-page .study-hero { padding-top: max(env(safe-area-inset-top, 0px), 6px); padding-bottom: 7px; }
+  .vocab-page .study-eyebrow { display: none; }
+  .vocab-page .study-header-controls { margin-top: 8px; padding-top: 8px; }
+  .vocab-page .vocab-content { padding: 7px 14px 22px; }
+  .vocab-page .flashcard-workspace { gap: 5px; }
+  .vocab-page .vocab-progress-track { margin-bottom: 0; }
+  .vocab-page .vocab-flip-card { height: 290px; }
+  .vocab-page .flashcard-front,
+  .vocab-page .flashcard-back { padding: 18px; }
+  .vocab-page .flashcard-front .text-center.py-4 { padding-block: 10px; }
+  .vocab-page .vocab-ratings button { padding-block: 11px; }
 }

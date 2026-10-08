@@ -1,9 +1,11 @@
-import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import AppNavigation from './components/AppNavigation';
 import HomeDashboard from './components/HomeDashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/ui/Toast';
 import { StorageService } from './services/storage';
+import { parseLearningRoute, formatLearningRoute } from './services/navigation';
+import { Modal } from './components/ui/Modal';
 
 const OralCoach = lazy(() => import('./components/OralCoach'));
 const SmartReader = lazy(() => import('./components/SmartReader'));
@@ -26,6 +28,7 @@ function PageFallback() {
 }
 
 function countDueWords() {
+  if (StorageService.isUsingSampleVocabulary()) return 0;
   const now = Date.now();
   return StorageService.getVocabulary().filter(
     (word) => !word.nextReviewDate || word.nextReviewDate <= now + 60 * 60 * 1000
@@ -33,23 +36,32 @@ function countDueWords() {
 }
 
 export default function App() {
+  const [initialRoute] = useState(() => parseLearningRoute(window.location.hash));
   const [activeTab, setActiveTab] = useState(() => {
+    if (initialRoute && initialRoute.tab !== 'dictionary') return initialRoute.tab;
     const saved = StorageService.getAppState().activeTab;
     // 旧版本可能保存过 'grammar'：现在它归入「词法」板块。
     if (saved === 'grammar') return 'vocab';
-    return VALID_TABS.has(saved) ? saved : 'home';
+    return VALID_TABS.has(saved) && saved !== 'dictionary' ? saved : 'home';
   });
   const [dueVocabCount, setDueVocabCount] = useState(() => countDueWords());
   // Navigation intents. Each carries a monotonic token so that navigating to the *same*
   // target twice still triggers the child effect — the previous implementation compared the
   // target against a "already handled" ref and silently ignored every repeat tap.
-  const intentSeqRef = useRef(0);
-  const [nceIntent, setNceIntent] = useState(null);
-  const [readerIntent, setReaderIntent] = useState(null);
-  const [oralIntent, setOralIntent] = useState(null);
+  const intentSeqRef = useRef(initialRoute ? 1 : 0);
+  const [nceIntent, setNceIntent] = useState(() => initialRoute?.tab === 'nce' ? {token:1,...initialRoute.options,lessonId:initialRoute.options.lesson} : null);
+  const [readerIntent, setReaderIntent] = useState(() => initialRoute?.tab === 'reader' ? {token:1,...initialRoute.options} : null);
+  const [oralIntent, setOralIntent] = useState(() => initialRoute?.tab === 'oral' ? {token:1,...initialRoute.options} : null);
   // 「词法」板块内部的跳转意图（section: 'vocab' | 'grammar'）
-  const [wordGrammarIntent, setWordGrammarIntent] = useState(null);
-  const [dictionaryIntent, setDictionaryIntent] = useState(null);
+  const [wordGrammarIntent, setWordGrammarIntent] = useState(() => initialRoute?.tab === 'vocab' ? {token:1,...initialRoute.options} : null);
+  const [dictionaryIntent, setDictionaryIntent] = useState(() => initialRoute?.tab === 'dictionary' ? {token:1,...initialRoute.options} : null);
+  const [dictionaryOpen, setDictionaryOpen] = useState(initialRoute?.tab === 'dictionary');
+  const [storageError, setStorageError] = useState(null);
+  const activeTabRef = useRef(activeTab);
+  const backgroundHashRef = useRef(initialRoute?.tab !== 'dictionary' && initialRoute ? window.location.hash : formatLearningRoute(activeTab));
+  const handledHashRef = useRef(window.location.hash);
+  const closingDictionaryRef = useRef(null);
+  const deferredNavigationRef = useRef(null);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
 
@@ -76,9 +88,28 @@ export default function App() {
     };
   }, []);
 
-  const navigate = (tab, options = {}) => {
+  const navigate = useCallback((tab, options = {}, { history = true } = {}) => {
     if (!VALID_TABS.has(tab)) return;
+    // history.back() completes later. Apply a new user navigation only after that traversal.
+    if (history && closingDictionaryRef.current) {
+      deferredNavigationRef.current = { tab, options };
+      return;
+    }
     const token = (intentSeqRef.current += 1);
+
+    if (tab === 'dictionary') {
+      setDictionaryIntent({ token, query: options.query || '' });
+      setDictionaryOpen(true);
+      if (history) {
+        // A restored page can initially have an empty hash; its Back target must still be that page.
+        if (!parseLearningRoute(window.location.hash)) window.history?.replaceState(window.history.state, '', backgroundHashRef.current);
+        const method = window.history?.state?.lingoflowOverlay ? 'replaceState' : 'pushState';
+        window.history?.[method]({lingoflowOverlay:true}, '', formatLearningRoute(tab, options));
+        handledHashRef.current = window.location.hash;
+      }
+      return;
+    }
+    setDictionaryOpen(false);
 
     if (tab === 'nce') {
       setNceIntent({
@@ -93,14 +124,81 @@ export default function App() {
     } else if (tab === 'oral') {
       setOralIntent({ token, scenarioId: options.scenarioId || '', practiceWords: options.practiceWords });
     } else if (tab === 'vocab') {
-      setWordGrammarIntent({ token, section: options.section || 'vocab', wordIds: options.wordIds, taskId: options.taskId });
-    } else if (tab === 'dictionary') {
-      setDictionaryIntent({ token, query: options.query || '' });
+      const section = options.section || StorageService.getAppState().wordGrammarSection || 'vocab';
+      setWordGrammarIntent({ token, section, wordIds: options.wordIds, taskId: options.taskId });
     }
 
     setActiveTab(tab);
+    activeTabRef.current = tab;
+    backgroundHashRef.current = formatLearningRoute(tab, options);
     StorageService.saveAppState({ ...StorageService.getAppState(), activeTab: tab });
+    if (history) {
+      window.history?.pushState({lingoflow:true}, '', backgroundHashRef.current);
+      handledHashRef.current = window.location.hash;
+    }
+  }, []);
+
+  const closeDictionary = () => {
+    setDictionaryOpen(false);
+    if (closingDictionaryRef.current) return;
+    if (window.history?.state?.lingoflowOverlay) {
+      closingDictionaryRef.current = window.location.hash;
+      window.history.back();
+    } else {
+      window.history?.replaceState(null, '', backgroundHashRef.current);
+      handledHashRef.current = window.location.hash;
+    }
   };
+
+  useEffect(() => {
+    const stopSync = StorageService.startCrossTabSync();
+    const onMetadata = () => {
+      const route = parseLearningRoute(window.location.hash) || (!window.location.hash ? {tab:activeTabRef.current,options:{}} : null);
+      if (!route || route.tab === 'dictionary' || route.tab !== activeTabRef.current) return;
+      const state = StorageService.getAppState();
+      const detail = route.tab === 'nce' ? {lesson:state.lastNceLesson}
+        : route.tab === 'reader' ? {articleId:state.lastReaderArticleId}
+          : route.tab === 'oral' ? {scenarioId:StorageService.getSettings().currentScenarioId}
+            : route.tab === 'vocab' ? {section:state.wordGrammarSection} : {};
+      const options = {...route.options,...Object.fromEntries(Object.entries(detail)
+        .filter(([,value]) => (typeof value === 'string' && value) || (typeof value === 'number' && Number.isFinite(value)))
+        .map(([key,value]) => [key,String(value)]))};
+      const hash = formatLearningRoute(route.tab,options);
+      backgroundHashRef.current = hash;
+      if (hash !== window.location.hash) {
+        window.history.replaceState(window.history.state,'',hash);
+        handledHashRef.current = hash;
+      }
+    };
+    const onRoute = () => {
+      const hash = window.location.hash;
+      // A queued hash event can arrive while the closing overlay is still the current entry.
+      if (closingDictionaryRef.current === hash) return;
+      if (handledHashRef.current === hash && !closingDictionaryRef.current) return;
+      handledHashRef.current = hash;
+      closingDictionaryRef.current = null;
+      const route = parseLearningRoute(hash);
+      if (route?.tab === activeTabRef.current && hash === backgroundHashRef.current) {
+        // The learning page stayed mounted beneath the sheet; preserve its existing intent.
+        setDictionaryOpen(false);
+      } else navigate(route?.tab || 'home', route?.options || {}, {history:false});
+      const deferred = deferredNavigationRef.current;
+      deferredNavigationRef.current = null;
+      if (deferred) navigate(deferred.tab, deferred.options);
+    };
+    const onFailure = (event) => setStorageError(event.detail || StorageService.getLastWriteError());
+    window.addEventListener('popstate', onRoute);
+    window.addEventListener('hashchange', onRoute);
+    window.addEventListener('lingoflow:storage-error', onFailure);
+    window.addEventListener('lingoflow:storage', onMetadata);
+    return () => {
+      stopSync?.();
+      window.removeEventListener('popstate', onRoute);
+      window.removeEventListener('hashchange', onRoute);
+      window.removeEventListener('lingoflow:storage-error', onFailure);
+      window.removeEventListener('lingoflow:storage', onMetadata);
+    };
+  }, [navigate]);
 
   // Jump from a saved word back to where it came from (the vocabulary list shows its sources).
   const openSourceFromVocab = (source) => {
@@ -138,14 +236,15 @@ export default function App() {
       )}
 
       {/* Main View Container */}
+      {storageError && <div role="alert" className="storage-alert"><span>有学习内容尚未保存，请保留当前页面并检查存储空间。</span><button type="button" onClick={() => navigate('settings')}>查看存储</button><button type="button" aria-label="收起保存提醒" onClick={() => setStorageError(null)}>×</button></div>}
       <main className="app-main flex-1 min-h-0 min-w-0 overflow-hidden relative z-10">
         <ErrorBoundary key={activeTab}>
         <Suspense fallback={<PageFallback />}>
           {activeTab === 'home' && <HomeDashboard onNavigate={navigate} />}
           {activeTab === 'oral' && (
-            <OralCoach intent={oralIntent} onNavigateToVocab={() => navigate('vocab')} />
+            <OralCoach intent={oralIntent} onNavigate={navigate} onNavigateToVocab={() => navigate('vocab')} />
           )}
-          {activeTab === 'reader' && <SmartReader intent={readerIntent} />}
+          {activeTab === 'reader' && <SmartReader intent={readerIntent} onNavigate={navigate} />}
           {activeTab === 'nce' && <NewConcept intent={nceIntent} onNavigate={navigate} />}
           {activeTab === 'vocab' && (
             <WordGrammarHub
@@ -155,12 +254,14 @@ export default function App() {
             />
           )}
           {activeTab === 'settings' && <Settings />}
-          {activeTab === 'dictionary' && <Dictionary onNavigate={navigate} intent={dictionaryIntent} />}
         </Suspense>
         </ErrorBoundary>
       </main>
 
       <AppNavigation activeTab={activeTab} onNavigate={navigate} dueVocabCount={dueVocabCount} />
+      <Modal open={dictionaryOpen} onClose={closeDictionary} title="随手查词" variant="sheet" size="lg" className="dictionary-sheet">
+        <Suspense fallback={<PageFallback />}><Dictionary onNavigate={navigate} intent={dictionaryIntent} embedded /></Suspense>
+      </Modal>
     </div>
     </ToastProvider>
   );

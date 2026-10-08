@@ -27,8 +27,17 @@ export function buildGrammarLessonQuiz({ topicIds = GRAMMAR_LESSONS.map((item) =
     return copy;
   };
   const pool = GRAMMAR_LESSONS.filter((lesson) => topicIds.includes(lesson.id)).flatMap((lesson) => lesson.questions.map((q) => ({ ...q, patternId: lesson.id, topicName: lesson.name })));
-  return shuffle(pool).slice(0, Math.max(0, count)).map((q) => ({
-    id: `lesson:${q.patternId}:${q.id}`, patternId: q.patternId, type: 'application', hint: q.topicName,
+  const remaining = shuffle(pool);
+  const selected = [];
+  // Give a short session more than one mode before filling its remaining slots.
+  for (const type of shuffle([...new Set(pool.map((q) => q.type || 'application'))])) {
+    if (selected.length >= Math.max(0, count)) break;
+    const index = remaining.findIndex((q) => (q.type || 'application') === type);
+    if (index >= 0) selected.push(...remaining.splice(index, 1));
+  }
+  selected.push(...remaining.slice(0, Math.max(0, count - selected.length)));
+  return shuffle(selected).map((q) => ({
+    id: `lesson:${q.patternId}:${q.id}`, patternId: q.patternId, type: q.type || 'application', hint: q.topicName, highlight: q.highlight || '',
     prompt: q.prompt, answer: String(q.answer), explanation: q.explanation,
     options: shuffle(q.choices.map((label, index) => ({ label, value: String(index) }))),
   }));

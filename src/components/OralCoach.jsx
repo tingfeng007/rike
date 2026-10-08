@@ -18,6 +18,7 @@ import {
   X,
   ExternalLink,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SCENARIOS } from '../data/scenarios';
@@ -28,6 +29,8 @@ import { useToast } from './ui/toastContext';
 import { BottomSheet, Modal } from './ui/Modal';
 import { tts, stt } from '../services/speech';
 import StudyHeader from './StudyHeader';
+import { recoverOralMessages, prepareOralTurn, finishOralTurn, failOralTurn, correctionFromFeedback } from '../services/oralSession';
+import OralCorrections from './OralCorrections';
 
 // Diagnostic helper for friendly error categorization
 function diagnoseErrorMessage(errMsg) {
@@ -69,7 +72,7 @@ function currentTimestamp() {
 
 function loadScenarioMessages(scenario) {
   const history = StorageService.getChatMessages(scenario.id);
-  if (history.length > 0) return history;
+  if (history.length > 0) return recoverOralMessages(history);
   return [{
     id: `init_${scenario.id}`,
     role: 'assistant',
@@ -79,7 +82,7 @@ function loadScenarioMessages(scenario) {
   }];
 }
 
-export default function OralCoach({ onNavigateToVocab, intent = null }) {
+export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, intent = null }) {
   const toast = useToast();
   const studyClock = useStudyClock();
   const [currentScenario, setCurrentScenario] = useState(() => {
@@ -88,7 +91,10 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   });
 
   const [messages, setMessages] = useState(() => loadScenarioMessages(currentScenario));
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState(() => StorageService.getLearningSession(`oral:${currentScenario.id}`).draft || '');
+  const [dataError, setDataError] = useState('');
+  const [showCorrections, setShowCorrections] = useState(false);
+  const [correctionIds, setCorrectionIds] = useState(() => new Set(StorageService.getOralCorrections().map((item) => item.id)));
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeakingId, setIsSpeakingId] = useState(null);
@@ -114,7 +120,32 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   const transcriptRef = useRef('');
   const sendAfterRecognitionRef = useRef(false);
   const streamAbortRef = useRef(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const isSttSupported = stt.isSupported();
+
+  useEffect(() => {
+    let alive = true;
+    Promise.resolve(StorageService.saveLearningSession(`oral:${currentScenario.id}`, { draft: inputText, updatedAt: Date.now() }))
+      .then((saved) => { if (alive) setDataError(saved ? '' : '草稿尚未保存，请保留此页面并检查存储空间。'); });
+    return () => { alive = false; };
+  }, [inputText, currentScenario.id]);
+  useEffect(() => {
+    const refresh = () => setCorrectionIds(new Set(StorageService.getOralCorrections().map((item) => item.id)));
+    window.addEventListener('lingoflow:storage', refresh);
+    return () => window.removeEventListener('lingoflow:storage', refresh);
+  }, []);
+
+  const saveCorrection = async (message) => {
+    const correction = correctionFromFeedback(message.feedback, { id: message.id, scenarioId: currentScenario.id, now: message.timestamp || Date.now() });
+    if (!correction) return;
+    const latest = StorageService.getOralCorrections();
+    if (latest.some((item) => item.id === correction.id)) { setShowCorrections(true); return; }
+    const saved = await StorageService.saveOralCorrections([...latest, correction]);
+    if (!saved) { toast.error('纠错句子尚未保存，可以保留此对话并点击这里重试。'); return; }
+    setCorrectionIds(new Set(StorageService.getOralCorrections().map((item) => item.id)));
+    toast.success('已加入隔日纠错句库');
+  };
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -134,11 +165,15 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   // Save current scenario selection to settings
   const handleSelectScenario = (scenario) => {
     streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
     sendAfterRecognitionRef.current = false;
     stt.stop();
     tts.stop();
     setCurrentScenario(scenario);
     setMessages(loadScenarioMessages(scenario));
+    setInputText(StorageService.getLearningSession(`oral:${scenario.id}`).draft || '');
+    setIsLoading(false);
+    setIsRecording(false);
     setWantedWordsList(pickWantedWords());
     setActivatedWords({});
     const settings = StorageService.getSettings();
@@ -168,9 +203,9 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   };
 
   // Handle Send Message with streaming typewriter
-  const handleSendMessage = async (textToSend) => {
+  const handleSendMessage = async (textToSend, retryId) => {
     const text = (textToSend || inputText).trim();
-    if (!text || isLoading) return;
+    if (!text || isLoading || streamAbortRef.current) return;
 
     // Intercept missing API Key to prevent scary red error!
     const currentSettings = StorageService.getSettings();
@@ -179,6 +214,22 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
       return;
     }
 
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    const scenario = currentScenario;
+    const turn = prepareOralTurn(messagesRef.current, text, { retryId });
+    const saved = await StorageService.saveChatMessages(scenario.id, turn.messages);
+    if (!saved) {
+      streamAbortRef.current = null;
+      toast.error('消息未能保存，你的输入仍在。请检查存储空间后再试。');
+      return;
+    }
+    if (controller.signal.aborted) { streamAbortRef.current = null; return; }
+    messagesRef.current = turn.messages;
+    setMessages(turn.messages);
+    setIsLoading(true);
+    if (!retryId) setInputText('');
+
     const targetWords = getActiveTargetWords();
 
     // Check if the user hit any target words (Wanted Words Mission).
@@ -186,9 +237,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
     // from the user's own vocabulary book, so an entry such as `C++` or a whole collected
     // sentence used to make `new RegExp` raise "Nothing to repeat" — the input had already
     // been emptied and nothing surfaced the error, so the message silently disappeared.
-    const hitWords = targetWords.filter((word) => containsTerm(text, word));
-
-    setInputText('');
+    const hitWords = retryId ? [] : targetWords.filter((word) => containsTerm(text, word));
 
     if (hitWords.length > 0) {
       confetti({
@@ -212,62 +261,29 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
         if (found) StorageService.updateWord(found.id, { lastUsedAt: Date.now(), useCount: (found.useCount || 0) + 1 });
       });
 
-      setMissionToast(`🎯 恭喜！成功在对话中实战激活生词 [${hitWords.join(', ')}]！掌握度升级！`);
+      setMissionToast(`已在对话中使用目标词：${hitWords.join(', ')}`);
       setTimeout(() => setMissionToast(null), 4000);
     }
-
-    const now = currentTimestamp();
-    const userMsg = {
-      id: `usr_${now}`,
-      role: 'user',
-      text: text,
-      timestamp: now,
-    };
-
-    const tempAiId = `ai_${now + 1}`;
-    const tempAiMsg = {
-      id: tempAiId,
-      role: 'assistant',
-      replyText: '',
-      isStreaming: true,
-      timestamp: now + 1,
-    };
-
-    const messagesWithUser = [...messages, userMsg];
-    const messagesWithStreaming = [...messagesWithUser, tempAiMsg];
-
-    setMessages(messagesWithStreaming);
-    setIsLoading(true);
-
-    // Abort any previous stream, then track this one so leaving the page or switching
-    // scenarios can cancel it. Declared outside try so `finally` can clear it.
-    streamAbortRef.current?.abort();
-    const controller = new AbortController();
-    streamAbortRef.current = controller;
 
     try {
       const targetWords = getActiveTargetWords();
       const aiResponse = await getOralCoachResponseStream({
-        history: messagesWithUser,
+        history: turn.history,
         userMessage: text,
-        scenarioPrompt: currentScenario.prompt,
+        scenarioPrompt: scenario.prompt,
         targetWords,
         signal: controller.signal,
         onStreamText: (streamedText) => {
           if (controller.signal.aborted) return;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === tempAiId ? { ...m, replyText: streamedText } : m
-            )
-          );
+          const next = messagesRef.current.map((m) => m.id === turn.assistant.id ? { ...m, replyText: streamedText } : m);
+          messagesRef.current = next;
+          setMessages(next);
         },
       });
       // A cancelled request must not write its result into the conversation.
       if (controller.signal.aborted) return;
 
-      const finalAssistantMsg = {
-        id: tempAiId,
-        role: 'assistant',
+      const response = {
         replyText: aiResponse.replyText,
         replyTextCn: aiResponse.replyTextCn,
         feedback: aiResponse.feedback,
@@ -276,47 +292,45 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
         timestamp: currentTimestamp(),
       };
 
-      const finalMessages = [...messagesWithUser, finalAssistantMsg];
+      const finalMessages = finishOralTurn(messagesRef.current, turn.assistant.id, response);
+      messagesRef.current = finalMessages;
       setMessages(finalMessages);
-      StorageService.saveChatMessages(currentScenario.id, finalMessages);
-      StorageService.recordStudyActivity({ type: 'oral', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'oral-chat', entityId: currentScenario.id, label: '完成一轮口语对练' });
+      const completedSaved = await StorageService.saveChatMessages(scenario.id, finalMessages);
+      if (!completedSaved) { toast.error('回复已显示，但尚未保存。请先复制内容或检查存储空间。'); return; }
+      StorageService.recordStudyActivity({ type: 'oral', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'oral-chat', entityId: scenario.id, label: '完成一轮口语对练' });
+      const correction = correctionFromFeedback(aiResponse.feedback, { id: turn.assistant.id, scenarioId: scenario.id });
+      if (correction) {
+        const corrections = StorageService.getOralCorrections();
+        if (!corrections.some((item) => item.id === correction.id)) {
+          const correctionSaved = await StorageService.saveOralCorrections([...corrections, correction]);
+          if (!correctionSaved) toast.error('本轮纠错还未存入句库，请保留对话并稍后重试。');
+        }
+      }
 
       // Auto play audio if enabled
       const settings = StorageService.getSettings();
       if (settings.autoPlayOralAudio) {
-        playAudio(finalAssistantMsg.id, finalAssistantMsg.replyText);
+        if (!controller.signal.aborted) playAudio(turn.assistant.id, aiResponse.replyText);
       }
     } catch (err) {
-      // A deliberate cancellation (tab switch / scenario switch) is not an error state.
-      if (err?.name === 'AbortError') return;
-      console.error(err);
-      const diag = diagnoseErrorMessage(err.message);
-      const errorMsg = {
-        id: tempAiId,
-        role: 'assistant',
-        replyText: `Oops! ${err.message}`,
-        errorTitle: diag.title,
-        replyTextCn: diag.tip,
-        failedUserText: text,
-        isError: true,
-        isStreaming: false,
-        timestamp: currentTimestamp(),
-      };
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempAiId ? errorMsg : m))
-      );
+      if (controller.signal.reason === 'discard') return;
+      const diag = controller.signal.aborted
+        ? { title: '这轮回复已暂停', tip: '你的消息已保留，回来后可以原位重试。' }
+        : diagnoseErrorMessage(err.message);
+      const stored = StorageService.getChatMessages(scenario.id);
+      const failed = failOralTurn(stored.length ? stored : turn.messages, turn.assistant.id, diag);
+      const failureSaved = await StorageService.saveChatMessages(scenario.id, failed);
+      if (!failureSaved && !controller.signal.aborted) toast.error('失败记录尚未保存，你的输入仍在当前对话里，请先保留或复制。');
+      if (!controller.signal.aborted) { messagesRef.current = failed; setMessages(failed); }
     } finally {
-      if (streamAbortRef.current === controller) streamAbortRef.current = null;
-      setIsLoading(false);
+      if (streamAbortRef.current === controller) { streamAbortRef.current = null; setIsLoading(false); }
     }
   };
 
   // Retry sending message after error
   const handleRetrySendMessage = (failedText, errorMsgId) => {
     if (!failedText || isLoading) return;
-    // Remove the error assistant bubble
-    setMessages((prev) => prev.filter((m) => m.id !== errorMsgId));
-    handleSendMessage(failedText);
+    handleSendMessage(failedText, errorMsgId);
   };
 
   // Voice Recording Toggle
@@ -393,6 +407,9 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
   // Clear Chat History
   const handleClearHistory = () => {
     if (confirm('确认清空当前情景的对话记录吗？')) {
+      streamAbortRef.current?.abort('discard');
+      streamAbortRef.current = null;
+      setIsLoading(false);
       StorageService.clearChatMessages(currentScenario.id);
       const initial = [
         {
@@ -410,7 +427,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
 
   // Quick add expression to vocabulary
   const handleAddExpressionToVocab = (wordOrPhrase, contextSentence, translation) => {
-    StorageService.addWord({
+    const saved = StorageService.addWord({
       word: wordOrPhrase,
       translation: translation || '口语地道表达',
       contextSentence: contextSentence,
@@ -419,6 +436,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
       tags: ['口语实战', currentScenario.name],
       sources: [{ type: 'oral', id: currentScenario.id, key: `oral:${currentScenario.id}`, label: currentScenario.name }],
     });
+    if (!saved) { toast.error('表达尚未保存，请检查存储空间后重试。'); return; }
     setAddedWordFeedback((prev) => ({ ...prev, [wordOrPhrase]: true }));
     setTimeout(() => {
       setAddedWordFeedback((prev) => ({ ...prev, [wordOrPhrase]: false }));
@@ -429,7 +447,9 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
     <div className="study-page oral-page flex flex-col h-full min-h-0">
       <header className="oral-compact-header flex-none flex items-center justify-between gap-3 border-b border-stone-200 bg-[#fffdf8] px-4 py-2.5" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}>
         <span className="oral-avatar" aria-hidden="true">{currentScenario.icon}</span><div className="min-w-0 flex-1"><h1 className="truncate text-base font-bold text-[#102a43]">{currentScenario.name}</h1><p className="mt-1 text-[11px] text-slate-500"><span className="oral-status-dot" />{!hasApiKey ? '配置 AI 后，开始聊天' : practiceWithVocab && wantedWordsList.length ? `目标词 ${wantedWordsList.filter((item) => activatedWords[item.word.toLowerCase()]).length}/${wantedWordsList.length} · 用英语聊一聊` : '随时可以开始聊天'}</p></div>
-        <button type="button" onClick={() => setShowPracticeOptions(true)} aria-haspopup="dialog" className="shrink-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700">场景与目标</button>
+        <button type="button" onClick={() => onNavigate('dictionary')} aria-label="打开词典" className="rounded-xl bg-white p-2.5 text-sky-700"><Search size={18} /></button>
+        <button type="button" onClick={() => setShowCorrections(true)} className="rounded-xl bg-white px-3 py-2.5 text-xs font-semibold text-slate-700">纠错复习</button>
+        <button type="button" onClick={() => setShowPracticeOptions(true)} aria-haspopup="dialog" className="shrink-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700">场景</button>
       </header>
       <BottomSheet open={showPracticeOptions} onClose={() => setShowPracticeOptions(false)} title="口语练习设置" bodyClassName="!p-0" footer={<button type="button" onClick={() => setShowPracticeOptions(false)} className="w-full rounded-xl bg-[#102a43] py-3 text-sm font-semibold text-white">返回对话</button>}>
       <StudyHeader
@@ -653,6 +673,8 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
                     </span>
                   </div>
 
+                  {msg.feedback.userOriginal && msg.feedback.corrected && <button type="button" onClick={() => saveCorrection(msg)} className="mb-3 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-amber-900">{correctionIds.has(`correction_${msg.id}`) ? '已入隔日句库 · 查看' : '加入隔日纠错复习'}</button>}
+
                   {/* Original slip vs Corrected */}
                   {msg.feedback.userOriginal && (
                     <div className="space-y-1.5 mb-2.5 bg-white/80 p-2.5 rounded-xl border border-amber-100 shadow-2xs">
@@ -724,9 +746,9 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
               {/* Quick Suggested Reply Pills */}
               {!isUser && msg.suggestedReplies && msg.suggestedReplies.length > 0 && (
                 <div className="max-w-[86%] mt-2 flex flex-wrap gap-1.5">
-                  {msg.suggestedReplies.map((reply, i) => (
+                  {msg.suggestedReplies.map((reply) => (
                     <button
-                      key={i}
+                      key={reply}
                       onClick={() => handleSendMessage(reply)}
                       className="text-left text-xs bg-sky-50/80 hover:bg-sky-100 text-sky-800 border border-sky-200/60 px-2.5 py-1 rounded-full transition-all flex items-center gap-1"
                     >
@@ -756,6 +778,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
 
       {/* Input Bar: Audio Button & Text Box */}
       <footer className="flex-none glass-floating-bar border-t border-white/80 p-3 pb-safe z-20">
+        {dataError && <output className="mb-2 block text-xs text-rose-700">{dataError}</output>}
         {/* Newbie Onboarding Banner when no key is set */}
         {!hasApiKey && (
           <button type="button" onClick={() => setShowQuickKeyModal(true)} className="mb-2 flex w-full items-center justify-between gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800"><span>配置 AI 后即可对练</span><span className="font-semibold">去配置 →</span></button>
@@ -790,6 +813,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
                 : 'bg-white/90 hover:bg-white text-slate-700 shadow-xs border border-slate-200/80'
             }`}
             title="点击开始/停止英语语音识别"
+            aria-label={isRecording ? '停止语音识别' : '开始语音识别'}
           >
             {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5 text-sky-600" />}
           </button>
@@ -817,6 +841,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
             type="button"
             onClick={() => handleSendMessage()}
             disabled={!inputText.trim() || isLoading}
+            aria-label="发送英语回复"
             className={`p-3 rounded-2xl flex-none transition-all active:scale-90 ${
               inputText.trim() && !isLoading
                 ? 'bg-gradient-to-br from-sky-600 to-blue-600 text-white shadow-md hover:from-sky-700 hover:to-blue-700'
@@ -827,10 +852,12 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
           </button>
         </div>
       </footer>
+      {showCorrections && <OralCorrections open onClose={() => setShowCorrections(false)} onPractice={(item) => { setInputText(item.corrected); setShowCorrections(false); }} />}
 
       {/* Gentle Microphone Help Sheet */}
       <BottomSheet
         open={showMicHelp}
+        title="语音输入帮助"
         onClose={() => setShowMicHelp(false)}
         size="sm"
         showCloseButton={false}
@@ -900,6 +927,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
       {/* Quick API Key Modal */}
       <Modal
         open={showQuickKeyModal}
+        title="配置口语 AI"
         onClose={() => setShowQuickKeyModal(false)}
         size="sm"
         showCloseButton={false}
@@ -925,10 +953,11 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
             </p>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label htmlFor="oral-quick-key" className="block text-xs font-semibold text-slate-700 mb-1">
                 DeepSeek API Key (sk-...)
               </label>
               <input
+                id="oral-quick-key"
                 type="password"
                 value={quickKeyInput}
                 onChange={(e) => setQuickKeyInput(e.target.value)}
@@ -965,7 +994,7 @@ export default function OralCoach({ onNavigateToVocab, intent = null }) {
                   }
                   const settings = StorageService.getSettings();
                   settings.apiKey = key;
-                  StorageService.saveSettings(settings);
+                  if (!StorageService.saveSettings(settings)) { toast.error('密钥未能保存，请检查存储空间。'); return; }
                   setHasApiKey(true);
                   setShowQuickKeyModal(false);
                   toast.success('🎉 配置成功！现在可以畅快与外教 Echo 对练啦！');

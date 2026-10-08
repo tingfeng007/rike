@@ -28,7 +28,6 @@ import {
 import confetti from 'canvas-confetti';
 import { StorageService } from '../services/storage';
 import {
-  analyzeWordWithAI,
   analyzeSentenceWithAI,
   translateParagraphWithAI,
   generateDailyArticleWithAI,
@@ -43,6 +42,9 @@ import { BottomSheet, Modal } from './ui/Modal';
 import { IconButton } from './ui/IconButton';
 import StudyHeader from './StudyHeader';
 import { getReadingMetrics, filterArticles } from '../services/studyView';
+import { lookupLearningWord } from '../services/learningLookup';
+import { readingArticleVersion, keyedReadingSegments } from '../services/readingPractice';
+import ReadingPractice from './ReadingPractice';
 
 // Read-scroll progress for every article, keyed by article id (see the library's 已读/在读
 // filters and progress sort).
@@ -104,7 +106,7 @@ function pickRandomOtherArticle(articles, currentId) {
   return candidates[Math.floor(Math.random() * candidates.length)] || null;
 }
 
-export default function SmartReader({ intent = null }) {
+export default function SmartReader({ intent = null, onNavigate = () => {} }) {
   const toast = useToast();
   const studyClock = useStudyClock();
   const [articles, setArticles] = useState(() => StorageService.getArticles());
@@ -141,6 +143,9 @@ export default function SmartReader({ intent = null }) {
   const [selectedSentence, setSelectedSentence] = useState(null);
   const [sentenceAnalysis, setSentenceAnalysis] = useState(null);
   const [isAnalyzingSentence, setIsAnalyzingSentence] = useState(false);
+  const sentenceGate = useRef(createLatestRequest());
+  useEffect(() => { if (!selectedSentence) sentenceGate.current.cancel(); }, [selectedSentence]);
+  useEffect(() => { const gate = sentenceGate.current; return () => gate.cancel(); }, []);
 
   // Paragraph translation state: { [artId_paraIdx]: { text: string, visible: boolean } }
   const [paragraphTranslations, setParagraphTranslations] = useState({});
@@ -161,6 +166,7 @@ export default function SmartReader({ intent = null }) {
   const [annotations, setAnnotations] = useState(() => StorageService.getReadingAnnotations());
   const [editingAnnotation, setEditingAnnotation] = useState(null);
   const [annotationDraft, setAnnotationDraft] = useState('');
+  const [annotationError, setAnnotationError] = useState('');
   const [showNotesModal, setShowNotesModal] = useState(false);
 
   // Reading scroll container & position persistence
@@ -316,6 +322,10 @@ export default function SmartReader({ intent = null }) {
 
   const selectArticle = (article, { scrollToTop = true } = {}) => {
     if (!article) return;
+    sentenceGate.current.cancel();
+    lookupGate.current.cancel();
+    setSelectedWord(null);
+    setSelectedSentence(null);
     setCurrentArticle(article);
     setReadingProgress(0);
     paragraphSpeechRunRef.current += 1;
@@ -453,10 +463,13 @@ export default function SmartReader({ intent = null }) {
     tts.stop();
   }, []);
 
-  const persistAnnotations = (next) => {
-    setAnnotations(next);
+  const persistAnnotations = async (next) => {
     // Route through the storage service so quota failures are handled like everywhere else.
-    StorageService.saveReadingAnnotations(next);
+    const saved = await StorageService.saveReadingAnnotations(next);
+    if (!saved) { setAnnotationError('批注尚未保存，你的内容仍保留。请检查存储空间后重试。'); return false; }
+    setAnnotations(next);
+    setAnnotationError('');
+    return true;
   };
 
   const openAnnotationEditor = (sentence) => {
@@ -468,9 +481,10 @@ export default function SmartReader({ intent = null }) {
       note: '',
     });
     setAnnotationDraft(existing?.note || '');
+    setAnnotationError('');
   };
 
-  const saveAnnotation = () => {
+  const saveAnnotation = async () => {
     if (!currentArticle?.id || !editingAnnotation) return;
     const articleKey = String(currentArticle.id);
     const articleNotes = annotations[articleKey] || [];
@@ -479,18 +493,18 @@ export default function SmartReader({ intent = null }) {
     const nextNotes = exists
       ? articleNotes.map((item) => item.id === savedNote.id ? savedNote : item)
       : [...articleNotes, savedNote];
-    persistAnnotations({ ...annotations, [articleKey]: nextNotes });
+    if (!await persistAnnotations({ ...annotations, [articleKey]: nextNotes })) return;
     StorageService.recordStudyActivity({ type: 'annotation', count: 1, durationMinutes: studyClock.takeMinutes(), source: 'reader-annotation', entityId: articleKey, label: '收藏精读句子' });
     setEditingAnnotation(null);
     setAnnotationDraft('');
   };
 
-  const removeAnnotation = (annotationId) => {
+  const removeAnnotation = async (annotationId) => {
     if (!currentArticle?.id) return;
     const articleKey = String(currentArticle.id);
     const nextNotes = (annotations[articleKey] || []).filter((item) => item.id !== annotationId);
     const next = { ...annotations, [articleKey]: nextNotes };
-    persistAnnotations(next);
+    if (!await persistAnnotations(next)) { toast.error('批注未能删除，请稍后重试。'); return; }
     if (editingAnnotation?.id === annotationId) setEditingAnnotation(null);
   };
 
@@ -712,7 +726,7 @@ export default function SmartReader({ intent = null }) {
     return match ? match.trim() : '';
   };
 
-  const lookupWord = async (word, sentence) => {
+  const lookupWord = async (word, sentence, { enrich = false } = {}) => {
     clearTimeout(dismissWordTimer.current);
     const request = lookupGate.current.start();
     setSelectedWord({ word, sentence });
@@ -720,9 +734,8 @@ export default function SmartReader({ intent = null }) {
     setIsAnalyzingWord(true);
     setIsWordSaved(false);
     try {
-      const cached = StorageService.getVocabulary().find((entry) => entry.word.toLowerCase() === word.toLowerCase() && entry.translation && entry.contextSentence === sentence);
-      const analysis = cached || await analyzeWordWithAI(word, sentence, { signal: request.signal });
-      if (request.isCurrent()) setWordAnalysis(analysis);
+      const analysis = await lookupLearningWord(word, sentence, { signal: request.signal, enrich });
+      if (request.isCurrent()) setWordAnalysis(analysis || { word, phonetic: '', pos: '', isError: true, notFound: true, translation: '基础词库暂未收录这个词，可打开词典继续查找。', contextSentence: sentence });
     } catch (error) {
       if (!request.isCurrent()) return;
       const described = describeAIError(error, { fallback: '查词失败，请重试。' });
@@ -777,11 +790,13 @@ export default function SmartReader({ intent = null }) {
     setSelectedSentence(cleanSentence);
     setSentenceAnalysis(null);
     setIsAnalyzingSentence(true);
+    const request = sentenceGate.current.start();
 
     try {
-      const result = await analyzeSentenceWithAI(cleanSentence);
-      setSentenceAnalysis(result);
+      const result = await analyzeSentenceWithAI(cleanSentence, { signal: request.signal });
+      if (request.isCurrent()) setSentenceAnalysis(result);
     } catch (err) {
+      if (!request.isCurrent()) return;
       setSentenceAnalysis({
         isError: true,
         translation: '长难句剖析未成功，请检查 API Key 配置或网络状况。',
@@ -790,7 +805,7 @@ export default function SmartReader({ intent = null }) {
         grammarPoints: [],
       });
     } finally {
-      setIsAnalyzingSentence(false);
+      if (request.isCurrent()) setIsAnalyzingSentence(false);
     }
   };
 
@@ -880,6 +895,8 @@ export default function SmartReader({ intent = null }) {
         </details>
 
         {/* Library: search / difficulty / read status / sort */}
+        <details className="reader-library mt-3 rounded-2xl bg-white px-3 py-2">
+        <summary className="min-h-9 cursor-pointer text-sm font-semibold text-slate-700">我的文库 · {articles.length} 篇 <span className="ml-2 text-xs font-normal text-slate-500">展开切换文章</span></summary>
         <div className="mt-2 space-y-1.5">
           <div className="flex items-center gap-2">
             <div className="flex flex-1 items-center gap-1.5 rounded-xl bg-white/10 px-2.5 py-1.5 ring-1 ring-white/10">
@@ -949,7 +966,7 @@ export default function SmartReader({ intent = null }) {
                 key={art.id}
                 className={`flex-none flex items-center rounded-xl border transition-all ${isActive ? 'border-amber-300/70 bg-amber-400 text-[#102a43]' : 'border-white/10 bg-white/5 text-slate-200'}`}
               >
-                <button type="button" onClick={() => selectArticle(art)} aria-current={isActive ? 'page' : undefined} className="max-w-[155px] truncate px-3 py-1.5 text-left text-[11px] font-semibold">{art.title}</button>
+                <button type="button" onClick={(event) => { selectArticle(art); event.currentTarget.closest('details').open = false; }} aria-current={isActive ? 'page' : undefined} className="max-w-[155px] truncate px-3 py-1.5 text-left text-[11px] font-semibold">{art.title}</button>
                 {articles.length > 1 && (
                   // IconButton keeps the 12px look but gives the trash a 44x44 hit area; it used
                   // to sit flush against the title button, so a mis-tap while scrolling the row
@@ -966,6 +983,7 @@ export default function SmartReader({ intent = null }) {
             );
           })}
         </div>
+        </details>
         </>}
       </StudyHeader>
 
@@ -993,7 +1011,7 @@ export default function SmartReader({ intent = null }) {
 
             {/* Paragraphs with interactive words & sentence breakdown button */}
             <div className="space-y-5">
-              {currentArticle.content.split('\n\n').map((para, pIdx) => {
+              {keyedReadingSegments(currentArticle.content.split('\n\n')).map(({ text: para, id: paragraphId }, pIdx) => {
                 if (!para.trim()) return null;
 
                 const sentences = splitIntoSentences(para);
@@ -1005,7 +1023,8 @@ export default function SmartReader({ intent = null }) {
 
                 return (
                   <div
-                    key={pIdx}
+                    key={paragraphId}
+                    data-reader-paragraph
                     ref={(element) => { paragraphRefs.current[pIdx] = element; }}
                     className="group/para -mx-2 rounded-xl border-l-2 border-transparent px-2 py-1 space-y-2 transition-colors hover:border-amber-200 hover:bg-[#fbf8f1]"
                   >
@@ -1054,7 +1073,7 @@ export default function SmartReader({ intent = null }) {
                       </div>
                     )}
                     <div>
-                      {sentences.map((sentence, sIdx) => {
+                      {keyedReadingSegments(sentences).map(({ text: sentence, id: sentenceId }) => {
                         const words = sentence.trim().split(/\s+/);
 
                         const savedAnnotation = currentAnnotations.find(
@@ -1063,21 +1082,21 @@ export default function SmartReader({ intent = null }) {
 
                         return (
                           <span
-                            key={sIdx}
+                            key={sentenceId}
                             className={`inline leading-loose tracking-wide ${fontSize} text-slate-800 transition-colors rounded-sm group relative ${
                               savedAnnotation
                                 ? 'bg-gradient-to-t from-yellow-200/90 from-45% to-transparent to-45% decoration-clone'
                                 : ''
                             }`}
                           >
-                            {words.map((word, wIdx) => {
+                            {keyedReadingSegments(words).map(({ text: word, id: wordId }) => {
                               const cleanWord = word.replace(/^[^\w]+|[^\w]+$/g, '').toLowerCase();
                               const vocabHit = cleanWord && savedVocabMap[cleanWord];
 
                               return (
                                 <button
                                   type="button"
-                                  key={`${sentence}-${wIdx}`}
+                                  key={wordId}
                                   onClick={() => handleWordClick(word, sentence)}
                                   className={`cursor-pointer rounded px-0.5 py-0.5 transition-all active:bg-sky-200 ${
                                     vocabHit
@@ -1085,6 +1104,16 @@ export default function SmartReader({ intent = null }) {
                                       : 'hover:bg-sky-100 hover:text-sky-900'
                                   }`}
                                   title={vocabHit ? `✨ 生词本已收录: ${vocabHit.translation || ''}` : '点击查词释义'}
+                                  aria-label={`查词 ${word.replace(/^[^\w]+|[^\w]+$/g, '') || word}`}
+                                  data-reader-word
+                                  onKeyDown={(event) => {
+                                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                                    event.preventDefault();
+                                    const targets = Array.from(event.currentTarget.closest('[data-reader-paragraph]').querySelectorAll('[data-reader-word]'));
+                                    const index = targets.indexOf(event.currentTarget);
+                                    const next = event.key === 'Home' ? 0 : event.key === 'End' ? targets.length - 1 : Math.max(0, Math.min(targets.length - 1, index + (event.key === 'ArrowRight' ? 1 : -1)));
+                                    targets[next]?.focus();
+                                  }}
                                 >
                                   {word}{' '}
                                 </button>
@@ -1152,6 +1181,7 @@ export default function SmartReader({ intent = null }) {
                 );
               })}
             </div>
+            <ReadingPractice key={readingArticleVersion(currentArticle)} article={currentArticle} />
           </article>
         ) : (
           <div className="flex flex-col items-center justify-center h-64 text-slate-600 text-sm">
@@ -1169,6 +1199,7 @@ export default function SmartReader({ intent = null }) {
       <BottomSheet
         open
         onClose={() => setSelectedWord(null)}
+        title={`${selectedWord.word} · 查词`}
         size="md"
         showCloseButton={false}
         className="sm:rounded-3xl"
@@ -1199,6 +1230,7 @@ export default function SmartReader({ intent = null }) {
 
               <button
                 onClick={() => setSelectedWord(null)}
+                aria-label="关闭查词"
                 className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-full"
               >
                 <X className="w-5 h-5" />
@@ -1210,7 +1242,7 @@ export default function SmartReader({ intent = null }) {
               {isAnalyzingWord ? (
                 <div className="flex items-center space-x-2 text-slate-600 text-xs py-4 justify-center">
                   <div className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
-                  <span>AI 正在分析词汇释义与原句搭配...</span>
+                  <span>正在查找释义与音标…</span>
                 </div>
               ) : (
                 <>
@@ -1235,7 +1267,7 @@ export default function SmartReader({ intent = null }) {
                           className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
-                          <span>重新解析词义</span>
+                          <span>重新查词</span>
                         </button>
                       </div>
                     )}
@@ -1247,6 +1279,11 @@ export default function SmartReader({ intent = null }) {
                     )}
                   </div>
 
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!wordAnalysis?.isError && <span className="text-xs text-slate-500">{wordAnalysis?.aiEnriched ? 'AI 语境参考' : '基础词典释义'}</span>}
+                    {hasApiKey() && <button type="button" onClick={() => lookupWord(selectedWord.word, selectedWord.sentence, { enrich: true })} className="rounded-xl bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800">AI 语境解析（可选）</button>}
+                    <button type="button" onClick={() => { const query = selectedWord.word; setSelectedWord(null); onNavigate('dictionary', { query }); }} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">完整词典</button>
+                  </div>
                   {/* Context Sentence in Current Article */}
                   {selectedWord.sentence && (
                     <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
@@ -1278,9 +1315,9 @@ export default function SmartReader({ intent = null }) {
                         🔗 常见搭配:
                       </span>
                       <div className="flex flex-wrap gap-1.5">
-                        {wordAnalysis.collocations.map((col, idx) => (
+                        {wordAnalysis.collocations.map((col) => (
                           <span
-                            key={idx}
+                            key={col}
                             className="bg-sky-50 text-sky-800 px-2 py-0.5 rounded-md border border-sky-100"
                           >
                             {col}
@@ -1334,7 +1371,7 @@ export default function SmartReader({ intent = null }) {
                 ) : (
                   <>
                     <BookmarkPlus className="w-4 h-4" />
-                    <span>一键存入生词本并开启艾宾浩斯复习</span>
+                    <span>收藏到生词本，加入间隔复习</span>
                   </>
                 )}
               </button>
@@ -1347,6 +1384,7 @@ export default function SmartReader({ intent = null }) {
       <BottomSheet
         open
         onClose={() => setSelectedSentence(null)}
+        title="长难句语法透析"
         size="lg"
         showCloseButton={false}
         className="sm:rounded-2xl"
@@ -1440,9 +1478,9 @@ export default function SmartReader({ intent = null }) {
                         🧩 从句成分拆解:
                       </span>
                       <div className="space-y-1.5">
-                        {sentenceAnalysis.clauses.map((clause, idx) => (
+                        {sentenceAnalysis.clauses.map((clause) => (
                           <div
-                            key={idx}
+                            key={`${clause.type}-${clause.text}`}
                             className="text-xs p-2.5 rounded-lg bg-slate-50 border border-slate-200/70"
                           >
                             <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold bg-slate-200 text-slate-800 rounded mr-2">
@@ -1467,8 +1505,8 @@ export default function SmartReader({ intent = null }) {
                         💡 核心语法亮点:
                       </span>
                       <ul className="text-xs text-slate-700 space-y-1 list-disc list-inside bg-amber-50/50 p-2.5 rounded-lg border border-amber-100">
-                        {sentenceAnalysis.grammarPoints.map((pt, idx) => (
-                          <li key={idx} className="leading-relaxed">
+                        {sentenceAnalysis.grammarPoints.map((pt) => (
+                          <li key={pt} className="leading-relaxed">
                             {pt}
                           </li>
                         ))}
@@ -1517,11 +1555,12 @@ export default function SmartReader({ intent = null }) {
 
             {importMode === 'url' && (
               <div className="p-3 bg-sky-50/60 border border-sky-200 rounded-xl space-y-2 mb-3">
-                <label className="block text-xs font-medium text-sky-900">
+                <label htmlFor="reader-import-url" className="block text-xs font-medium text-sky-900">
                   粘贴外刊/新闻文章网址 (如 BBC, CNN, Medium, The Verge 等)
                 </label>
                 <div className="flex gap-2">
                   <input
+                    id="reader-import-url"
                     type="url"
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
@@ -1545,10 +1584,11 @@ export default function SmartReader({ intent = null }) {
 
             <div className="py-2 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label htmlFor="reader-import-title" className="block text-xs font-medium text-slate-700 mb-1">
                   文章标题
                 </label>
                 <input
+                  id="reader-import-title"
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
@@ -1558,10 +1598,11 @@ export default function SmartReader({ intent = null }) {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label htmlFor="reader-import-level" className="block text-xs font-medium text-slate-700 mb-1">
                   难度标签
                 </label>
                 <select
+                  id="reader-import-level"
                   value={newLevel}
                   onChange={(e) => setNewLevel(e.target.value)}
                   className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
@@ -1574,10 +1615,11 @@ export default function SmartReader({ intent = null }) {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label htmlFor="reader-import-content" className="block text-xs font-medium text-slate-700 mb-1">
                   英文正文内容 (段落之间请空一行)
                 </label>
                 <textarea
+                  id="reader-import-content"
                   rows={8}
                   value={newContent}
                   onChange={(e) => setNewContent(e.target.value)}
@@ -1608,6 +1650,7 @@ export default function SmartReader({ intent = null }) {
       <BottomSheet
         open
         onClose={() => setEditingAnnotation(null)}
+        title="划线与批注"
         size="lg"
         showCloseButton={false}
         className="sm:rounded-3xl"
@@ -1637,10 +1680,11 @@ export default function SmartReader({ intent = null }) {
               “{editingAnnotation.sentence}”
             </blockquote>
 
-            <label className="block mt-4 text-xs font-bold text-slate-700 mb-1.5">
+            <label htmlFor="reader-annotation-note" className="block mt-4 text-xs font-bold text-slate-700 mb-1.5">
               ✍️ 我的理解、联想或使用场景 <span className="font-normal text-slate-400">（可不填）</span>
             </label>
             <textarea
+              id="reader-annotation-note"
               rows={4}
               value={annotationDraft}
               onChange={(e) => setAnnotationDraft(e.target.value)}
@@ -1648,6 +1692,7 @@ export default function SmartReader({ intent = null }) {
               className="w-full p-3 text-sm leading-relaxed bg-white border border-amber-200 rounded-2xl outline-hidden focus:ring-2 focus:ring-amber-400/60 resize-none placeholder:text-slate-400"
             />
 
+            {annotationError && <output className="mt-3 block text-sm text-rose-700">{annotationError}</output>}
             <div
               className="sticky bottom-0 flex gap-2 mt-4 pt-3 border-t border-amber-100/80 bg-[#fffdf7]/95 backdrop-blur-sm"
               style={{ paddingBottom: 'max(0.25rem, var(--safe-area-inset-bottom, 0px))' }}
@@ -1673,6 +1718,7 @@ export default function SmartReader({ intent = null }) {
       {/* 5. Modal: Reading Notes Collection & Markdown Export */}
       <BottomSheet
         open={showNotesModal}
+        title="本篇精读手记"
         onClose={() => setShowNotesModal(false)}
         size="lg"
         showCloseButton={false}
@@ -1823,9 +1869,9 @@ export default function SmartReader({ intent = null }) {
 
             {/* AI Generator Section */}
             <div className="space-y-3 pt-1">
-              <label className="block text-xs font-bold text-slate-800">
+              <p className="block text-xs font-bold text-slate-800">
                 或由 AI 特约专栏作家为你现场撰写一篇：
-              </label>
+              </p>
 
               {/* Topic Select Grid */}
               <div className="grid grid-cols-2 gap-2">
@@ -1835,9 +1881,11 @@ export default function SmartReader({ intent = null }) {
                   { id: 'tech', icon: '🚀', label: '前沿科技', desc: 'AI、硅谷与商业浪潮' },
                   { id: 'culture', icon: '🌍', label: '人文漫游', desc: '国家地理风土人情' },
                 ].map((t) => (
-                  <div
+                  <button
+                    type="button"
                     key={t.id}
                     onClick={() => setRefreshTopic(t.id)}
+                    aria-pressed={refreshTopic === t.id}
                     className={`p-2.5 rounded-2xl border cursor-pointer transition-all ${
                       refreshTopic === t.id
                         ? 'bg-amber-50/90 border-amber-400 text-amber-950 font-bold ring-1 ring-amber-300 shadow-2xs'
@@ -1848,8 +1896,8 @@ export default function SmartReader({ intent = null }) {
                       <span>{t.icon}</span>
                       <span>{t.label}</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-0.5">{t.desc}</p>
-                  </div>
+                    <span className="block text-xs text-slate-500 mt-0.5">{t.desc}</span>
+                  </button>
                 ))}
               </div>
 
@@ -1866,6 +1914,7 @@ export default function SmartReader({ intent = null }) {
                 <input
                   type="checkbox"
                   checked={blendUserVocab}
+                  aria-label="在生成文章中融入我的生词"
                   onChange={(e) => setBlendUserVocab(e.target.checked)}
                   className="w-4 h-4 accent-amber-600 rounded"
                 />

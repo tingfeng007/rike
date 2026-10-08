@@ -11,7 +11,7 @@ import re
 import sys
 
 SOURCE_COMMIT = "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b"
-VERSION = "ecdict-bc015ed-v1"
+VERSION = "ecdict-bc015ed-ipa-v2"
 ROOT = Path(__file__).resolve().parents[1]
 output = ROOT / "public" / "dictionary" / VERSION
 output.mkdir(parents=True, exist_ok=True)

@@ -92,6 +92,16 @@ test('判定器对超出能力范围的句子诚实返回 unknown 而不是猜',
   assert.equal(detectSentencePattern('Hello').pattern, 'unknown');
 });
 
+test('名词短语不按单词数误判双宾或宾补，时间词不误判宾语', () => {
+  assert.equal(detectSentencePattern('I made a cake.').pattern, 'svo');
+  assert.equal(detectSentencePattern('She gave a book.').pattern, 'svo');
+  assert.equal(detectSentencePattern('I arrived yesterday.').pattern, 'sv');
+  assert.equal(detectSentencePattern('She looks at me.').pattern, 'unknown');
+  assert.equal(detectSentencePattern('The teacher who helped us lives nearby.').pattern, 'unknown');
+  assert.equal(detectSentencePattern('The interesting books on the shelf.').pattern, 'unknown');
+  assert.equal(detectSentencePattern('I can read a book.').pattern, 'unknown');
+});
+
 // --- 练习 -----------------------------------------------------------------------------
 
 test('练习可复现且包含三种题型', () => {

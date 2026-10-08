@@ -1,4 +1,6 @@
-import { StorageService } from './storage';
+import { StorageService } from './storage.js';
+import { readCachedSpeech, writeBoundedSpeech } from './cacheManagement.js';
+import { createTimedRequest } from './requestTimeout.js';
 
 export const SPEECH_MODES = {
   NATURAL: 'natural',
@@ -6,7 +8,7 @@ export const SPEECH_MODES = {
   SYSTEM: 'system',
 };
 
-const CLOUD_CACHE_NAME = 'lingoflow-tts-v1';
+export const CLOUD_SPEECH_TIMEOUT_MS = 12000;
 const MAX_CLOUD_TEXT_LENGTH = 4096;
 
 const hashText = (value) => {
@@ -162,9 +164,7 @@ class TTSService {
   async readCachedAudio(cacheKey) {
     if (typeof window === 'undefined' || !('caches' in window)) return null;
     try {
-      const cache = await window.caches.open(CLOUD_CACHE_NAME);
-      const response = await cache.match(cacheKey);
-      return response ? response.blob() : null;
+      return await readCachedSpeech(window.caches, cacheKey);
     } catch {
       return null;
     }
@@ -173,8 +173,7 @@ class TTSService {
   async writeCachedAudio(cacheKey, blob) {
     if (typeof window === 'undefined' || !('caches' in window)) return;
     try {
-      const cache = await window.caches.open(CLOUD_CACHE_NAME);
-      await cache.put(cacheKey, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } }));
+      await writeBoundedSpeech(window.caches, cacheKey, blob);
     } catch {
       // Caching is an enhancement; speech should continue if storage is full.
     }
@@ -203,7 +202,7 @@ class TTSService {
     });
   }
 
-  async speakCloud(text, settings, token) {
+  async speakCloud(text, settings, token, { timeoutMs = CLOUD_SPEECH_TIMEOUT_MS } = {}) {
     if (!this.canUseCloud(settings) || token !== this.playToken) return false;
 
     const cleanText = text.trim().slice(0, MAX_CLOUD_TEXT_LENGTH);
@@ -214,11 +213,14 @@ class TTSService {
       ? `${window.location.origin}/__lingoflow_tts__/${hashText(`${settings.speechBaseUrl}|${model}|${voice}|${speed}|${settings.speechInstructions || ''}|${cleanText}`)}`
       : `https://lingoflow.local/__lingoflow_tts__/${hashText(`${settings.speechBaseUrl}|${model}|${voice}|${speed}|${settings.speechInstructions || ''}|${cleanText}`)}`;
 
+    let controller;
+    let request;
     try {
       let blob = await this.readCachedAudio(cacheKey);
       if (!blob) {
-        const controller = new AbortController();
+        controller = new AbortController();
         this.activeRequestController = controller;
+        request = createTimedRequest(controller.signal, timeoutMs);
         const body = {
           model,
           input: cleanText,
@@ -238,7 +240,7 @@ class TTSService {
             Accept: 'audio/mpeg',
           },
           body: JSON.stringify(body),
-          signal: controller.signal,
+          signal: request.signal,
         });
         if (!response.ok) {
           const detail = await response.text().catch(() => '');
@@ -253,7 +255,8 @@ class TTSService {
       if (error?.name !== 'AbortError') console.warn('Cloud TTS unavailable, falling back to browser voice:', error);
       return false;
     } finally {
-      this.activeRequestController = null;
+      request?.cleanup();
+      if (this.activeRequestController === controller) this.activeRequestController = null;
     }
   }
 

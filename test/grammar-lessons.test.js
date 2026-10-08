@@ -8,10 +8,14 @@ test('expanded teaching examples have valid parts and every lesson has answerabl
   assert.equal(new Set(GRAMMAR_LESSONS.map((item) => item.id)).size, GRAMMAR_LESSONS.length);
   for (const lesson of GRAMMAR_LESSONS) {
     assert.ok(lesson.rules.length >= 4);
+    assert.ok(lesson.questions.length >= 8, `${lesson.id} needs transfer practice`);
+    assert.ok(new Set(lesson.questions.map((q) => q.type)).size >= 3, `${lesson.id} needs different practice modes`);
     for (const example of lesson.examples) for (const part of example.parts) assert.ok(example.en.includes(part.text), `${lesson.id}: ${part.text}`);
     for (const question of lesson.questions) {
       assert.ok(question.choices[question.answer]);
       assert.equal(new Set(question.choices).size, question.choices.length);
+      assert.ok(question.explanation.length >= 20, `${lesson.id} must explain the answer`);
+      if (question.highlight) assert.ok(question.prompt.includes(question.highlight));
     }
   }
 });
@@ -25,13 +29,14 @@ test('topic exercises are scoped, reproducible and keep a stable identity across
   const options = { topicIds: ['place-time'], count: 5, seed: 'study' };
   const quiz = buildGrammarLessonQuiz(options);
   assert.deepEqual(quiz, buildGrammarLessonQuiz(options));
-  assert.equal(quiz.length, 2);
+  assert.equal(quiz.length, 5);
   assert.ok(quiz.every((q) => q.patternId === 'place-time'));
   for (const q of quiz) {
     assert.ok(q.options.some((option) => gradeGrammarAnswer(q, option.value)));
     assert.equal(q.options.filter((option) => gradeGrammarAnswer(q, option.value)).length, 1);
   }
-  assert.deepEqual(new Set(quiz.map((q) => q.id)), new Set(buildGrammarLessonQuiz({ ...options, seed: 'another-run' }).map((q) => q.id)));
+  const all = buildGrammarLessonQuiz({ ...options, count: 100 });
+  assert.deepEqual(new Set(all.map((q) => q.id)), new Set(buildGrammarLessonQuiz({ ...options, count: 100, seed: 'another-run' }).map((q) => q.id)));
 });
 test('new-topic answers participate in summaries, backup-compatible progress and wrong-answer replay', () => {
   const question = buildGrammarLessonQuiz({ topicIds: ['expansion'], count: 1 })[0];

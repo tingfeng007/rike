@@ -2,10 +2,15 @@
 export const GRAMMAR_SOURCES = [
   { title: 'Cambridge · 状语的位置', url: 'https://dictionary.cambridge.org/grammar/british-grammar/adverbs-and-adverb-phrases' },
   { title: 'Cambridge · 形容词与副词', url: 'https://dictionary.cambridge.org/grammar/british-grammar/adjectives-and-adverbs' },
+  { title: 'Cambridge · 宾语', url: 'https://dictionary.cambridge.org/grammar/british-grammar/direct-objects' },
+  { title: 'Cambridge · 补足语', url: 'https://dictionary.cambridge.org/us/grammar/british-grammar/complements' },
+  { title: 'Cambridge · 一般现在时', url: 'https://dictionary.cambridge.org/grammar/british-grammar/present-simple' },
+  { title: 'British Council · 过去时疑问句', url: 'https://learnenglishkids.britishcouncil.org/grammar-vocabulary/grammar-practice/past-simple-questions' },
+  { title: 'Cambridge · 现在完成时', url: 'https://dictionary.cambridge.org/us/grammar/british-grammar/present-perfect-i-have-worked' },
 ];
 
 const example = (en, zh, parts, note) => ({ en, zh, parts: parts.map(([text, role]) => ({ text, role })), note });
-const question = (id, prompt, choices, answer, explanation) => ({ id, prompt, choices, answer, explanation });
+const question = (id, prompt, choices, answer, explanation, type = 'application', highlight = '') => ({ id, prompt, choices, answer, explanation, type, highlight });
 
 export const GRAMMAR_LESSONS = [
   {
@@ -162,6 +167,75 @@ export const GRAMMAR_LESSONS = [
     ],
   },
 ];
+
+// Transfer practice changes subjects, verbs and contexts instead of only repeating examples.
+const TRANSFER_QUESTIONS = {
+  expansion: [
+    question('transfer-role', 'We checked the tickets carefully at the gate yesterday. 中 carefully 的作用是什么？', ['方式状语', '宾语', '表语'], 0, 'carefully 回答“怎样检查”，修饰 checked 这一动作；tickets 才是宾语。', 'role', 'carefully'),
+    question('transfer-order', '给 They repaired the bike. 加上方式、地点、时间，选择最自然的中性顺序。', ['They repaired the bike patiently in the garage yesterday.', 'They repaired patiently the bike in the garage yesterday.', 'They the bike repaired in the garage patiently yesterday.'], 0, '先保留 repaired the bike，再补 patiently → in the garage → yesterday。其他语境可改变重点，本题要求中性词序。', 'order'),
+    question('transfer-fix', 'He opened slowly the door. 选择不拆散动词和短宾语的改法。', ['He opened the door slowly.', 'He opened the slowly door.', 'He the door opened slowly.'], 0, 'opened the door 是动作与短宾语的整体，方式副词 slowly 放在其后。He slowly opened the door 也可以，但不在本题选项内。', 'fix'),
+    question('transfer-optional', 'The children played football in the park after school. 去掉可选的地点和时间，主干是什么？', ['The children played football.', 'in the park after school.', 'The children after school.'], 0, '主语 The children、谓语 played、宾语 football 构成骨架，后两块补充地点和时间。', 'role'),
+    question('transfer-front', '想先交代时间背景，哪句话合适？', ['Last weekend, we visited the museum.', 'Last weekend we the museum visited.', 'We last the museum weekend visited.'], 0, '时间短语可以放句首作背景，随后保留 we visited the museum 的主谓宾顺序。', 'order'),
+    question('transfer-frequency', 'We usually study English quietly at home. 中 usually 应如何理解？', ['频率状语，位于实义动词前', '方式状语，必须放句末', 'study 的宾语'], 0, 'usually 回答“多久一次”，与 quietly 回答“怎样学习”不同，不能机械套同一个句末顺序。'),
+  ],
+  'state-manner': [
+    question('transfer-link', 'The flowers smell ___. 描述花的气味，用哪项？', ['sweet', 'sweetly', 'sweetness'], 0, 'smell 在这里连接 flowers 与其性质，用形容词 sweet 作表语。'),
+    question('transfer-action', 'He closed the door ___. 描述关门的方式。', ['quietly', 'quiet', 'quietness'], 0, 'closed 是动作动词，quietly 修饰动作方式；quiet 通常是形容词。'),
+    question('transfer-complement', 'The news made us nervous. 中 nervous 的作用是什么？', ['宾语补足语', '方式状语', '直接宾语'], 0, 'us 是宾语，nervous 说明 us 的状态，存在“我们感到紧张”的关系。', 'role', 'nervous'),
+    question('transfer-fix', 'The coffee tastes bitterly. 描述咖啡味苦，选择改法。', ['The coffee tastes bitter.', 'The coffee is tastes bitter.', 'The coffee tastes bitternessly.'], 0, 'taste 的系动词用法用形容词 bitter 作表语，不能用方式副词 bitterly 替代。', 'fix'),
+    question('transfer-compare', 'He looked tired. 和 He looked carefully at the map. 的区别是什么？', ['第一句描述人的状态，第二句描述看的方式', '两句都必须是主系表', 'carefully 是 map 的定语'], 0, 'look + tired 是系动词用法；look at the map 是动作，“仔细地看”用 carefully。必须结合用法，不能只看动词拼写。'),
+    question('transfer-result', '描述“他们把墙刷成蓝色”，选择完整句子。', ['They painted the wall blue.', 'They painted blue the.', 'They the wall blue painted.'], 0, 'the wall 是宾语，blue 是结果状态的宾语补足语，位置是动词 + 宾语 + 补足语。', 'order'),
+  ],
+  frequency: [
+    question('transfer-main', '选择普通陈述的中性语序。', ['My sister often walks to work.', 'My sister walks often to work always.', 'My sister to work often walks.'], 0, 'often 通常放实义动词 walks 前。为避免歧义，本题只比较这些选项，不声称所有句末 often 都错误。', 'order'),
+    question('transfer-be', 'They ___ ready before eight. 用 are 和 usually 补全。', ['are usually', 'usually are always', 'are ready usually'], 0, '频率副词通常在 be 后：They are usually ready before eight。'),
+    question('transfer-perfect', 'She has never travelled abroad. 中 never 位于哪里？', ['第一个助动词 has 之后', '主语之前', '宾语之后'], 0, 'has 是完成结构的助动词，never 置于 has 与主要动词 travelled 之间。', 'role', 'never'),
+    question('transfer-fix', 'We meet every a week. 想表达“每周见一次”，选择改法。', ['We meet once a week.', 'We meet once every a week.', 'We once a week meet every.'], 0, '次数短语是 once a week，常放句末；every a week 不是这里的表达。', 'fix'),
+    question('transfer-negative', 'I never drink coffee. 通常表示什么？', ['我从不喝咖啡', '我现在正在喝咖啡', '我昨天只喝了一杯咖啡'], 0, 'never 本身表达否定频率，不能把它当成普通“经常”或现在进行时。'),
+    question('transfer-modal', '选择 can、sometimes 和 help 的常见顺序。', ['I can sometimes help after class.', 'I can help sometimes always after class.', 'I sometimes help can after class.'], 0, 'can 是情态动词，sometimes 常位于它后、help 前；不能把 can 放在主要动词后。', 'order'),
+  ],
+  'place-time': [
+    question('transfer-date', 'The meeting starts ___ 9:30 ___ Tuesday. 选择两空。', ['at / on', 'on / in', 'in / at'], 0, '具体时点用 at，星期用 on：at 9:30 on Tuesday。'),
+    question('transfer-surface', 'The phone is ___ the table. 表示手机在桌子表面上。', ['on', 'in', 'to'], 0, '本题明确指桌面表面，使用 on；in the table 会改变空间关系。'),
+    question('transfer-fix', 'We will meet on next Monday. 选择通常更自然的改法。', ['We will meet next Monday.', 'We will meet in next Monday.', 'We will meet at next Monday.'], 0, 'next Monday 这类由 next 引导的时间短语通常不再加 on、in 或 at。', 'fix'),
+    question('transfer-daypart', '选择准确表达“周日晚上”的短语。', ['on Sunday evening', 'in Sunday evening', 'at Sunday evening'], 0, '具体某一天的上午、下午或晚上用 on；in the evening 指一般晚上。', 'order'),
+    question('transfer-complement', 'She put the keys in her bag. 中 in her bag 为什么不能随意删？', ['put 的这一用法需要交代放到哪里', '所有介词短语都必须保留', 'bag 是主语'], 0, 'put 的放置义通常要求宾语和地点补足信息。不是所有地点都只是可选状语。', 'role', 'in her bag'),
+    question('transfer-context', 'at school 和 in the school 应如何选择？', ['看是在说上学的活动/地点点位，还是具体校舍内部', '所有中文“在”都译成 in', '两者永远意思相同'], 0, '介词表达观察角度与具体语境，不能只按中文一个“在”逐字对应。'),
+  ],
+  'noun-modifiers': [
+    question('transfer-subject', 'The woman near the window teaches French. 完整主语是什么？', ['The woman near the window', 'near the window', 'French'], 0, 'near the window 修饰 woman，整个名词短语共同作主语。', 'role', 'The woman near the window'),
+    question('transfer-fix', 'She bought a dress blue. 普通名词短语中选择改法。', ['She bought a blue dress.', 'She blue bought a dress.', 'She bought blue a dress.'], 0, '普通形容词 blue 在中心名词 dress 前，冠词 a 在短语最前。', 'fix'),
+    question('transfer-indefinite', '想说“有趣的某件事”，选择常见表达。', ['something interesting', 'interesting something', 'something interest'], 0, 'something 这类不定代词后常跟形容词：something interesting，是前置形容词规则的常见例外。', 'order'),
+    question('transfer-object', 'I read the book about space. 在“那本有关太空的书”的语境中，about space 修饰谁？', ['book', 'read', 'I'], 0, '题目明确将 about space 作为哪本书的说明，它在名词短语内部作后置修饰。', 'role', 'about space'),
+    question('transfer-core', 'The small house with a red door is empty. 主句的谓语/系动词是什么？', ['is', 'with', 'door'], 0, 'small 和 with a red door 都修饰 house；主句骨架是 The house is empty，谓语是 is。'),
+    question('transfer-ambiguity', 'I saw the man with a telescope. 仅凭这句话能否确定谁拿着望远镜？', ['不能，需要语境区分修饰 man 还是描述 saw 的工具', '一定是 man', '一定是 I'], 0, 'with a telescope 可以是名词后置修饰，也可以说明观察工具。这是结构歧义，不能机械给唯一成分标签。'),
+  ],
+  'negatives-questions': [
+    question('transfer-past', '把 They visited London. 变成一般疑问句。', ['Did they visit London?', 'Did they visited London?', 'Were they visit London?'], 0, 'did 已体现过去时间，主要动词回到原形 visit。'),
+    question('transfer-fix', 'He does not likes coffee. 选择改法。', ['He does not like coffee.', 'He do not likes coffee.', 'He not does likes coffee.'], 0, 'does 后的主要动词用原形 like，第三人称单数不重复标记。', 'fix'),
+    question('transfer-modal', '把 She can drive. 变成一般疑问句。', ['Can she drive?', 'Does she can drive?', 'Can she drives?'], 0, '已有情态动词 can，直接倒装到主语前；drive 保持原形。', 'order'),
+    question('transfer-subject-question', 'Who called you? 中 who 是什么成分？', ['主语', '宾语', '方式状语'], 0, 'who 就是“谁打电话”里的施事主语，这类主语疑问句通常不另加 did。', 'role', 'Who'),
+    question('transfer-wh', '向 Where 加上 she / does / work，选择普通疑问句。', ['Where does she work?', 'Where she does work?', 'Where does work she?'], 0, '疑问词 + 助动词 + 主语 + 动词原形；Where she works 可作嵌入结构，但不是本题独立问句。', 'order'),
+    question('transfer-be-negative', '把 The children are asleep. 变为否定句。', ['The children are not asleep.', 'The children do not are asleep.', 'The children not asleep.'], 0, '谓语为 are，直接在 be 后加 not，不额外引入 do。'),
+  ],
+  'tense-aspect': [
+    question('transfer-predicate', 'They have been waiting for an hour. 完整谓语是哪块？', ['have been waiting', 'have', 'an hour'], 0, 'have + been + waiting 一起构成现在完成进行结构的谓语，不能只取一个助动词。', 'role', 'have been waiting'),
+    question('transfer-fix', 'He is cook dinner now. 想表达正在做饭，选择改法。', ['He is cooking dinner now.', 'He is cooked dinner now.', 'He cooking is dinner now.'], 0, '主动进行结构用 be + -ing，is cooking 是一整块谓语，dinner 是宾语。', 'fix'),
+    question('transfer-agreement', 'Every morning, my brother ___ to school. 普通习惯陈述。', ['walks', 'walk', 'walking'], 0, '一般现在时的第三人称单数主语 my brother 对应 walks。频率短语不替代主谓一致。'),
+    question('transfer-finished-time', '想表达明确发生在昨天的事：We ___ the museum yesterday.', ['visited', 'have visited', 'visiting'], 0, 'yesterday 指已结束的过去时间，本题普通陈述使用一般过去时 visited。现在完成时不这样搭配明确的结束过去时间。'),
+    question('transfer-contrast', 'She is tired. 与 She is carrying a bag. 有何不同？', ['前句主系表，后句 is carrying 整体作谓语并带宾语', '两句有 is，所以都是主系表', '后句的 a bag 是主语'], 0, '先看主要内容：tired 是状态形容词，carrying 是动作的进行形式；不能看见 be 就判主系表。'),
+    question('transfer-order', '选择 has、already、finished 的常见完成结构顺序。', ['She has already finished her homework.', 'She already her homework has finished.', 'She has her finished already homework.'], 0, 'has 是助动词，already 可放在其后，finished 是主要动词；her homework 是宾语。', 'order'),
+  ],
+  clauses: [
+    question('transfer-main', 'The teacher who helped us lives nearby. 主句谓语是什么？', ['lives', 'helped', 'who'], 0, 'who helped us 修饰 teacher，先括起它，主句是 The teacher lives nearby。', 'role', 'lives'),
+    question('transfer-fix', 'Although he was tired, but he kept working. 选择通常的改法。', ['Although he was tired, he kept working.', 'Although he was tired, but so he kept working.', 'He although tired but working.'], 0, '普通让步从句用 although 时，不再在主句加 but；也可以不用 although 而改用 but。', 'fix'),
+    question('transfer-object', 'I believe that she is honest. 中 that she is honest 的作用是什么？', ['believe 的宾语从句', 'honest 的定语', '时间状语'], 0, '这层句子说明 believe 的内容，整体作宾语；内部 she 为主语、is 为系动词、honest 为表语。', 'role', 'that she is honest'),
+    question('transfer-condition', 'If it rains tomorrow, we will stay indoors. 哪一块说明条件？', ['If it rains tomorrow', 'we will stay indoors', 'tomorrow we'], 0, 'if 引出“如果下雨”的条件层，主句说明条件下的安排。两层各有自己的主语和谓语。'),
+    question('transfer-relative', '想表达“我昨天买的那本书很有用”，选择结构完整的句子。', ['The book that I bought yesterday is useful.', 'The book that I yesterday useful.', 'The book is that bought I useful yesterday.'], 0, 'that I bought yesterday 修饰 book，主句仍需谓语 is 和表语 useful。', 'order'),
+    question('transfer-cause', '把原因放句首，选择完整表达。', ['Because the bus was late, I walked home.', 'Because the bus was late, so I walked home.', 'Because late bus, I home walked.'], 0, 'because 引导原因从句，已有 the bus was late 的主谓结构，主句 I walked home 无需再加 so。', 'fix'),
+  ],
+};
+for (const lesson of GRAMMAR_LESSONS) lesson.questions.push(...TRANSFER_QUESTIONS[lesson.id]);
 
 export const SENTENCE_BUILDER = {
   core: [['I', '主语'], ['read', '谓语'], ['a book', '宾语']],

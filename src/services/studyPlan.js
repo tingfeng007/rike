@@ -1,5 +1,6 @@
 import { dueVocabulary } from './reviewSession.js';
 import { buildNceReviewQueue } from './nceReview.js';
+import { isNceReviewDue } from './nceMastery.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -120,6 +121,8 @@ export function buildDailyPlan({
     .filter(([, item]) => item && typeof item === 'object')
     .sort((a, b) => (b[1].lastStudiedAt || 0) - (a[1].lastStudiedAt || 0));
   const latestLesson = lessonEntries[0]?.[0] || '';
+  const dueLesson = lessonEntries.filter(([filename, record]) => isNceReviewDue(record, nowMs) && (!courseUnits.length || courseUnits.some((unit) => unit.filename === filename)))
+    .sort((a, b) => a[1].nextReviewAt - b[1].nextReviewAt)[0]?.[0];
   const oralDone = (stats.todayOralCount || 0) >= 3;
   const planMinutes = clampMinutes(dailyMinutes, 10);
 
@@ -156,6 +159,12 @@ export function buildDailyPlan({
       target: 'nce-review',
       count: Math.min(reviewItems.length, 6),
       reviewIds: reviewItems.slice(0, 6).map((item) => item.id),
+    });
+  } else if (dueLesson) {
+    tasks.push({
+      id: 'nce-course-recall', type: 'nce', title: `回忆复习：${lessonLabel(dueLesson)}`,
+      description: '先完成听写或句子练习，再点“完成本课回忆复习”更新日期',
+      minutes: 8, target: 'nce', entityId: dueLesson, count: 1,
     });
   } else {
     const unfinished = lessonEntries.find(([, progress]) => progress.status !== 'completed')?.[0];
@@ -221,6 +230,8 @@ export function buildDailyPlan({
       verified = sessionEvents.some((event) => event.source === 'nce-exam');
     } else if (task.id === 'nce-lesson') {
       verified = sessionEvents.some((event) => ['nce-lesson', 'nce-dictation', 'nce-exercise'].includes(event.source) && (!task.entityId || event.entityId === task.entityId));
+    } else if (task.id === 'nce-course-recall') {
+      verified = sessionEvents.some((event) => event.source === 'nce-course-recall' && event.entityId === task.entityId);
     }
     return { ...task, order: index + 1, done: state.completedTaskIds.includes(task.id) || verified, deferred: state.deferredTaskIds.includes(task.id) };
   });

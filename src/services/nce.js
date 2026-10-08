@@ -22,6 +22,14 @@ export function safeAssetName(name) {
   return encodeURIComponent(name);
 }
 
+export function buildCourseCaptions(lines) {
+  const timestamp = (seconds) => {
+    const total = Math.max(0, Math.round(seconds * 1000));
+    return `${String(Math.floor(total / 3600000)).padStart(2, '0')}:${String(Math.floor(total / 60000) % 60).padStart(2, '0')}:${String(Math.floor(total / 1000) % 60).padStart(2, '0')}.${String(total % 1000).padStart(3, '0')}`;
+  };
+  return 'WEBVTT\n\n' + lines.map((line, index) => `${index + 1}\n${timestamp(line.time)} --> ${timestamp(lines[index + 1]?.time || line.time + 10)}\n${line.en}${line.zh ? '\n' + line.zh : ''}\n`).join('\n');
+}
+
 function stableShuffle(values, seedText) {
   const result = [...values];
   let seed = Array.from(seedText).reduce((sum, char) => sum + char.charCodeAt(0), 0) || 1;
@@ -80,14 +88,22 @@ export function scoreDictation(target, attempt) {
   const longestLength = Math.max(targetWords.length, attemptWords.length, 1);
   const distance = wordDistance(targetWords, attemptWords);
   const score = Math.max(0, Math.round((1 - distance / longestLength) * 100));
+  const missingWords = subtractWordCounts(targetWords, attemptWords);
+  const extraWords = subtractWordCounts(attemptWords, targetWords);
+  // Content words, negation, quantities and verb/auxiliary forms affect meaning.
+  // Only a small set of minor determiners/politeness words may use the 90% tolerance.
+  const minorWords = new Set(['a', 'an', 'the', 'please', 'very']);
+  const criticalErrors = [...missingWords, ...extraWords].filter((word) => !minorWords.has(word));
 
   return {
     score,
     isPerfect: score === 100,
     targetWords,
     attemptWords,
-    missingWords: subtractWordCounts(targetWords, attemptWords),
-    extraWords: subtractWordCounts(attemptWords, targetWords),
+    missingWords,
+    extraWords,
+    criticalErrors,
+    passed: Boolean(attemptWords.length) && score >= 90 && criticalErrors.length === 0,
   };
 }
 

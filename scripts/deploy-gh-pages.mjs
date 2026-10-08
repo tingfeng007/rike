@@ -25,6 +25,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
+import { sourceFingerprint, distFingerprint, gatePath } from './source-fingerprint.mjs';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const DIST_DIR = join(REPO_ROOT, 'dist');
@@ -50,6 +51,10 @@ function entryChunk() {
 }
 
 function main() {
+  const gate = existsSync(gatePath()) ? JSON.parse(readFileSync(gatePath(),'utf8')) : null;
+  if (!gate || gate.sourceCommit !== run(['rev-parse','HEAD']).trim() || gate.sourceFingerprint !== sourceFingerprint() || gate.distFingerprint !== distFingerprint()) {
+    throw new Error('当前源码与构建尚未通过发布检查，请执行 npm run validate');
+  }
   // 1. Sanity-check the build output.
   if (!existsSync(join(DIST_DIR, 'index.html'))) {
     throw new Error('dist/index.html 不存在，请先执行 npm run build');

@@ -29,7 +29,7 @@ export function ApiKeyNotice({ onOpenSettings, variant = 'card', className = '' 
           AI 功能需要先配置 API Key
         </p>
         <p className={`mt-0.5 leading-relaxed text-amber-800 ${isCard ? 'text-[11px]' : 'text-[10.5px]'}`}>
-          口语、查词和 AI 测验需要联网及 Key；本地词卡、笔记和语法课程无需 Key。新概念离线学习需先下载本课离线包。
+          AI 口语、深度讲解和 AI 测验需要联网及 Key；基础查词、词卡、笔记和语法课程可直接使用。下载词库及课程离线包后，也能离线查词和学课文。
         </p>
       </div>
       {typeof onOpenSettings === 'function' && (

@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "lint": "oxlint",
-    "test": "node --test",
+    "lint": "oxlint --deny-warnings",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "playwright test",
+    "validate": "node scripts/validate-release.mjs",
     "preview": "vite preview",
-    "deploy": "vite build && node scripts/deploy-gh-pages.mjs",
-    "deploy:dry": "vite build && node scripts/deploy-gh-pages.mjs --dry-run"
+    "deploy": "node scripts/validate-release.mjs && node scripts/deploy-gh-pages.mjs",
+    "deploy:dry": "node scripts/validate-release.mjs && node scripts/deploy-gh-pages.mjs --dry-run"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
@@ -19,13 +21,15 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
-    "autoprefixer": "^10.5.5",
     "oxlint": "^1.79.0",
     "postcss": "^8.5.28",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^4.3.3",
     "vite": "^8.2.2"
   }
 }

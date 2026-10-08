@@ -146,7 +146,7 @@ test('import keeps the local speech key when the backup carries none', () => {
   const settings = StorageService.getSettings();
   assert.equal(settings.speechApiKey, 'LOCAL_SPEECH_KEY', 'speech key must survive a safe export');
   assert.equal(settings.apiKey, 'LOCAL_KEY');
-  assert.equal(settings.provider, 'openai', 'non-secret settings still merge');
+  assert.equal(settings.provider, 'deepseek', 'connection configuration is opt-in');
 });
 
 test('import rejects another app backup without touching local data', () => {
@@ -252,9 +252,9 @@ test('legacy sample decks are upgraded once and user words are never replaced', 
 test('a non numeric schema marker is repaired', () => {
   storage.setItem('lingoflow_schema_version', 'abc');
 
-  assert.equal(StorageService.ensureSchema(), 3);
-  assert.equal(storage.getItem('lingoflow_schema_version'), '3', 'garbage marker must be rewritten');
-  assert.equal(StorageService.getSchemaVersion(), 3);
+  assert.equal(StorageService.ensureSchema(), 4);
+  assert.equal(storage.getItem('lingoflow_schema_version'), '4', 'garbage marker must be rewritten');
+  assert.equal(StorageService.getSchemaVersion(), 4);
 });
 
 // --- D-31: SRS scheduling guard rails -----------------------------------------

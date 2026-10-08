@@ -32,6 +32,9 @@ function loadServiceWorker({ cacheKeys, requireIgnoreVary = false, networkStatus
     },
     Response: class Response {},
     URL,
+    AbortController,
+    setTimeout,
+    clearTimeout,
     fetch: async () => { if (networkStatus) return { status: networkStatus, ok: false }; throw new Error('offline'); },
   };
   vm.createContext(context);
@@ -80,4 +83,11 @@ test('install does not precache-or-delete anything unexpected', () => {
   assert.equal(typeof listeners.install, 'function');
   assert.equal(typeof listeners.fetch, 'function');
   assert.doesNotThrow(() => listeners.install({ waitUntil: () => {} }));
+});
+
+test('dictionary shards are cached only by the dictionary owner', () => {
+  const { listeners } = loadServiceWorker({ cacheKeys: [] });
+  let intercepted = false;
+  listeners.fetch({ request: { method: 'GET', url: 'https://example.com/rike/dictionary/version/a.json' }, respondWith: () => { intercepted = true; } });
+  assert.equal(intercepted, false);
 });

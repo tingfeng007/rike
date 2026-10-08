@@ -316,6 +316,8 @@ test('downloaded shards work after service restart, and cancellation can be resu
     open: async () => ({
       match: async (url) => stored.get(url)?.clone(),
       put: async (url, response) => stored.set(url, response),
+      keys: async () => [...stored.keys()],
+      delete: async (url) => stored.delete(url),
     }),
   };
   const controller = new AbortController();

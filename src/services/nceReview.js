@@ -1,4 +1,5 @@
 import { scoreDictation } from './nce.js';
+import { gradeNceExam } from './nceExam.js';
 
 const SOURCES = [
   ['dictationMistakes', 'dictation', '听写'],
@@ -42,7 +43,10 @@ export function buildNceReviewQueue(progress, unitId = '', now = Date.now()) {
 
 export function gradeNceReview(item, attempt) {
   const result = scoreDictation(item.answer, attempt);
-  return { ...result, correct: Boolean(result.attemptWords.length) && result.score >= 90 };
+  const correct = item.kind === 'dictation'
+    ? result.passed
+    : gradeNceExam([{ id: 'review', answer: item.answer }], { review: attempt }).correct === 1;
+  return { ...result, correct };
 }
 
 export function resolveNceReviewMistake(progress, item, now = Date.now()) {

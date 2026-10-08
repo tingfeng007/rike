@@ -31,7 +31,7 @@ function readSnapshot() {
   const now = Date.now();
   const studyPlan = StorageService.getStudyPlan();
   const planInput = {
-    vocabulary,
+    vocabulary: StorageService.isUsingSampleVocabulary() ? [] : vocabulary,
     nceProgress: progress,
     nceExams: StorageService.getNceExams(),
     appState: StorageService.getAppState(),
@@ -92,7 +92,7 @@ export default function HomeDashboard({ onNavigate }) {
       buildDailyPlan({
         now: new Date(),
         dailyMinutes: snapshot.studyPlan.dailyMinutes || 20,
-        vocabulary: snapshot.vocabulary,
+        vocabulary: StorageService.isUsingSampleVocabulary() ? [] : snapshot.vocabulary,
         nceProgress: snapshot.progress,
         nceExams: StorageService.getNceExams(),
         stats: snapshot.stats,

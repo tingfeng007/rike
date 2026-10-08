@@ -1,3 +1,4 @@
+import { CATEGORY_EXPANSION_PHONETICS } from './categoryExpansionPhonetics.js';
 // Broad American English IPA; keyed by spelling so row order cannot misassign pronunciation.
 export const CATEGORY_PHONETICS = {
   agenda: 'əˈdʒendə', budget: 'ˈbʌdʒɪt', contract: 'ˈkɑːntrækt', deadline: 'ˈdedlaɪn',
@@ -32,6 +33,7 @@ export const CATEGORY_PHONETICS = {
   sustainable: 'səˈsteɪnəbəl', conservation: 'ˌkɑːnsərˈveɪʃən', habitat: 'ˈhæbɪtæt', climate: 'ˈklaɪmət',
   experiment: 'ɪkˈsperəmənt', molecule: 'ˈmɑːləkjuːl', gravity: 'ˈɡrævəti', energy: 'ˈenərdʒi',
   recycle: 'ˌriːˈsaɪkəl', pollution: 'pəˈluːʃən', resource: 'ˈriːsɔːrs', adapt: 'əˈdæpt',
+  ...CATEGORY_EXPANSION_PHONETICS,
 };
 
 export function categoryPhonetic(word) {

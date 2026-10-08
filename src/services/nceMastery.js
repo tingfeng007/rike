@@ -25,12 +25,25 @@ export function getNceMastery(progress = {}) {
 }
 
 export function getNceNextReviewAt(progress = {}, now = Date.now()) {
-  if (progress.nextReviewAt) return progress.nextReviewAt;
   const mastery = getNceMastery(progress);
   if (mastery.score >= 90) return now + 7 * 24 * 60 * 60 * 1000;
   if (mastery.score >= 60) return now + 3 * 24 * 60 * 60 * 1000;
   if (mastery.score > 0) return now + 24 * 60 * 60 * 1000;
   return 0;
+}
+
+// A completed recall uses this session's evidence, never the historical best score.
+export function completeNceRecall(progress = {}, { score, now = Date.now(), sessionId = '' } = {}) {
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore) || numericScore < 80 || !sessionId || progress.lastRecallSessionId === sessionId) return null;
+  const intervalDays = numericScore >= 95 ? 7 : numericScore >= 90 ? 3 : 1;
+  return {
+    ...progress,
+    lastReviewAt: now,
+    lastRecallScore: Math.min(100, numericScore),
+    lastRecallSessionId: sessionId,
+    nextReviewAt: now + intervalDays * 86400000,
+  };
 }
 
 export function isNceReviewDue(progress = {}, now = Date.now()) {

@@ -43,7 +43,7 @@ const tagLabels = {
   gre: 'GRE',
 };
 
-export default function Dictionary({ onNavigate = () => {}, intent = null }) {
+export default function Dictionary({ onNavigate = () => {}, intent = null, embedded = false }) {
   const toast = useToast();
   const service = useMemo(() => createDictionaryService(), []);
   const request = useRef(createLatestRequest());
@@ -276,7 +276,7 @@ export default function Dictionary({ onNavigate = () => {}, intent = null }) {
   }
 
   return (
-    <section className="dictionary-page h-full overflow-y-auto">
+    <section className={`dictionary-page h-full overflow-y-auto${embedded ? ' is-embedded' : ''}`}>
       <div className="dictionary-layout">
         <header className="dictionary-header">
           <div>
@@ -300,8 +300,9 @@ export default function Dictionary({ onNavigate = () => {}, intent = null }) {
             aria-label="英文查词"
           >
             <Search size={21} aria-hidden="true" />
-            <input
+              <input
               ref={inputRef}
+              data-autofocus
               aria-label="英文单词或短语"
               value={query}
               onChange={(event) => changeQuery(event.target.value)}
@@ -409,6 +410,7 @@ export default function Dictionary({ onNavigate = () => {}, intent = null }) {
                         听发音
                       </button>
                     </div>
+                    {entry.phonetic && entry.phoneticSource && <small className="dictionary-ipa-source">音标来源：{entry.phoneticSource}</small>}
                   </div>
                   <button
                     type="button"

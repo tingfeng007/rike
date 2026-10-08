@@ -1,7 +1,11 @@
 import { DEFAULT_SAMPLE_WORDS, DEFAULT_SAMPLE_ARTICLES } from '../data/samples.js';
 export { DEFAULT_SAMPLE_WORDS, DEFAULT_SAMPLE_ARTICLES } from '../data/samples.js';
 // LocalStorage keys
-import { applyGrammarAnswer } from './grammar.js';
+import { applyGrammarAnswer } from './grammarProgress.js';
+import { connectionOrigin, mergeImportedSettings, mergeStorageSnapshots } from './storageMerge.js';
+import { getLearningStorageSnapshot, getLearningStorageStatus, LEARNING_KEYS, mergeLearningDomainRecords, restoreLearningDomains, saveLearningDomain } from './learningStorage.js';
+import { readDictionaryState } from './dictionaryState.js';
+export { initializeLearningStorage } from './learningStorage.js';
 
 const STORAGE_KEYS = {
   SETTINGS: 'lingoflow_settings',
@@ -22,12 +26,15 @@ const STORAGE_KEYS = {
   SCHEMA_VERSION: 'lingoflow_schema_version',
   VOCABULARY_LEGACY_BACKUP: 'lingoflow_vocabulary_legacy_backup',
   SAMPLE_MIGRATION: 'lingoflow_sample_migration_v2',
+  DICTIONARY: 'lingoflow_dictionary_v1',
+  WRITE_ERRORS: 'lingoflow_write_errors_v1',
+  CONFLICTS: 'lingoflow_conflicts_v1',
 };
 
 // Reading scroll position is stored per article under this prefix.
 const READ_POSITION_PREFIX = 'lingoflow_read_pos_';
 
-const STORAGE_SCHEMA_VERSION = 3;
+const STORAGE_SCHEMA_VERSION = 4;
 
 // Upper bound for a single review interval. Without it the multiplicative growth of
 // "good" answers scheduled a card ~3800 days out, i.e. beyond any practical horizon.
@@ -36,27 +43,64 @@ export const MAX_INTERVAL_DAYS = 365;
 // Reason of the most recent failed write. Surfaced through getStorageDiagnostics /
 // getLastWriteError so a full disk or blocked storage is never silent.
 let lastWriteError = null;
+let observedStorage;
+const observed = new Map();
+const pendingWrites = new Map();
+let writeErrors = {};
+const sharedKeys = new Set([STORAGE_KEYS.VOCABULARY, STORAGE_KEYS.ARTICLES, STORAGE_KEYS.READING_ANNOTATIONS, STORAGE_KEYS.ARTICLE_READ_STATE, STORAGE_KEYS.NCE_PROGRESS, STORAGE_KEYS.GRAMMAR, STORAGE_KEYS.DICTIONARY]);
+const shared = (key) => sharedKeys.has(key) || key.startsWith(`${STORAGE_KEYS.CHAT_MESSAGES}_`);
+function synchronizeContext() {
+  if (observedStorage === globalThis.localStorage) return;
+  observedStorage = globalThis.localStorage;
+  observed.clear(); pendingWrites.clear();
+  try { writeErrors = JSON.parse(localStorage.getItem(STORAGE_KEYS.WRITE_ERRORS) || '{}') || {}; } catch { writeErrors = {}; }
+  lastWriteError = Object.values(writeErrors).sort((a, b) => (b.at || 0) - (a.at || 0))[0] || null;
+}
+function persistWriteErrors() {
+  try { localStorage.setItem(STORAGE_KEYS.WRITE_ERRORS, JSON.stringify(writeErrors)); } catch { /* The in-memory error remains available even at full quota. */ }
+}
+function reportWriteError(key, error) {
+  synchronizeContext();
+  writeFailureCount += 1;
+  lastWriteError = { key, name: error?.name || 'Error', quotaExceeded: error?.name === 'QuotaExceededError', message: error?.message || '本地存储写入失败', at: Date.now() };
+  writeErrors[key] = lastWriteError;
+  persistWriteErrors();
+  if (typeof window !== 'undefined' && typeof CustomEvent === 'function') window.dispatchEvent(new CustomEvent('lingoflow:storage-error', { detail: lastWriteError }));
+}
+function rememberConflict(key, conflict) {
+  if (conflict.path.endsWith('/updatedAt')) return;
+  try {
+    const previous = JSON.parse(localStorage.getItem(STORAGE_KEYS.CONFLICTS) || '[]');
+    const next = [...asArray(previous), { key, ...conflict, at: Date.now() }].slice(-30);
+    while (JSON.stringify(next).length > 100000 && next.length > 1) next.shift();
+    localStorage.setItem(STORAGE_KEYS.CONFLICTS, JSON.stringify(next));
+  } catch { /* The primary write still reports its own result. */ }
+  if (typeof window !== 'undefined' && typeof CustomEvent === 'function') window.dispatchEvent(new CustomEvent('lingoflow:storage-conflict', { detail: { key } }));
+}
 
 // Monotonic failure counter. importAllData is fully synchronous, so comparing this
 // before/after a run reliably detects that some write was dropped (and triggers rollback).
 let writeFailureCount = 0;
 
 function safeSetItem(key, value) {
+  synchronizeContext();
   try {
+    const remote = localStorage.getItem(key);
+    const base = observed.get(key);
+    if (shared(key) && base !== undefined && base !== remote) {
+      try { value = JSON.stringify(mergeStorageSnapshots(JSON.parse(base || 'null'), JSON.parse(value), JSON.parse(remote || 'null'), (conflict) => rememberConflict(key, conflict))); } catch { /* Malformed remote data is replaced by the valid caller value. */ }
+    }
     localStorage.setItem(key, value);
-    lastWriteError = null;
+    observed.set(key, value);
+    if (shared(key)) pendingWrites.set(key, { base: remote, value });
+    if (writeErrors[key]) { delete writeErrors[key]; persistWriteErrors(); }
+    lastWriteError = Object.values(writeErrors).sort((a, b) => (b.at || 0) - (a.at || 0))[0] || null;
     if (typeof window !== 'undefined' && typeof CustomEvent === 'function' && window.dispatchEvent) {
       window.dispatchEvent(new CustomEvent('lingoflow:storage', { detail: { key } }));
     }
     return true;
   } catch (error) {
-    writeFailureCount += 1;
-    lastWriteError = {
-      key,
-      name: error?.name || 'Error',
-      quotaExceeded: error?.name === 'QuotaExceededError',
-      message: error?.message || '本地存储写入失败',
-    };
+    reportWriteError(key, error);
     return false;
   }
 }
@@ -73,8 +117,10 @@ function asObject(value) {
 }
 
 function readJson(key, fallback) {
+  synchronizeContext();
   try {
     const raw = localStorage.getItem(key);
+    observed.set(key, raw);
     if (raw === null) return fallback;
     const parsed = JSON.parse(raw);
     return parsed === null || parsed === undefined ? fallback : parsed;
@@ -176,6 +222,51 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const StorageService = {
+  startCrossTabSync() {
+    if (typeof window === 'undefined') return () => {};
+    const receive = (event) => {
+      if (!event.key || !shared(event.key) || event.storageArea !== localStorage) return;
+      synchronizeContext();
+      const pending = pendingWrites.get(event.key);
+      try {
+        const current = localStorage.getItem(event.key);
+        if (pending && current !== pending.value) {
+          const next = JSON.stringify(mergeStorageSnapshots(JSON.parse(pending.base || 'null'), JSON.parse(pending.value), JSON.parse(current || 'null'), (conflict) => rememberConflict(event.key, conflict)));
+          // The event handler has already performed the three-way merge. Treat the
+          // value it just read as the new base so safeSetItem does not merge twice
+          // and misinterpret our restored field as a deliberate remote deletion.
+          observed.set(event.key, current);
+          if (next !== current) safeSetItem(event.key, next);
+        }
+      } catch (error) { reportWriteError(event.key, error); }
+      window.dispatchEvent(new CustomEvent('lingoflow:storage', { detail: { key: event.key, external: true } }));
+    };
+    window.addEventListener('storage', receive);
+    return () => window.removeEventListener('storage', receive);
+  },
+  getLearningSession(scope) { return asObject(getLearningStorageSnapshot().sessions[String(scope)]); },
+  async saveLearningSession(scope, data) {
+    const state = getLearningStorageSnapshot().sessions;
+    const saved = await saveLearningDomain('sessions', { ...state, [String(scope)]: { ...asObject(data), updatedAt: Date.now() } }, { writeFallback: safeSetItem, onError: reportWriteError, onConflict: (conflict) => rememberConflict(LEARNING_KEYS.sessions, conflict) });
+    if (saved) this.clearLastWriteError(LEARNING_KEYS.sessions);
+    return saved;
+  },
+  getReadingEvidence(articleId) {
+    const state = getLearningStorageSnapshot().readingEvidence;
+    return articleId == null ? state : asObject(state[String(articleId)]);
+  },
+  async saveReadingEvidence(articleId, data) {
+    const state = getLearningStorageSnapshot().readingEvidence;
+    const saved = await saveLearningDomain('readingEvidence', { ...state, [String(articleId)]: { ...asObject(data), updatedAt: Date.now() } }, { writeFallback: safeSetItem, onError: reportWriteError, onConflict: (conflict) => rememberConflict(LEARNING_KEYS.readingEvidence, conflict) });
+    if (saved) this.clearLastWriteError(LEARNING_KEYS.readingEvidence);
+    return saved;
+  },
+  getOralCorrections() { return getLearningStorageSnapshot().oralCorrections; },
+  async saveOralCorrections(items) {
+    const saved = await saveLearningDomain('oralCorrections', asArray(items), { writeFallback: safeSetItem, onError: reportWriteError, onConflict: (conflict) => rememberConflict(LEARNING_KEYS.oralCorrections, conflict) });
+    if (saved) this.clearLastWriteError(LEARNING_KEYS.oralCorrections);
+    return saved;
+  },
   ensureSchema() {
     try {
       const rawVersion = localStorage.getItem(STORAGE_KEYS.SCHEMA_VERSION);
@@ -264,7 +355,8 @@ export const StorageService = {
   // --- Settings ---
   getSettings() {
     // Always merge onto a fresh copy: callers must not be able to mutate DEFAULT_SETTINGS.
-    return { ...DEFAULT_SETTINGS, ...asObject(readJson(STORAGE_KEYS.SETTINGS, {})) };
+    const raw = asObject(readJson(STORAGE_KEYS.SETTINGS, {}));
+    return Object.fromEntries(Object.entries(DEFAULT_SETTINGS).map(([key, fallback]) => [key, typeof raw[key] === typeof fallback && (typeof raw[key] !== 'number' || Number.isFinite(raw[key])) ? raw[key] : fallback]));
   },
 
   saveSettings(settings) {
@@ -272,9 +364,14 @@ export const StorageService = {
   },
 
   // --- Last write failure (quota / blocked storage) ---
-  getLastWriteError() {
+  getLastWriteError(key) {
+    synchronizeContext();
+    if (key) return writeErrors[key] ? { ...writeErrors[key] } : null;
     return lastWriteError ? { ...lastWriteError } : null;
   },
+  getWriteErrors() { synchronizeContext(); return Object.values(writeErrors).map((error) => ({ ...error })); },
+  clearLastWriteError(key) { synchronizeContext(); delete writeErrors[key]; persistWriteErrors(); lastWriteError = Object.values(writeErrors).at(-1) || null; },
+  reportWriteError,
 
   // --- Demo / sample data ---------------------------------------------------------------
   // On a fresh install both decks are served from memory without being written to disk, so
@@ -304,8 +401,10 @@ export const StorageService = {
    * absent, so merely "not saving" would bring the samples straight back.
    */
   clearSampleData({ keepArticles = false } = {}) {
+    const before = new Map([[STORAGE_KEYS.VOCABULARY, localStorage.getItem(STORAGE_KEYS.VOCABULARY)], [STORAGE_KEYS.ARTICLES, localStorage.getItem(STORAGE_KEYS.ARTICLES)]]);
     const wordsSaved = this.saveVocabulary([]);
-    const articlesSaved = keepArticles || this.saveArticles([]);
+    const articlesSaved = wordsSaved && (keepArticles || this.saveArticles([]));
+    if (!wordsSaved || !articlesSaved) this.restoreSnapshot(before);
     return Boolean(wordsSaved && articlesSaved);
   },
 
@@ -356,9 +455,11 @@ export const StorageService = {
 
   // --- Vocabulary ---
   getVocabulary() {
+    synchronizeContext();
     let raw = null;
     try {
       raw = localStorage.getItem(STORAGE_KEYS.VOCABULARY);
+      observed.set(STORAGE_KEYS.VOCABULARY, raw);
     } catch {
       return [];
     }
@@ -368,7 +469,7 @@ export const StorageService = {
       const parsed = JSON.parse(raw);
       // Pure read: a corrupted or wrongly-shaped value returns an empty deck and is
       // left untouched on disk (never overwritten by the demo deck).
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? parsed.filter((word) => word && typeof word.word === 'string' && word.word.trim()) : [];
     } catch {
       return [];
     }
@@ -381,7 +482,9 @@ export const StorageService = {
   addWord(wordObj) {
     const word = typeof wordObj?.word === 'string' ? wordObj.word.trim() : '';
     if (!word) return null;
-    const words = this.getVocabulary();
+    // Demo cards remain a preview until deliberately edited or saved. Collecting
+    // the first real word must not silently enroll the entire demonstration deck.
+    const words = this.isUsingSampleVocabulary() ? [] : this.getVocabulary();
     const existingIndex = words.findIndex(
       (w) => typeof w?.word === 'string' && w.word.toLowerCase() === word.toLowerCase()
     );
@@ -720,6 +823,9 @@ export const StorageService = {
       cacheUpdatedAt: cache.updatedAt || 0,
       // A previous write may have failed (full disk / blocked storage): surface it.
       lastWriteError: this.getLastWriteError(),
+      writeErrors: this.getWriteErrors(),
+      learningStorage: getLearningStorageStatus(),
+      conflictCount: asArray(readJson(STORAGE_KEYS.CONFLICTS, [])).length,
     };
   },
 
@@ -819,9 +925,11 @@ export const StorageService = {
 
   // --- Articles (Reader) ---
   getArticles() {
+    synchronizeContext();
     let raw = null;
     try {
       raw = localStorage.getItem(STORAGE_KEYS.ARTICLES);
+      observed.set(STORAGE_KEYS.ARTICLES, raw);
     } catch {
       return [];
     }
@@ -1095,7 +1203,7 @@ export const StorageService = {
 
     const backup = {
       app: 'LingoFlow',
-      version: 3,
+      version: STORAGE_SCHEMA_VERSION,
       schemaVersion: this.getSchemaVersion() || STORAGE_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       meta: {
@@ -1115,6 +1223,14 @@ export const StorageService = {
       appState: this.getAppState(),
       studyEvents: this.getStudyEvents({ limit: 2000 }),
       studyPlan: this.getStudyPlan(),
+      grammarProgress: this.getGrammarProgress(),
+      articleReadState: this.getArticleReadState(),
+      onboarding: this.getOnboardingState(),
+      dictionaryState: readDictionaryState(),
+      sessions: getLearningStorageSnapshot().sessions,
+      readingEvidence: this.getReadingEvidence(),
+      oralCorrections: this.getOralCorrections(),
+      storageConflicts: asArray(readJson(STORAGE_KEYS.CONFLICTS, [])),
     };
     return JSON.stringify(backup, null, 2);
   },
@@ -1169,6 +1285,12 @@ export const StorageService = {
         studyEventCount,
         hasApiKey,
         hasSpeechApiKey,
+        grammarAnswerCount: Number(data.grammarProgress?.totalAnswered) || 0,
+        readingStateCount: Object.keys(asObject(data.articleReadState)).length,
+        sessionCount: Object.keys(asObject(data.sessions)).length,
+        readingEvidenceCount: Object.keys(asObject(data.readingEvidence)).length,
+        oralCorrectionCount: asArray(data.oralCorrections).length,
+        connectionChanges: ['baseUrl', 'speechBaseUrl', 'model', 'speechModel'].filter((field) => typeof data.settings?.[field] === 'string' && data.settings[field] !== this.getSettings()[field]).map((field) => ({ field, current: field.endsWith('Url') ? connectionOrigin(this.getSettings()[field]) : this.getSettings()[field], incoming: field.endsWith('Url') ? connectionOrigin(data.settings[field]) || '无效地址' : data.settings[field] })),
       };
     } catch (err) {
       return { valid: false, error: `解析失败: ${err.message}` };
@@ -1191,6 +1313,12 @@ export const StorageService = {
       STORAGE_KEYS.APP_STATE,
       STORAGE_KEYS.STUDY_EVENTS,
       STORAGE_KEYS.STUDY_PLAN,
+      STORAGE_KEYS.GRAMMAR,
+      STORAGE_KEYS.ARTICLE_READ_STATE,
+      STORAGE_KEYS.ONBOARDING,
+      STORAGE_KEYS.DICTIONARY,
+      STORAGE_KEYS.CONFLICTS,
+      ...Object.values(LEARNING_KEYS),
     ]);
     if (data?.chatMessages && typeof data.chatMessages === 'object') {
       Object.keys(data.chatMessages).forEach((scenarioId) => {
@@ -1219,6 +1347,7 @@ export const StorageService = {
       snapshot.forEach((value, key) => {
         if (value === null) localStorage.removeItem(key);
         else localStorage.setItem(key, value);
+        observed.delete(key); pendingWrites.delete(key);
       });
       return true;
     } catch {
@@ -1226,7 +1355,7 @@ export const StorageService = {
     }
   },
 
-  importAllData(jsonString) {
+  importAllData(jsonString, { includeConnections = false, skipLearning = false } = {}) {
     let data;
     try {
       data = JSON.parse(jsonString);
@@ -1236,6 +1365,7 @@ export const StorageService = {
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
       return { success: false, error: '备份文件格式不正确：顶层应为一个 JSON 对象' };
     }
+    if (!skipLearning && getLearningStorageStatus().backend === 'indexedDB' && Object.keys(LEARNING_KEYS).some((field) => data[field] !== undefined)) return { success: false, error: '该备份含数据库学习记录，请使用完整异步恢复。' };
     if (data.app && data.app !== 'LingoFlow') {
       return { success: false, error: `这不是 LingoFlow 的备份文件（app=${String(data.app)}）` };
     }
@@ -1256,16 +1386,7 @@ export const StorageService = {
       if (data.settings && typeof data.settings === 'object') {
         const currentSettings = this.getSettings();
         const incomingSettings = asObject(data.settings);
-        const keepSecret = (field) => {
-          const next = typeof incomingSettings[field] === 'string' ? incomingSettings[field].trim() : '';
-          return next || currentSettings[field] || '';
-        };
-        this.saveSettings({
-          ...currentSettings,
-          ...incomingSettings,
-          apiKey: keepSecret('apiKey'),
-          speechApiKey: keepSecret('speechApiKey'),
-        });
+        this.saveSettings(mergeImportedSettings(currentSettings, incomingSettings, includeConnections));
       }
 
       let addedWords = 0;
@@ -1273,7 +1394,7 @@ export const StorageService = {
 
       // 2. Vocabulary Merge: smart merge progress, notes and status
       if (Array.isArray(data.vocabulary)) {
-        const localWords = this.getVocabulary();
+        const localWords = this.isUsingSampleVocabulary() ? [] : this.getVocabulary();
         const mergedMap = new Map();
 
         localWords.forEach((w) => {
@@ -1327,7 +1448,7 @@ export const StorageService = {
       // 3. Articles Merge
       let addedArticles = 0;
       if (Array.isArray(data.articles)) {
-        const localArticles = this.getArticles();
+        const localArticles = localStorage.getItem(STORAGE_KEYS.ARTICLES) === null ? [] : this.getArticles();
         const artMap = new Map();
         localArticles.forEach((a) => {
           if (a.title) artMap.set(a.title.trim().toLowerCase(), a);
@@ -1482,6 +1603,35 @@ export const StorageService = {
       if (data.studyPlan && typeof data.studyPlan === 'object') {
         this.saveStudyPlan({ ...this.getStudyPlan(), ...data.studyPlan });
       }
+      if (data.grammarProgress && typeof data.grammarProgress === 'object') {
+        const current = this.getGrammarProgress();
+        const incoming = asObject(data.grammarProgress);
+        const answers = { ...current.answers };
+        Object.entries(asObject(incoming.answers)).forEach(([id, answer]) => {
+          if ((answer?.total || 0) >= (answers[id]?.total || 0)) answers[id] = answer;
+        });
+        this.saveGrammarProgress({ ...current, ...incoming, answers, totalAnswered: Math.max(current.totalAnswered, Number(incoming.totalAnswered) || 0), totalCorrect: Math.max(current.totalCorrect, Number(incoming.totalCorrect) || 0), missed: mergeStorageSnapshots([], asArray(incoming.missed), current.missed) });
+      }
+      if (data.articleReadState && typeof data.articleReadState === 'object') {
+        const current = this.getArticleReadState();
+        Object.entries(asObject(data.articleReadState)).forEach(([id, record]) => {
+          const prior = this.getArticleProgress(id);
+          const incoming = typeof record === 'number' ? { readAt: record } : asObject(record);
+          current[id] = { readAt: Math.max(prior.readAt, Number(incoming.readAt) || 0), percent: Math.max(prior.percent, Math.min(100, Number(incoming.percent) || 0)) };
+        });
+        this.saveArticleReadState(current);
+      }
+      if (data.onboarding) this.saveOnboardingState({ ...this.getOnboardingState(), ...asObject(data.onboarding) });
+      if (data.dictionaryState) {
+        const incoming = readDictionaryState({ getItem: () => JSON.stringify(data.dictionaryState) });
+        const current = readDictionaryState();
+        const entries = new Map([...current.entries, ...incoming.entries].map((entry) => [entry.word.toLowerCase(), entry]));
+        safeSetItem(STORAGE_KEYS.DICTIONARY, JSON.stringify({ history: [...new Set([...current.history, ...incoming.history])].slice(0, 12), entries: [...entries.values()].slice(-40) }));
+      }
+      if (Array.isArray(data.storageConflicts)) safeSetItem(STORAGE_KEYS.CONFLICTS, JSON.stringify([...asArray(readJson(STORAGE_KEYS.CONFLICTS, [])), ...data.storageConflicts].slice(-30)));
+      if (!skipLearning) for (const [field, key] of Object.entries(LEARNING_KEYS)) {
+        if (data[field] !== undefined) safeSetItem(key, JSON.stringify(mergeLearningDomainRecords(field, data[field], getLearningStorageSnapshot()[field])));
+      }
 
       // Any dropped write during this run (quota / blocked storage) invalidates the whole
       // import: roll back rather than reporting success on a half-applied merge.
@@ -1508,6 +1658,19 @@ export const StorageService = {
         rolledBack,
       };
     }
+  },
+  async importAllDataAsync(jsonString, options = {}) {
+    let data;
+    try { data = JSON.parse(jsonString); } catch { return this.importAllData(jsonString, options); }
+    const before = this.snapshotImportTargets(data);
+    const result = this.importAllData(jsonString, { ...options, skipLearning: true });
+    if (!result.success) return result;
+    const restored = await restoreLearningDomains(data, { writeFallback: safeSetItem, onError: reportWriteError });
+    if (!restored) {
+      const rolledBack = this.restoreSnapshot(before);
+      return { success: false, rolledBack, error: `学习数据库恢复失败${rolledBack ? '，原有本地数据已回滚' : '，请先导出当前记录并检查存储空间'}` };
+    }
+    return result;
   },
 };
 

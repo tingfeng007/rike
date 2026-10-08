@@ -7,7 +7,7 @@ export function offlineShellPlugin() {
     name: 'lingoflow-offline-shell',
     apply: 'build',
     generateBundle(_options, bundle) {
-      const assets = ['index.html', 'icon.svg', 'manifest.json', ...Object.keys(bundle).filter((name) => /\.(js|css)$/.test(name))];
+      const assets = ['index.html', 'icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'manifest.json', ...Object.keys(bundle).filter((name) => /\.(js|css)$/.test(name))];
       const template = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
       const version = createHash('sha256').update(template + JSON.stringify(assets)).digest('hex').slice(0, 12);
       const source = template.replace("'lingoflow-offline-v11'", JSON.stringify(`lingoflow-offline-${version}`))
