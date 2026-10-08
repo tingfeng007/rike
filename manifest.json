@@ -1,20 +1,32 @@
 {
   "name": "LingoFlow 英语伴侣",
   "short_name": "LingoFlow",
-  "description": "集口语对练、精读伴读与艾宾浩斯生词本于一体的随身英语学习工作台",
+  "description": "查词、分类词卡、口语、精读、语法与课程复习的随身英语学习空间",
   "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
-  "theme_color": "#0284c7",
+  "theme_color": "#246be8",
   "icons": [
     {
       "src": "./icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

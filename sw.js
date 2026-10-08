@@ -8,8 +8,8 @@
  * Cache version: lingoflow-offline-v11
  */
 
-const CACHE_NAME = "lingoflow-offline-16bad0f310c0";
-const SHELL_ASSETS = ["./index.html","./icon.svg","./manifest.json","./assets/index-BpWdsgKj.js","./assets/Dictionary-BXulJ5mP.js","./assets/IconButton-CMBJGaPo.js","./assets/NewConcept-CXNp-UYN.js","./assets/OralCoach-o9-yTS8L.js","./assets/Settings-BmRbymFv.js","./assets/SmartReader-C69o0waA.js","./assets/StudyHeader-Ck_TOsmW.js","./assets/WordGrammarHub-Crk3GlMV.js","./assets/bookmark-plus-Dy63IR0W.js","./assets/categoryVocabulary-BQg9zaSu.js","./assets/chevron-right-Jojtk1Au.js","./assets/confetti.module-Uxh4CK4s.js","./assets/download-D-cddvBf.js","./assets/key-DQ1wxjmJ.js","./assets/languages-kXydMCG7.js","./assets/latestRequest-BXQtO2QU.js","./assets/offline-Cxa-gPB-.js","./assets/play-BYt-mhYb.js","./assets/rotate-ccw-DrHh7Loj.js","./assets/speech-njJ1TPEo.js","./assets/studyView-CZg7wTmr.js","./assets/target-BSkxWAdN.js","./assets/toastContext-D9PpOGxq.js","./assets/trash-Dh4Cv6-q.js","./assets/trophy-ORWAfI2-.js","./assets/useStudyClock-BC93N8Ln.js","./assets/Dictionary-CdJ5rrzW.css","./assets/index-C2dzAesa.css"];
+const CACHE_NAME = "lingoflow-offline-112a567dae55";
+const SHELL_ASSETS = ["./index.html","./icon.svg","./icon-192.png","./icon-512.png","./apple-touch-icon.png","./manifest.json","./assets/index-Bw9VFiJI.js","./assets/Dictionary-CYr-REzb.js","./assets/IconButton-DoQh-vZv.js","./assets/NewConcept-BjQ5B2i9.js","./assets/OralCoach-yhl5SJ8o.js","./assets/Settings-CMCazTTg.js","./assets/SmartReader-BCldQQN8.js","./assets/StudyHeader-DtEXuxPW.js","./assets/WordGrammarHub-DLM1vafa.js","./assets/bookmark-plus-BVtDtHEa.js","./assets/confetti.module-Uxh4CK4s.js","./assets/dictionary-C2EOqE_B.js","./assets/download-CLcs01P3.js","./assets/key-CYpnKfRi.js","./assets/languages-BneJZYrM.js","./assets/loader-circle-WXBxaM8b.js","./assets/offline-Cyx7InWZ.js","./assets/play-DsHKUquB.js","./assets/rotate-ccw-lXnFi91b.js","./assets/save-BecOJwmu.js","./assets/speech-Bttzw--P.js","./assets/studyView-CXMpL736.js","./assets/target-DMXms6aB.js","./assets/toastContext-kIShoaSa.js","./assets/trash-61t8JQuK.js","./assets/trophy-gHBk0-kR.js","./assets/useStudyClock-Kwubb24L.js","./assets/Dictionary-CdJ5rrzW.css","./assets/index-BAn1izna.css"];
 
 // Caches owned by other parts of the app. The previous activate handler deleted every
 // cache that was not its own, which silently destroyed the user's deliberately
@@ -45,9 +45,25 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) {
     return;
   }
+  // The dictionary owns and validates these shards. Keeping a second copy here doubles
+  // disk use and prevents its corruption-repair fetch from reaching the network.
+  if (new URL(request.url).pathname.includes('/dictionary/')) return;
 
   event.respondWith(
-    fetch(request)
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(request, { ignoreVary: true });
+      // Hashed chunks are immutable; use them immediately rather than waiting on weak Wi-Fi.
+      if (cached && /\/assets\/[^/]+-[^/]+\.(js|css)$/.test(new URL(request.url).pathname)) return cached;
+      const controller = new AbortController();
+      let timer;
+      try {
+        return await Promise.race([
+          fetch(request, { signal: controller.signal }),
+          new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Network timeout')); }, 2500); }),
+        ]);
+      } finally { clearTimeout(timer); }
+    })()
       .then((response) => {
         if (!response || response.status >= 400) throw new Error('Resource unavailable');
         if (response && response.status === 200) {

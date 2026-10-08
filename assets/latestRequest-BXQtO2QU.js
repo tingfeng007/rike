@@ -1,1 +1,0 @@
-function e(){let e;return{cancel(){e?.abort(),e=void 0},start(){e?.abort();let t=new AbortController;return e=t,{signal:t.signal,isCurrent:()=>e===t&&!t.signal.aborted}}}}export{e as t};

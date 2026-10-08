@@ -1,0 +1,123 @@
+{
+  "version": "ecdict-bc015ed-ipa-v2",
+  "source": "https://github.com/skywind3000/ECDICT",
+  "commit": "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b",
+  "license": "MIT",
+  "shards": {
+    "a": {
+      "count": 3548,
+      "bytes": 670909
+    },
+    "b": {
+      "count": 3630,
+      "bytes": 653879
+    },
+    "c": {
+      "count": 5475,
+      "bytes": 1096834
+    },
+    "d": {
+      "count": 3433,
+      "bytes": 656865
+    },
+    "e": {
+      "count": 2360,
+      "bytes": 447365
+    },
+    "f": {
+      "count": 2409,
+      "bytes": 477057
+    },
+    "g": {
+      "count": 2048,
+      "bytes": 372644
+    },
+    "h": {
+      "count": 2442,
+      "bytes": 443498
+    },
+    "i": {
+      "count": 2390,
+      "bytes": 466806
+    },
+    "j": {
+      "count": 641,
+      "bytes": 113992
+    },
+    "k": {
+      "count": 702,
+      "bytes": 114017
+    },
+    "l": {
+      "count": 2047,
+      "bytes": 373668
+    },
+    "m": {
+      "count": 3614,
+      "bytes": 651133
+    },
+    "n": {
+      "count": 1355,
+      "bytes": 234826
+    },
+    "o": {
+      "count": 1420,
+      "bytes": 267363
+    },
+    "p": {
+      "count": 4452,
+      "bytes": 911274
+    },
+    "q": {
+      "count": 255,
+      "bytes": 51377
+    },
+    "r": {
+      "count": 3080,
+      "bytes": 631153
+    },
+    "s": {
+      "count": 6305,
+      "bytes": 1277334
+    },
+    "t": {
+      "count": 2882,
+      "bytes": 574458
+    },
+    "u": {
+      "count": 1775,
+      "bytes": 293565
+    },
+    "v": {
+      "count": 901,
+      "bytes": 171866
+    },
+    "w": {
+      "count": 1586,
+      "bytes": 297027
+    },
+    "x": {
+      "count": 40,
+      "bytes": 6287
+    },
+    "y": {
+      "count": 198,
+      "bytes": 33422
+    },
+    "z": {
+      "count": 148,
+      "bytes": 24912
+    }
+  },
+  "count": 59136,
+  "bytes": 11313531,
+  "sourceSha256": "1a6947e04785db63613a92e14903cdae7954f7e84860b10e68e5c7cbb3f9c3cf",
+  "phonetics": {
+    "source": "https://github.com/open-dict-data/ipa-dict",
+    "commit": "43c3570eb3553bdd19fccd2bd0091534889af023",
+    "license": "MIT",
+    "sha256": "2af6f154a5c363275f052d1f85acedef38ed185ca9745aa4314be77f6b70de67",
+    "filled": 6827,
+    "missing": 4503
+  }
+}
