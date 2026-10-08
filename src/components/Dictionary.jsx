@@ -43,7 +43,7 @@ const tagLabels = {
   gre: 'GRE',
 };
 
-export default function Dictionary({ onNavigate = () => {}, intent = null, embedded = false }) {
+export default function Dictionary({ onNavigate = () => {}, onQueryChange = null, intent = null, embedded = false }) {
   const toast = useToast();
   const service = useMemo(() => createDictionaryService(), []);
   const request = useRef(createLatestRequest());
@@ -136,6 +136,7 @@ export default function Dictionary({ onNavigate = () => {}, intent = null, embed
       inputRef.current?.focus();
       return;
     }
+    onQueryChange?.(key);
     suggestionRequest.current.cancel();
     enrichmentRequest.current.cancel();
     tts.stop();

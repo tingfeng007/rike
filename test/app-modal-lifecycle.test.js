@@ -162,6 +162,43 @@ test('reading metadata writes finite numeric IDs to the URL and does not stringi
   } finally { app.dispose(); }
 });
 
+test('dictionary queries survive deep link restoration without new intents, and vocabulary navigation records its effective section', () => {
+  const env = navigationEnvironment('#/oral?scenarioId=cafe');
+  const app = hookHarness(App);
+  try {
+    let tree = app.render(); app.flush();
+    const originalOral = oralIntent(tree);
+    navigation(tree)('dictionary'); tree = app.render(); app.flush();
+    const props = dictionary(tree).children.props.children.props;
+    const intent = props.intent;
+    const overlayState = window.history.state;
+    props.onQueryChange('coffee');
+    assert.equal(window.location.hash, '#/dictionary?query=coffee');
+    assert.equal(window.history.state, overlayState);
+    assert.equal(env.backCalls, 0);
+    env.dispatch('hashchange'); tree = app.render(); app.flush();
+    assert.equal(dictionary(tree).children.props.children.props.intent, intent);
+    const restoredApp = hookHarness(App);
+    try {
+      const restored = restoredApp.render();
+      assert.equal(dictionary(restored).open, true);
+      assert.equal(dictionary(restored).children.props.children.props.intent.query, 'coffee');
+    } finally { restoredApp.dispose(); }
+    dictionary(tree).onClose();
+    props.onQueryChange('late-query');
+    assert.equal(window.location.hash, '#/dictionary?query=coffee');
+    env.finishBack(); tree = app.render(); app.flush();
+    assert.equal(window.location.hash, '#/oral?scenarioId=cafe');
+    assert.equal(oralIntent(tree), originalOral);
+    props.onQueryChange('after-close');
+    assert.equal(window.location.hash, '#/oral?scenarioId=cafe');
+    localStorage.setItem('lingoflow_app_state', JSON.stringify({ wordGrammarSection: 'grammar' }));
+    navigation(tree)('vocab'); tree = app.render(); app.flush();
+    assert.equal(window.location.hash, '#/vocab?section=grammar');
+    assert.equal(findElement(tree, (element) => element.props?.onOpenSource).props.intent.section, 'grammar');
+  } finally { app.dispose(); }
+});
+
 function modalEnvironment() {
   installRenderEnv();
   const nodes = [];

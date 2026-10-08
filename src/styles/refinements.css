@@ -4,6 +4,8 @@
 .storage-alert span { flex: 1; }
 .storage-alert button { flex: none; font-weight: 650; }
 .nav-link, .nav-dictionary { color: #59677b; font-size: 12px; }
+.nav-link[aria-current="page"], .nav-settings[aria-current="page"] { color: #205ec8; }
+.nav-badge { background: #c9324c; font-size: 10px; min-width: 16px; height: 16px; }
 .nav-caption, .nav-settings, .study-header-status, .study-header-description,
 .today-date, .today-heading p, .today-overview p, .today-overview small,
 .today-section-title > span, .explore-card p, .plan-footnote, .task-order { color: var(--text-secondary); }
@@ -11,9 +13,10 @@
 .today-layout { gap: 20px; }
 .today-heading-row { margin-top: 10px; }
 .today-heading h1 { font-size: 29px; letter-spacing: -.035em; }
-.today-focus { padding: 22px; }
+.today-focus { padding: 22px; background: linear-gradient(120deg, #246be8, #325fd4 65%, #4359c9); }
+.today-focus p, .focus-eyebrow { color: #f5f9ff; }
 .focus-eyebrow { font-size: 11px; letter-spacing: .04em; }
-.focus-start { margin-top: 16px; min-height: 44px; }
+.focus-start { margin-top: 16px; min-height: 44px; color: #205ec8; }
 .today-focus h2 { margin-top: 10px; }
 .focus-minutes, .focus-ring small { font-size: 11px; color: #f0f5ff; }
 .today-overview p { font-size: 12px; }
@@ -48,6 +51,8 @@
 .settings-group > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 18px; font-size: 15px; font-weight: 650; }
 .settings-group > summary span { color: #59677b; font-size: 12px; font-weight: 400; }
 .settings-group[open] > summary { border-bottom: 1px solid #e3e9f2; }
+.vocab-page .deck-action-row button, .vocab-page .flashcard-tools button { color: #205ec8; }
+.vocab-page .flashcard-tools button:first-child { background: #246be8; color: #fff; }
 @media (min-width: 760px) {
   .today-demo-intro, .today-explore, .today-weekly { grid-column: 1 / -1; }
   .today-focus { grid-column: 1; }

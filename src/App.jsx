@@ -96,6 +96,7 @@ export default function App() {
       return;
     }
     const token = (intentSeqRef.current += 1);
+    const effectiveOptions = { ...options };
 
     if (tab === 'dictionary') {
       setDictionaryIntent({ token, query: options.query || '' });
@@ -126,11 +127,12 @@ export default function App() {
     } else if (tab === 'vocab') {
       const section = options.section || StorageService.getAppState().wordGrammarSection || 'vocab';
       setWordGrammarIntent({ token, section, wordIds: options.wordIds, taskId: options.taskId });
+      effectiveOptions.section = section;
     }
 
     setActiveTab(tab);
     activeTabRef.current = tab;
-    backgroundHashRef.current = formatLearningRoute(tab, options);
+    backgroundHashRef.current = formatLearningRoute(tab, effectiveOptions);
     StorageService.saveAppState({ ...StorageService.getAppState(), activeTab: tab });
     if (history) {
       window.history?.pushState({lingoflow:true}, '', backgroundHashRef.current);
@@ -149,6 +151,13 @@ export default function App() {
       handledHashRef.current = window.location.hash;
     }
   };
+
+  const updateDictionaryQuery = useCallback((query) => {
+    if (!dictionaryOpen || closingDictionaryRef.current || parseLearningRoute(window.location.hash)?.tab !== 'dictionary' || typeof query !== 'string' || !query.trim()) return;
+    const hash = formatLearningRoute('dictionary', { query });
+    window.history?.replaceState(window.history.state, '', hash);
+    handledHashRef.current = hash;
+  }, [dictionaryOpen]);
 
   useEffect(() => {
     const stopSync = StorageService.startCrossTabSync();
@@ -260,7 +269,7 @@ export default function App() {
 
       <AppNavigation activeTab={activeTab} onNavigate={navigate} dueVocabCount={dueVocabCount} />
       <Modal open={dictionaryOpen} onClose={closeDictionary} title="随手查词" variant="sheet" size="lg" className="dictionary-sheet">
-        <Suspense fallback={<PageFallback />}><Dictionary onNavigate={navigate} intent={dictionaryIntent} embedded /></Suspense>
+        <Suspense fallback={<PageFallback />}><Dictionary onNavigate={navigate} onQueryChange={updateDictionaryQuery} intent={dictionaryIntent} embedded /></Suspense>
       </Modal>
     </div>
     </ToastProvider>
