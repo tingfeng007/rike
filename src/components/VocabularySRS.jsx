@@ -795,7 +795,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                           {currentCard.word}
                         </h2>
                         {currentCard.phonetic && (
-                          <p className="text-sm text-sky-700 font-mono mt-1.5 font-medium">
+                          <p data-word-lookup="off" className="text-sm text-sky-700 font-mono mt-1.5 font-medium">
                             {currentCard.phonetic}
                           </p>
                         )}
@@ -827,7 +827,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                             <span className="text-xl font-bold font-serif text-slate-900">
                               {currentCard.word}
                             </span>
-                            {currentCard.phonetic && <p className="mt-1 text-xs font-mono text-sky-700">{currentCard.phonetic}</p>}
+                            {currentCard.phonetic && <p data-word-lookup="off" className="mt-1 text-xs font-mono text-sky-700">{currentCard.phonetic}</p>}
                           </div>
                           <button
                             aria-label="朗读答案单词"
@@ -1077,7 +1077,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                           {item.word}
                         </span>
                         {item.phonetic && (
-                          <span className="text-xs text-slate-600 font-mono">
+                          <span data-word-lookup="off" className="text-xs text-slate-600 font-mono">
                             {item.phonetic}
                           </span>
                         )}
@@ -1552,7 +1552,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     {editingWord.word}
                   </span>
                   {editingWord.phonetic && (
-                    <span className="text-xs text-sky-700 font-mono">
+                    <span data-word-lookup="off" className="text-xs text-sky-700 font-mono">
                       {editingWord.phonetic}
                     </span>
                   )}

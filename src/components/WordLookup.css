@@ -1,0 +1,21 @@
+.word-lookup-scope { display: contents; }
+.lookup-word { display: inline; min-height: 0; min-width: 0; padding: 0; margin: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; font: inherit; line-height: inherit; letter-spacing: inherit; text-align: inherit; cursor: pointer; user-select: text; }
+.lookup-word:hover { color: #246be8; background: #edf4ff; }
+.lookup-word:focus-visible { outline: 2px solid #246be8; outline-offset: 2px; }
+.quick-word-sheet { margin-inline: 12px; margin-bottom: max(12px, env(safe-area-inset-bottom)); border-radius: 26px !important; max-height: min(65dvh, 520px) !important; }
+.quick-word-sheet h2 { font-size: 25px; letter-spacing: -.02em; line-height: 1.25; overflow-wrap: anywhere; }
+.quick-word-body { padding: 14px 20px 20px; }
+.quick-word-pronunciation { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; color: #60728c; font-size: 15px; }
+.quick-word-pronunciation button { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 8px 12px; border-radius: 13px; color: #246be8; background: #edf4ff; font-size: 14px; }
+.quick-word-loading { display: flex; align-items: center; gap: 9px; min-height: 85px; font-size: 15px; color: #60728c; }
+.quick-word-meanings { display: grid; gap: 12px; margin-top: 16px; }
+.quick-word-meanings p { color: #24344b; font-size: 16px; line-height: 1.75; white-space: pre-line; overflow-wrap: anywhere; }
+.quick-word-meanings p > span { margin-right: 9px; color: #60728c; font-size: 14px; }
+.quick-word-empty { margin-block: 16px; color: #60728c; font-size: 15px; line-height: 1.7; }
+.quick-word-empty button { min-height: 44px; color: #246be8; font-weight: 600; }
+.quick-word-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 20px; border-top: 1px solid #e7edf5; padding-top: 12px; }
+.quick-word-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 12px; border-radius: 13px; color: #246be8; background: #f3f7fd; font-size: 14px; font-weight: 600; }
+.quick-word-actions .quick-word-save { color: white; background: #246be8; }
+.quick-word-actions .quick-word-save:disabled { color: #28775c; background: #eaf7f1; }
+.quick-word-actions button:last-child { margin-left: auto; }
+@media (min-width: 760px) { .quick-word-sheet { margin-bottom: 28px; } }

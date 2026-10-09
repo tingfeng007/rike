@@ -6,6 +6,7 @@ import { ToastProvider } from './components/ui/Toast';
 import { StorageService } from './services/storage';
 import { parseLearningRoute, formatLearningRoute } from './services/navigation';
 import { Modal } from './components/ui/Modal';
+import WordLookupProvider from './components/WordLookupProvider';
 
 const OralCoach = lazy(() => import('./components/OralCoach'));
 const SmartReader = lazy(() => import('./components/SmartReader'));
@@ -231,6 +232,7 @@ export default function App() {
 
   return (
     <ToastProvider>
+    <WordLookupProvider onOpenDictionary={(query) => navigate('dictionary', { query })}>
     <div className="app-shell study-page flex flex-col h-[100dvh] w-full mx-auto overflow-hidden font-sans relative">
       {/* Offline / Online Status Toast Bar */}
       {isOffline && (
@@ -272,6 +274,7 @@ export default function App() {
         <Suspense fallback={<PageFallback />}><Dictionary onNavigate={navigate} onQueryChange={updateDictionaryQuery} intent={dictionaryIntent} embedded /></Suspense>
       </Modal>
     </div>
+    </WordLookupProvider>
     </ToastProvider>
   );
 }

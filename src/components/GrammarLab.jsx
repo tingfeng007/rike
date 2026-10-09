@@ -317,11 +317,11 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-bold text-slate-900">{selectedPattern.name}</h2>
-                  <span className="rounded-lg bg-sky-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-sky-800 ring-1 ring-sky-200">
+                  <span data-word-lookup="off" className="rounded-lg bg-sky-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-sky-800 ring-1 ring-sky-200">
                     {selectedPattern.symbol}
                   </span>
                 </div>
-                <p className="mt-2 text-xs font-medium text-slate-700">{selectedPattern.formula}</p>
+                <p data-word-lookup="off" className="mt-2 text-xs font-medium text-slate-700">{selectedPattern.formula}</p>
                 <p className="mt-1 text-[11.5px] leading-relaxed text-slate-500">{selectedPattern.summary}</p>
               </div>
 

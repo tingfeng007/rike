@@ -31,6 +31,7 @@ import { tts, stt } from '../services/speech';
 import StudyHeader from './StudyHeader';
 import { recoverOralMessages, prepareOralTurn, finishOralTurn, failOralTurn, correctionFromFeedback } from '../services/oralSession';
 import OralCorrections from './OralCorrections';
+import WordLookupText from './WordLookupText';
 
 // Diagnostic helper for friendly error categorization
 function diagnoseErrorMessage(errMsg) {
@@ -511,19 +512,20 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
               {wantedWordsList.map((item) => {
                 const isHit = activatedWords[item.word.toLowerCase()];
                 return (
-                  <button
+                  <span
                     key={item.id || item.word}
-                    onClick={() => tts.speak(item.word)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 flex-none transition-all active:scale-95 ${
                       isHit
                         ? 'bg-emerald-500 text-white border-emerald-400 font-bold'
                         : 'bg-white/10 text-amber-100 border-white/15 hover:bg-white/15'
                     }`}
-                    title={`点击听发音：${item.translation || ''}`}
                   >
                     <span>{isHit ? '🔥 已激活' : '🎯'}</span>
-                    <span className="font-mono">{item.word}</span>
-                  </button>
+                    <WordLookupText text={item.word} className="font-mono" />
+                    <button type="button" onClick={() => tts.speak(item.word)} aria-label={`朗读 ${item.word}`} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-white/15">
+                      <Volume2 className="h-4 w-4" />
+                    </button>
+                  </span>
                 );
               })}
             </div>
@@ -572,10 +574,10 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
                 {/* Text Content */}
                 <p className="text-[15px] leading-relaxed select-text font-normal">
                   {isUser ? (
-                    msg.text
+                    <WordLookupText text={msg.text} context={msg.text} />
                   ) : (
                     <>
-                      {msg.replyText || (msg.isStreaming ? '...' : '')}
+                      <WordLookupText text={msg.replyText || (msg.isStreaming ? '...' : '')} context={msg.replyText} />
                       {msg.isStreaming && (
                         <span className="inline-block w-1.5 h-3.5 bg-sky-500 rounded-xs animate-pulse ml-1 align-middle" />
                       )}
@@ -656,7 +658,7 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
                 {/* Collapsible Chinese Translation */}
                 {!isUser && showCn && msg.replyTextCn && (
                   <div className="mt-2.5 p-2.5 bg-slate-50/90 rounded-xl text-xs text-slate-700 leading-relaxed border border-slate-200/60 select-text">
-                    {msg.replyTextCn}
+                    <WordLookupText text={msg.replyTextCn} context={msg.replyText} />
                   </div>
                 )}
               </div>
@@ -678,11 +680,11 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
                     <div className="space-y-1.5 mb-2.5 bg-white/80 p-2.5 rounded-xl border border-amber-100 shadow-2xs">
                       <div className="flex items-start gap-1.5 text-slate-500 line-through">
                         <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">原句</span>
-                        <span className="select-text">{msg.feedback.userOriginal}</span>
+                        <WordLookupText text={msg.feedback.userOriginal} context={msg.feedback.userOriginal} className="select-text" />
                       </div>
                       <div className="flex items-start gap-1.5 text-emerald-800 font-semibold">
                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">更正</span>
-                        <span className="select-text">{msg.feedback.corrected}</span>
+                        <WordLookupText text={msg.feedback.corrected} context={msg.feedback.corrected} className="select-text" />
                       </div>
                     </div>
                   )}
@@ -690,7 +692,7 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
                   {/* Explanation in Chinese */}
                   {msg.feedback.explanationZh && (
                     <p className="text-slate-700 leading-relaxed mb-2.5 pl-0.5">
-                      💡 {msg.feedback.explanationZh}
+                      💡 <WordLookupText text={msg.feedback.explanationZh} context={msg.feedback.corrected || msg.feedback.userOriginal} />
                     </p>
                   )}
 
@@ -700,7 +702,7 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
                       <div className="flex-1 pr-2">
                         <span className="text-[10px] text-amber-800 block font-semibold">参考表达</span>
                         <span className="text-amber-950 font-bold select-text font-serif text-[13px]">
-                          "{msg.feedback.betterAlternative}"
+                          "<WordLookupText text={msg.feedback.betterAlternative} context={msg.feedback.betterAlternative} />"
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 flex-none">

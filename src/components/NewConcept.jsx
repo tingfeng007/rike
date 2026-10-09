@@ -36,6 +36,7 @@ import { lookupLearningWord } from '../services/learningLookup';
 import { createLatestRequest } from '../services/latestRequest';
 import { useToast } from './ui/toastContext';
 import { IconButton } from './ui/IconButton';
+import WordLookupText from './WordLookupText';
 
 const NCE1_BASE = 'https://nce.mleo.site/NCE1';
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5];
@@ -1031,7 +1032,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
 
       <div className="sticky top-2 z-10 rounded-2xl bg-white/95 backdrop-blur-xl border border-white p-3 mb-3 shadow-lg shadow-slate-900/5">
         <div className="flex items-center justify-between gap-3 mb-2"><span className="text-xs font-semibold text-slate-700">听读训练</span><div className="flex items-center gap-2"><label className="text-[11px] text-slate-400" htmlFor="nce-playback-rate">速度</label><select id="nce-playback-rate" value={playbackRate} onChange={(event) => changePlaybackRate(Number(event.target.value))} className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-slate-600"><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></div></div>
-        <audio ref={audioRef} src={audioSourceUrl || audioUrl} controls preload="metadata" aria-label="本课原版音频，英文及中文字幕在下方课文中同步显示" className="w-full" onLoadedMetadata={restoreAudioPosition} onTimeUpdate={handleAudioTimeUpdate} onError={() => setError('这课音频暂时无法加载；可以点击下方句子使用系统朗读。')} onEnded={handleAudioEnded} ><track kind="captions" src={captionsUrl || undefined} srcLang="en" label="English / 中文" default /></audio>
+        <audio ref={audioRef} src={audioSourceUrl || audioUrl} controls preload="metadata" aria-label="本课原版音频，英文及中文字幕在下方课文中同步显示" className="w-full" onLoadedMetadata={restoreAudioPosition} onTimeUpdate={handleAudioTimeUpdate} onError={() => setError('这课音频暂时无法加载；可以使用下方播放按钮进行系统朗读。')} onEnded={handleAudioEnded} ><track kind="captions" src={captionsUrl || undefined} srcLang="en" label="English / 中文" default /></audio>
         <div className="flex items-center gap-1.5 mt-2 overflow-x-auto no-scrollbar"><button type="button" onClick={playCurrentLine} className="flex-none text-xs text-sky-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50"><Play className="w-3.5 h-3.5" />{activeLine >= 0 ? '从当前句播放' : '从第一句开始'}</button><button type="button" onClick={toggleRepeatCurrentLine} disabled={lines.length === 0} className="flex-none text-xs text-amber-700 font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 disabled:opacity-40"><Repeat2 className="w-3.5 h-3.5" />{repeatRemaining ? `停止循环 · ${repeatRemaining}` : '当前句 ×3'}</button><button type="button" onClick={toggleFollowAudio} aria-pressed={followAudio} className={`flex-none text-xs px-2 py-1 rounded-lg transition-colors ${followAudio ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400 bg-slate-50'}`}>{followAudio ? '跟随：开' : '跟随：关'}</button><button type="button" onClick={handleCacheAudio} className={`flex-none text-xs px-2 py-1 rounded-lg flex items-center gap-1 ${audioCacheState === 'cached' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}><Download className="w-3.5 h-3.5" />{audioCacheState === 'caching' ? '取消下载' : audioCacheState === 'cached' ? '已缓存' : audioCacheState === 'error' ? '缓存失败' : '缓存音频'}</button></div>
       </div>
 
@@ -1044,9 +1045,15 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
             const bookmarked = bookmarkedLineIds.has(line.id);
             return (
               <div key={line.id} ref={(node) => { lineRefs.current[index] = node; }} className={`relative rounded-2xl transition-all ${activeLine === index ? 'bg-sky-50 ring-1 ring-sky-200 shadow-sm' : isPromptLine(line) ? 'bg-amber-50/70 border border-amber-100' : 'bg-white border border-slate-200'}`}>
-                <button type="button" onClick={() => playLine(line, index)} aria-current={activeLine === index ? 'true' : undefined} className="w-full text-left rounded-2xl p-3 pr-11">
-                  <span className="flex gap-2"><Volume2 className={`w-4 h-4 mt-1 shrink-0 ${activeLine === index ? 'text-sky-600' : 'text-slate-300'}`} /><span><span className={`block text-[15px] leading-6 editorial-serif ${isPromptLine(line) ? 'text-amber-900' : 'text-slate-800'}`}>{line.en}</span>{showChinese && line.zh && <span className="block text-xs leading-5 text-slate-500 mt-1">{line.zh}</span>}</span></span>
-                </button>
+                <div className="flex items-start gap-2 rounded-2xl p-3 pr-11">
+                  <button type="button" onClick={() => playLine(line, index)} aria-label={`播放第 ${index + 1} 句原声`} aria-current={activeLine === index ? 'true' : undefined} className={`flex h-11 w-11 flex-none items-center justify-center rounded-xl transition-colors ${activeLine === index ? 'bg-sky-100 text-sky-600' : 'text-slate-400 hover:bg-slate-100 hover:text-sky-600'}`}>
+                    <Volume2 className="h-5 w-5" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <WordLookupText text={line.en} context={line.en} contextCn={line.zh} onBeforeLookup={() => audioRef.current?.pause()} className={`block text-[15px] leading-6 editorial-serif ${isPromptLine(line) ? 'text-amber-900' : 'text-slate-800'}`} />
+                    {showChinese && line.zh && <WordLookupText text={line.zh} context={line.en} contextCn={line.zh} onBeforeLookup={() => audioRef.current?.pause()} className="block text-xs leading-5 text-slate-500 mt-1" />}
+                  </div>
+                </div>
                 {!isPromptLine(line) && <button type="button" onClick={() => toggleLineBookmark(line.id)} className={`absolute right-2 top-2 p-1.5 rounded-lg transition-colors ${bookmarked ? 'bg-amber-100 text-amber-700' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'}`} title={bookmarked ? '取消收藏句子' : '收藏句子'}><Bookmark className={`w-3.5 h-3.5 ${bookmarked ? 'fill-current' : ''}`} /></button>}
               </div>
             );
@@ -1079,8 +1086,8 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
                   <IconButton label={`朗读 ${item.word}`} tone="sky" onClick={() => tts.speak(item.word, { channel: 'course', mode: 'system' })} className="p-1">
                     <Volume2 className="w-4 h-4" />
                   </IconButton>
-                  <span className="font-semibold text-slate-800">{item.word}</span>
-                  {meaning?.phonetic && <span className="text-[11px] font-mono text-slate-500">{meaning.phonetic}</span>}
+                  <WordLookupText text={item.word} context={item.sentence} className="font-semibold text-slate-800" />
+                  {meaning?.phonetic && <span data-word-lookup="off" className="text-[11px] font-mono text-slate-500">{meaning.phonetic}</span>}
                   {meaning?.pos && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{meaning.pos}</span>}
                   <span className="text-xs text-slate-400">出现 {item.count} 次</span>
                   <div className="ml-auto flex items-center gap-1">
@@ -1105,12 +1112,12 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
                   </div>
                 </div>
                 {meaning?.translation ? (
-                  <p className="mt-2 text-xs font-medium text-slate-700">{meaning.translation}</p>
+                  <p className="mt-2 text-xs font-medium text-slate-700"><WordLookupText text={meaning.translation} context={item.sentence} /></p>
                 ) : (
                   <p className="mt-2 text-[11px] text-slate-400">暂无释义</p>
                 )}
-                <p className="text-xs text-slate-500 mt-2">{item.sentence}</p>
-                {item.sentenceCn && <p className="text-xs text-slate-400 mt-1">{item.sentenceCn}</p>}
+                <p className="text-xs text-slate-500 mt-2"><WordLookupText text={item.sentence} context={item.sentence} /></p>
+                {item.sentenceCn && <p className="text-xs text-slate-400 mt-1"><WordLookupText text={item.sentenceCn} context={item.sentence} /></p>}
               </div>
             );
           })}</div>}

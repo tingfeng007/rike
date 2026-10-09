@@ -45,6 +45,9 @@ import { getReadingMetrics, filterArticles } from '../services/studyView';
 import { lookupLearningWord } from '../services/learningLookup';
 import { readingArticleVersion, keyedReadingSegments } from '../services/readingPractice';
 import ReadingPractice from './ReadingPractice';
+import { useWordLookup } from './wordLookupContext';
+import { normalizeLookupWord } from '../services/wordHitTest';
+import { tokenizeLookupText } from '../services/wordTokens';
 
 // Read-scroll progress for every article, keyed by article id (see the library's 已读/在读
 // filters and progress sort).
@@ -108,6 +111,7 @@ function pickRandomOtherArticle(articles, currentId) {
 
 export default function SmartReader({ intent = null, onNavigate = () => {} }) {
   const toast = useToast();
+  const { openWordLookup } = useWordLookup();
   const studyClock = useStudyClock();
   const [articles, setArticles] = useState(() => StorageService.getArticles());
   const [currentArticle, setCurrentArticle] = useState(() => {
@@ -746,12 +750,15 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
   };
 
   const handleWordClick = (rawWord, enclosingSentence = '') => {
-    const clean = rawWord.replace(/^[^\w]+|[^\w]+$/g, '');
-    if (!clean || clean.length < 2) return;
-    stopParagraphSpeech(false);
+    const clean = normalizeLookupWord(rawWord);
+    if (!clean) return;
     const sentence = enclosingSentence.trim() || findEnclosingSentence(currentArticle.content, clean);
-    tts.speak(clean);
-    return lookupWord(clean, sentence);
+    openWordLookup({
+      word: clean,
+      context: sentence,
+      onBeforeLookup: () => stopParagraphSpeech(false),
+      onExplore: () => lookupWord(clean, sentence),
+    });
   };
 
   const handleRetryWordAnalysis = () => {
@@ -1069,7 +1076,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                     )}
                     <div>
                       {keyedReadingSegments(sentences).map(({ text: sentence, id: sentenceId }) => {
-                        const words = sentence.trim().split(/\s+/);
+                        const words = tokenizeLookupText(sentence.trim());
 
                         const savedAnnotation = currentAnnotations.find(
                           (item) => item.sentence === sentence.trim()
@@ -1084,23 +1091,25 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                                 : ''
                             }`}
                           >
-                            {keyedReadingSegments(words).map(({ text: word, id: wordId }) => {
-                              const cleanWord = word.replace(/^[^\w]+|[^\w]+$/g, '').toLowerCase();
+                            {words.map(({ text: word, word: lookupWord, index: wordIndex }) => {
+                              if (!lookupWord) return <React.Fragment key={wordIndex}>{word}</React.Fragment>;
+                              const cleanWord = lookupWord.toLowerCase();
                               const vocabHit = cleanWord && savedVocabMap[cleanWord];
 
                               return (
                                 <button
                                   type="button"
-                                  key={wordId}
-                                  onClick={() => handleWordClick(word, sentence)}
+                                  key={wordIndex}
+                                  onClick={() => handleWordClick(lookupWord, sentence)}
                                   className={`cursor-pointer rounded px-0.5 py-0.5 transition-all active:bg-sky-200 ${
                                     vocabHit
                                       ? 'bg-amber-100/90 text-amber-950 font-semibold border-b-2 border-amber-400 shadow-2xs hover:bg-amber-200'
                                       : 'hover:bg-sky-100 hover:text-sky-900'
                                   }`}
                                   title={vocabHit ? `✨ 生词本已收录: ${vocabHit.translation || ''}` : '点击查词释义'}
-                                  aria-label={`查词 ${word.replace(/^[^\w]+|[^\w]+$/g, '') || word}`}
+                                  aria-label={`查词 ${word}`}
                                   data-reader-word
+                                  data-word-lookup="off"
                                   onKeyDown={(event) => {
                                     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
                                     event.preventDefault();
@@ -1110,10 +1119,10 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                                     targets[next]?.focus();
                                   }}
                                 >
-                                  {word}{' '}
+                                  {word}
                                 </button>
                               );
-                            })}
+                            })}{' '}
 
                             {/* Sentence action triggers. These sit immediately after the last
                                 word, so a mis-tap used to either fire an AI sentence breakdown or
@@ -1210,7 +1219,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                   {selectedWord.word}
                 </h3>
                 {wordAnalysis?.phonetic && (
-                  <span className="text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md font-mono">
+                  <span data-word-lookup="off" className="text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md font-mono">
                     {wordAnalysis.phonetic}
                   </span>
                 )}

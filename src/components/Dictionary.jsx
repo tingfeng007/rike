@@ -384,7 +384,7 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
                   <div>
                     <h2>{entry.word}</h2>
                     <div className="dictionary-pronunciation">
-                      <span>{entry.phonetic || '词库暂未提供音标'}</span>
+                      <span data-word-lookup="off">{entry.phonetic || '词库暂未提供音标'}</span>
                       <button
                         type="button"
                         aria-label={`播放 ${entry.word} 发音`}
