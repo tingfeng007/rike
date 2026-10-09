@@ -1,7 +1,6 @@
 import React from 'react';
 
 export default function StudyHeader({
-  eyebrow,
   title,
   description,
   icon,
@@ -13,7 +12,6 @@ export default function StudyHeader({
     <header className="study-hero flex-none px-4 pt-[max(env(safe-area-inset-top,0px),14px)] pb-3 z-20">
       <div className="study-header-row relative flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="study-eyebrow">{eyebrow}</p>
           <div className="study-title-row flex min-w-0 items-center gap-2">
             {icon && <span className="study-header-icon">{icon}</span>}
             <h1 className="study-header-title">{title}</h1>

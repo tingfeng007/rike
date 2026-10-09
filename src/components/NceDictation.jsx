@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ChevronLeft, Headphones, RotateCcw, Sparkles, Volume2 } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, Headphones, RotateCcw, Volume2 } from 'lucide-react';
 import { scoreDictation } from '../services/nce';
 
 export default function NceDictation({ items, bestScore = 0, onPlay, onResult, onComplete }) {
@@ -84,7 +84,6 @@ export default function NceDictation({ items, bestScore = 0, onPlay, onResult, o
     return (
       <div className="rounded-3xl bg-white border border-emerald-100 p-6 text-center shadow-sm nce-reveal">
         <div className="w-16 h-16 rounded-[22px] bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto"><CheckCircle2 className="w-9 h-9" /></div>
-        <p className="text-[11px] tracking-[0.18em] text-emerald-600 font-bold mt-4">DICTATION COMPLETE</p>
         <h2 className="text-xl font-bold text-slate-900 mt-1">本课听写完成</h2>
         <div className="grid grid-cols-2 gap-2 mt-4">
           <div className="rounded-2xl bg-slate-50 p-3"><span className="block text-2xl font-bold text-slate-900">{averageScore}</span><span className="text-xs text-slate-400">首答平均分</span></div>
@@ -98,7 +97,7 @@ export default function NceDictation({ items, bestScore = 0, onPlay, onResult, o
   return (
     <div className="rounded-3xl bg-white border border-slate-200 p-4 shadow-sm nce-reveal">
       <div className="flex items-center justify-between gap-3">
-        <div><p className="text-[11px] tracking-[0.16em] font-bold text-amber-600">ACTIVE RECALL</p><h2 className="font-bold text-slate-900 mt-1">逐句听写</h2></div>
+        <div><h2 className="font-bold text-slate-900">逐句听写</h2></div>
         <span className="text-xs text-slate-400">{itemIndex + 1}/{items.length}</span>
       </div>
       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-3"><div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${((itemIndex + (result ? 1 : 0)) / items.length) * 100}%` }} /></div>
@@ -106,7 +105,7 @@ export default function NceDictation({ items, bestScore = 0, onPlay, onResult, o
       <div className="mt-4 rounded-2xl bg-[#102a43] text-white p-4 relative overflow-hidden">
         <div className="absolute -right-7 -top-8 w-24 h-24 rounded-full bg-sky-400/20 blur-xl" />
         <div className="relative flex items-center justify-between gap-3">
-          <div><p className="text-xs text-sky-200">先听声音，再写下完整英文</p>{currentItem.zh && <p className="text-sm text-white/90 mt-2">{currentItem.zh}</p>}</div>
+          <div>{currentItem.zh && <p className="text-sm text-white/90">{currentItem.zh}</p>}</div>
           <button type="button" onClick={() => onPlay?.(currentItem)} className="w-12 h-12 rounded-2xl bg-white/12 hover:bg-white/20 flex items-center justify-center shrink-0" title="播放听写句子"><Headphones className="w-6 h-6" /></button>
         </div>
       </div>
@@ -128,7 +127,7 @@ export default function NceDictation({ items, bestScore = 0, onPlay, onResult, o
           <div className="flex justify-end gap-3 mt-3">{result.score < 100 && <button type="button" onClick={retry} className="text-xs font-semibold text-slate-500 underline">重写本句</button>}<button type="button" onClick={goNext} className="text-xs font-semibold text-sky-700 underline">{itemIndex + 1 >= items.length ? '完成听写' : '下一句'}</button></div>
         </div>
       )}
-      <div className="flex items-center gap-1.5 mt-3 text-[11px] text-slate-400"><Sparkles className="w-3.5 h-3.5 text-amber-400" />标点和大小写不扣分，重点检查单词是否听对。</div>
+      <details className="mt-3 text-xs text-slate-500"><summary className="cursor-pointer">评分规则</summary><p className="mt-2 leading-5">标点和大小写不扣分，重点检查单词是否听对。</p></details>
     </div>
   );
 }

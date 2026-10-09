@@ -812,9 +812,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
   return (
     <div className="study-page reader-page flex flex-col h-full relative">
       <StudyHeader
-        eyebrow="READ · NOTICE · REMEMBER"
         title="精读伴读"
-        description={currentArticle ? `正在阅读：${currentArticle.title}` : '导入一篇英文文章，从真实语境中积累表达。'}
         icon={<BookOpen className="w-4 h-4" />}
         status={currentArticle ? `${currentWordCount} 词 · 约 ${readingMinutes} 分钟` : `${articles.length} 篇文章`}
         actions={(
@@ -896,7 +894,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
 
         {/* Library: search / difficulty / read status / sort */}
         <details className="reader-library mt-3 rounded-2xl bg-white px-3 py-2">
-        <summary className="min-h-9 cursor-pointer text-sm font-semibold text-slate-700">我的文库 · {articles.length} 篇 <span className="ml-2 text-xs font-normal text-slate-500">展开切换文章</span></summary>
+        <summary className="min-h-9 cursor-pointer text-sm font-semibold text-slate-700">我的文库 · {articles.length} 篇</summary>
         <div className="mt-2 space-y-1.5">
           <div className="flex items-center gap-2">
             <div className="flex flex-1 items-center gap-1.5 rounded-xl bg-white/10 px-2.5 py-1.5 ring-1 ring-white/10">
@@ -956,7 +954,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
         <div className="mt-2 flex space-x-2 overflow-x-auto pb-1 no-scrollbar text-xs" aria-label="精读文库">
           {libraryArticles.length === 0 && (
             <p className="py-1.5 text-[11px] text-slate-300">
-              {articles.length === 0 ? '文库还是空的，点右上角“导入”添加文章。' : '没有符合条件的文章，试试换个筛选条件。'}
+              {articles.length === 0 ? '文库为空' : '没有符合条件的文章'}
             </p>
           )}
           {libraryArticles.map((art) => {
@@ -1004,9 +1002,6 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
               <h1 className="editorial-serif text-2xl md:text-3xl font-bold text-[#102a43] mt-2 tracking-tight leading-tight">
                 {currentArticle.title}
               </h1>
-               <p className="text-xs text-slate-500 mt-2 flex items-center gap-2">
-                 <span>{currentWordCount} 词 · 约 {readingMinutes} 分钟 · 点词查义，句末可拆解与划线</span>
-               </p>
              </div>
 
             {/* Paragraphs with interactive words & sentence breakdown button */}
@@ -1186,7 +1181,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
         ) : (
           <div className="flex flex-col items-center justify-center h-64 text-slate-600 text-sm">
             <BookOpen className="w-10 h-10 text-slate-300 mb-2" />
-            <span>暂无文章，点击上方“导入文章”开始阅读</span>
+            <span>暂无文章</span>
           </div>
         )}
       </div>
@@ -1281,7 +1276,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
 
                   <div className="flex flex-wrap items-center gap-2">
                     {!wordAnalysis?.isError && <span className="text-xs text-slate-500">{wordAnalysis?.aiEnriched ? 'AI 语境参考' : '基础词典释义'}</span>}
-                    {hasApiKey() && <button type="button" onClick={() => lookupWord(selectedWord.word, selectedWord.sentence, { enrich: true })} className="rounded-xl bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800">AI 语境解析（可选）</button>}
+                    {hasApiKey() && <button type="button" onClick={() => lookupWord(selectedWord.word, selectedWord.sentence, { enrich: true })} className="rounded-xl bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800">AI 语境解析</button>}
                     <button type="button" onClick={() => { const query = selectedWord.word; setSelectedWord(null); onNavigate('dictionary', { query }); }} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">完整词典</button>
                   </div>
                   {/* Context Sentence in Current Article */}
@@ -1343,8 +1338,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                   it used to write the failure message in as the card's translation. */}
               {wordAnalysis?.isError && (
                 <p className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] leading-5 text-rose-800">
-                  这次没有取到释义，已禁止存入生词本，避免把错误提示当成词义保存下来。
-                  {hasApiKey() ? '可以点上方“重新解析”再试一次。' : '配置 API Key 后即可正常查词。'}
+                  未取得可用释义，暂时无法收藏。
                 </p>
               )}
               <button
@@ -1361,7 +1355,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                 {isWordSaved ? (
                   <>
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>已存入生词本 (自动关联原句)</span>
+                    <span>已存入生词本</span>
                   </>
                 ) : wordAnalysis?.isError ? (
                   <>
@@ -1556,7 +1550,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
             {importMode === 'url' && (
               <div className="p-3 bg-sky-50/60 border border-sky-200 rounded-xl space-y-2 mb-3">
                 <label htmlFor="reader-import-url" className="block text-xs font-medium text-sky-900">
-                  粘贴外刊/新闻文章网址 (如 BBC, CNN, Medium, The Verge 等)
+                  文章网址
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -1576,9 +1570,6 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                     {isExtractingUrl ? '正在提取...' : '一键抓取'}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-600 leading-tight">
-                  💡 提取完成后将自动清洗标题与正文段落填入下方表单，你可以核对后保存。
-                </p>
               </div>
             )}
 
@@ -1607,16 +1598,16 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                   onChange={(e) => setNewLevel(e.target.value)}
                   className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
                 >
-                  <option value="入门 (Beginner)">入门 (Beginner)</option>
-                  <option value="中级 (Intermediate)">中级 (Intermediate)</option>
-                  <option value="进阶 (Advanced)">进阶 (Advanced)</option>
-                  <option value="外刊精读 (Financial Times / Economist)">外刊精读 (FT / Economist)</option>
+                  <option value="入门 (Beginner)">入门</option>
+                  <option value="中级 (Intermediate)">中级</option>
+                  <option value="进阶 (Advanced)">进阶</option>
+                  <option value="外刊精读 (Financial Times / Economist)">外刊精读</option>
                 </select>
               </div>
 
               <div>
                 <label htmlFor="reader-import-content" className="block text-xs font-medium text-slate-700 mb-1">
-                  英文正文内容 (段落之间请空一行)
+                  英文正文
                 </label>
                 <textarea
                   id="reader-import-content"
@@ -1665,7 +1656,6 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                 </span>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">荧光笔 · 精读批注</h3>
-                  <p className="text-[11px] text-slate-500">保存后，这句话会一直留在你的本篇笔记中</p>
                 </div>
               </div>
               <button
@@ -1746,7 +1736,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
               </div>
               <div className="mt-3 flex items-center justify-between">
                 <p className="text-xs text-stone-600">
-                  已珍藏 <strong className="text-amber-700">{currentAnnotations.length}</strong> 句划线摘录
+                  摘录 <strong className="text-amber-700">{currentAnnotations.length}</strong> 句
                 </p>
                 <button
                   onClick={exportReadingNotes}
@@ -1772,12 +1762,10 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                       <p className="text-sm font-serif text-slate-800 leading-relaxed bg-gradient-to-t from-yellow-200/80 from-45% to-transparent to-45% decoration-clone">
                         {item.sentence}
                       </p>
-                      {item.note ? (
+                      {item.note && (
                         <p className="mt-2.5 pl-3 border-l-2 border-amber-300 text-xs text-slate-600 leading-relaxed">
                           <span className="text-amber-700 font-bold">我的批注：</span>{item.note}
                         </p>
-                      ) : (
-                        <p className="mt-2 text-[11px] text-slate-400">尚未填写个人心得</p>
                       )}
                       <div className="mt-3 flex gap-2 justify-end">
                         <button
@@ -1804,15 +1792,12 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                   <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-3">
                     <Highlighter className="w-6 h-6 text-amber-700" />
                   </div>
-                  <h4 className="text-sm font-bold text-slate-800">这页手记还是空白的</h4>
-                  <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
-                    阅读时点击每句话末尾的荧光笔图标，就能收藏金句并写下自己的理解。
-                  </p>
+                  <h4 className="text-sm font-bold text-slate-800">暂无笔记</h4>
                   <button
                     onClick={() => setShowNotesModal(false)}
                     className="mt-4 px-4 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold"
                   >
-                    回到文章开始划线
+                    返回文章
                   </button>
                 </div>
               )}
@@ -1823,7 +1808,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
       <Modal
         open={showRefreshModal}
         onClose={() => setShowRefreshModal(false)}
-        title="换一篇新外刊 · AI 每日精选"
+        title="换篇文章"
         size="md"
         showCloseButton={false}
         bodyClassName="space-y-4 p-5 pt-3"
@@ -1833,11 +1818,8 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                 <Sparkles className="w-5 h-5 text-amber-500" />
                 <div>
                   <h3 className="font-bold text-slate-900 text-base">
-                    换一篇新外刊 · AI 每日精选
+                    换篇文章
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    一键刷新今日精选短文，巧妙融入你的生词本
-                  </p>
                 </div>
               </div>
               <button
@@ -1852,10 +1834,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60 flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-slate-800 block">
-                  文库已有 {articles.length} 篇经典外刊
-                </span>
-                <span className="text-[10.5px] text-slate-500">
-                  不想调用 AI？直接在文库中随机抽取一篇阅读
+                  文库 {articles.length} 篇
                 </span>
               </div>
               <button
@@ -1870,21 +1849,22 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
             {/* AI Generator Section */}
             <div className="space-y-3 pt-1">
               <p className="block text-xs font-bold text-slate-800">
-                或由 AI 特约专栏作家为你现场撰写一篇：
+                AI 生成文章
               </p>
 
               {/* Topic Select Grid */}
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id: 'random', icon: '🎲', label: '随心惊喜', desc: '不设限的精彩短文' },
-                  { id: 'lifestyle', icon: '☕', label: '生活与心智', desc: '纽约客风散文哲学' },
-                  { id: 'tech', icon: '🚀', label: '前沿科技', desc: 'AI、硅谷与商业浪潮' },
-                  { id: 'culture', icon: '🌍', label: '人文漫游', desc: '国家地理风土人情' },
+                  { id: 'random', icon: '🎲', label: '随心惊喜' },
+                  { id: 'lifestyle', icon: '☕', label: '生活与心智' },
+                  { id: 'tech', icon: '🚀', label: '前沿科技' },
+                  { id: 'culture', icon: '🌍', label: '人文漫游' },
                 ].map((t) => (
                   <button
                     type="button"
                     key={t.id}
                     onClick={() => setRefreshTopic(t.id)}
+                    aria-label={t.label}
                     aria-pressed={refreshTopic === t.id}
                     className={`p-2.5 rounded-2xl border cursor-pointer transition-all ${
                       refreshTopic === t.id
@@ -1896,7 +1876,6 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                       <span>{t.icon}</span>
                       <span>{t.label}</span>
                     </div>
-                    <span className="block text-xs text-slate-500 mt-0.5">{t.desc}</span>
                   </button>
                 ))}
               </div>
@@ -1905,10 +1884,7 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
               <div className="flex items-center justify-between p-3 bg-amber-50/60 border border-amber-200/70 rounded-2xl">
                 <div>
                   <span className="text-xs font-bold text-amber-900 block">
-                    巧妙融入我的生词本单词
-                  </span>
-                  <span className="text-[10.5px] text-slate-500">
-                    在文章中偶遇刚背的生词，并在正文中自动标黄
+                    融入我的生词
                   </span>
                 </div>
                 <input
@@ -1929,12 +1905,12 @@ export default function SmartReader({ intent = null, onNavigate = () => {} }) {
                 {isGeneratingArticle ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>AI 专栏作家正在起草外刊精读...</span>
+                    <span>正在生成文章…</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 text-amber-100" />
-                    <span>✨ 立即创作新外刊并开启精读</span>
+                    <span>生成并阅读</span>
                   </>
                 )}
               </button>

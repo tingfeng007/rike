@@ -267,11 +267,9 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
   return (
     <div className="study-page grammar-page flex flex-col h-full">
       <StudyHeader
-        eyebrow="GRAMMAR · PATTERNS & PRACTICE"
         title="语法实验室"
-        description="句子骨架 → 补充信息 → 完整表达"
         icon={<SpellCheck className="w-4 h-4" />}
-        status={practicedTotal ? `已练 ${practicedTotal} 题 · 正确率 ${practicedAccuracy}%` : '尚未开始练习'}
+        status={practicedTotal ? `已练 ${practicedTotal} 题 · 正确率 ${practicedAccuracy}%` : null}
       >
         {sectionSwitch && <div className="mb-2">{sectionSwitch}</div>}
         <div className="mt-3 flex rounded-xl bg-white/10 p-1 text-[11px] ring-1 ring-white/10">
@@ -404,10 +402,7 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
             {/* 自测：自己写的句子属于哪种句型 */}
             <div className="study-card paper-grain rounded-[24px] p-4 space-y-3">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">自己写一句，看看是哪种句型</h2>
-                <p className="mt-0.5 text-[10.5px] text-slate-500">
-                  基于内置词表的启发式判断，只覆盖常见动词；超出范围会明说“不确定”，不会硬猜。
-                </p>
+                <h2 className="text-sm font-bold text-slate-900">句型判定</h2>
               </div>
               <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
                 <Search className="w-4 h-4 flex-none text-slate-400" />
@@ -445,12 +440,12 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
                   )}
                 </div>
               )}
+              <details className="text-xs text-slate-500"><summary className="cursor-pointer">判定帮助</summary><p className="mt-2 leading-6">内置判定仅覆盖部分常见动词；超出范围会显示“不确定”，可以继续使用 AI 拆句。</p></details>
             </div>
 
             {/* 每个句型的练习成绩 */}
             <details className="study-card paper-grain rounded-[24px] p-4 space-y-2">
               <summary className="cursor-pointer text-sm font-bold text-slate-900">查看各主题练习情况</summary>
-              <p className="pt-2 text-[11px] leading-5 text-slate-500">这里记录选择题表现，结合自由造句判断自己能否在实际表达中使用。</p>
               <div className="space-y-1.5 pt-2">
                 {summary.map((item) => (
                   <div key={item.patternId} className="flex items-center gap-2 text-[11px]">
@@ -477,10 +472,7 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
             {questions.length === 0 && (
               <div className="study-card paper-grain rounded-[24px] p-5 text-center space-y-3">
                 <Target className="mx-auto h-8 w-8 text-sky-500" />
-                <h2 className="text-sm font-bold text-slate-900">5 道题，练骨架，也练完整表达</h2>
-                <p className="text-[11.5px] leading-relaxed text-slate-500">
-                  综合练习包含句型、成分、改错与词序应用。也可以在讲解里只练当前一节；每题作答后都有解析。
-                </p>
+                <h2 className="text-sm font-bold text-slate-900">综合练习 · 5 题</h2>
                 <button
                   type="button"
                   onClick={() => startQuiz()}
@@ -577,7 +569,7 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
                 </h2>
                 <p className="text-[11.5px] text-slate-500">
                   正确率 {questions.length ? Math.round((quizCorrectCount / questions.length) * 100) : 0}%
-                  {quizCorrectCount < questions.length ? ' · 错题已加入错题本' : ' · 全对，很棒'}
+                  {quizCorrectCount < questions.length ? ' · 错题已加入错题本' : ' · 全对'}
                 </p>
                 <div className="space-y-2 text-left">
                   {questions.filter((question) => !gradeGrammarAnswer(question, answers[question.id])).map((question) => (
@@ -612,10 +604,7 @@ export default function GrammarLab({ onOpenSettings, sectionSwitch = null }) {
             {!hasKey && <ApiKeyNotice onOpenSettings={onOpenSettings} />}
             <div className="study-card paper-grain rounded-[24px] p-4 space-y-3">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">粘贴一个句子，拆出主干与从句</h2>
-                <p className="mt-0.5 text-[10.5px] text-slate-500">
-                  AI 会给出句子主干、各成分作用与语法要点；与内置句型库互相印证。
-                </p>
+                <h2 className="text-sm font-bold text-slate-900">AI 拆句</h2>
               </div>
               <textarea
                 value={aiSentence}

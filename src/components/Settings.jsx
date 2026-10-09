@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Settings as SettingsIcon,
-  Key,
   Volume2,
   Download,
   Upload,
@@ -13,9 +12,6 @@ import {
   Smartphone,
   ExternalLink,
   Zap,
-  HardDrive,
-  Trash2,
-  Sparkles,
   Cloud,
 } from 'lucide-react';
 import {
@@ -26,7 +22,7 @@ import {
 } from '../services/storage';
 import { callAICompletion } from '../services/ai';
 import { tts } from '../services/speech';
-import { clearCourseCaches, getCourseCacheCount } from '../services/offline';
+import { getCourseCacheCount } from '../services/offline';
 import StudyHeader from './StudyHeader';
 import { useToast } from './ui/toastContext';
 import { Modal } from './ui/Modal';
@@ -190,21 +186,6 @@ export default function Settings() {
     setLastExportAt(exportedAt);
   };
 
-  const handleClearCourseCache = () => {
-    if (!confirm('清除课程缓存后，学习进度和生词不会删除；下次打开课程会重新联网下载。确定继续吗？')) return;
-    Promise.all([clearCourseCaches(), Promise.resolve(StorageService.clearNceCache())])
-      .then(() => {
-        setAudioCacheCount(0);
-        setStorageDiagnostics(StorageService.getStorageDiagnostics());
-        setLocalSummary(StorageService.getLocalDataSummary());
-        toast.success('课程缓存已清除，学习记录仍然保留。');
-      })
-      .catch(() => {
-        getCourseCacheCount().then(setAudioCacheCount).catch(() => {});
-        toast.error('清理课程缓存时出错，可能有缓存仍在使用。请稍后重试。');
-      });
-  };
-
   // Select File & Parse Preview
   const handleSelectImportFile = (e) => {
     const file = e.target.files?.[0];
@@ -299,11 +280,8 @@ export default function Settings() {
   return (
     <div className="study-page settings-page flex flex-col h-full overflow-y-auto">
       <StudyHeader
-        eyebrow="MY LINGOFLOW · LOCAL FIRST"
         title="我的空间"
-        description="管理学习记录，找到喜欢的声音，连接你的 AI 服务。"
         icon={<SettingsIcon className="w-4 h-4" />}
-        status="偏好设置会自动保存"
         actions={
           saveError
             ? <span className="flex items-center gap-1 rounded-xl bg-rose-400/20 px-2.5 py-2 text-[11px] font-semibold text-rose-100 ring-1 ring-rose-300/30 animate-fade-in"><AlertCircle className="w-3.5 h-3.5" />未能保存</span>
@@ -318,9 +296,8 @@ export default function Settings() {
         <nav className="settings-section-nav" aria-label="设置分组">
           {[['data','学习数据'],['sound','声音'],['ai','AI 连接'],['offline','应用与离线']].map(([id,label]) => <button type="button" key={id} onClick={() => { const target = document.getElementById(`settings-${id}`); if (target?.tagName === 'DETAILS') target.open = true; target?.scrollIntoView({block:'start',behavior:'smooth'}); }}>{label}</button>)}
         </nav>
-        <p className="settings-intro">基础查词、词卡和语法课程可以直接使用。按需要连接 AI，并定期备份学习记录。</p>
         {/* PWA Mobile Install Banner */}
-        <button type="button" onClick={() => setShowPwaGuide(true)} className="settings-install"><span><Smartphone size={23} /></span><div><strong>让学习，随手可达</strong><p>添加到手机主屏幕，打开就能学</p></div><span aria-hidden="true">›</span></button>
+        <button type="button" onClick={() => setShowPwaGuide(true)} className="settings-install"><span><Smartphone size={23} /></span><div><strong>添加到主屏幕</strong></div><span aria-hidden="true">›</span></button>
 
         <div id="settings-data" className="study-card rounded-[26px] p-5 space-y-3.5">
           <div className="pb-2 border-b border-slate-100 flex items-start justify-between">
@@ -328,26 +305,28 @@ export default function Settings() {
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                 <span>学习数据与备份</span>
               </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                保存生词、文章、批注、语法、练习草稿、口语纠错与学习证据
-              </p>
             </div>
           </div>
 
           <details id="settings-offline" className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-2">
             <summary className="cursor-pointer text-xs font-semibold text-slate-800">应用与离线缓存</summary>
-            <p className="text-[11px] text-slate-500">练习记录：{storageDiagnostics.learningStorage?.backend === 'indexedDB' ? 'IndexedDB 数据库' : '本地存储'} · 词库和文章：本地存储</p>
-            {storageDiagnostics.learningStorage?.fallbackReason && <p className="text-[11px] text-amber-800">数据库暂不可用：{storageDiagnostics.learningStorage.fallbackReason}。本次使用本地存储；先前数据库记录并未删除。</p>}
-            {storageDiagnostics.conflictCount > 0 && <p className="text-[11px] text-amber-800">发现 {storageDiagnostics.conflictCount} 处同时编辑的内容，两个版本均保留在备份中，请导出后检查。</p>}
             {['dictionary', 'speech', 'course'].map((kind) => {
               const label = { dictionary: '离线词典', speech: '云端朗读缓存', course: '课程音频缓存' }[kind];
               const groups = cacheDiagnostics?.groups?.filter((group) => group.kind === kind) || [];
               const bytes = groups.reduce((sum, group) => sum + group.bytes, 0);
               return <div key={kind} className="flex items-center justify-between gap-2 text-[11px]"><span>{label} · {(bytes / 1024 / 1024).toFixed(1)} MB</span><button type="button" aria-label={`清理${label}`} disabled={Boolean(cacheBusy) || !cacheDiagnostics?.supported} onClick={() => handleClearCache(kind)} className="rounded-lg bg-white px-2 py-1.5 text-sky-700 ring-1 ring-slate-200 disabled:opacity-40">{cacheBusy === kind ? '清理中…' : '清理'}</button></div>;
             })}
-            <p className="text-[10px] text-slate-500">缓存清理不删除个人记录。云端朗读最多保留 64 条 / 8 MB。</p>
+            <p className="text-xs text-slate-500">清理缓存会移除离线下载，学习记录保留。</p>
             <button type="button" className="text-[11px] font-semibold text-sky-700" disabled={cacheDiagnostics?.persisted} onClick={async () => { const kept = await requestPersistentStorage(); toast.info(kept ? '浏览器已允许持久保存。' : '浏览器暂未允许持久保存，请继续定期备份。'); setCacheDiagnostics(await getCacheDiagnostics()); }}>{cacheDiagnostics?.persisted ? '浏览器已允许持久保存' : '申请浏览器持久保存'}</button>
+            <details className="pt-1 text-xs text-slate-500">
+              <summary className="cursor-pointer">存储详情</summary>
+              <p className="mt-2">练习记录：{storageDiagnostics.learningStorage?.backend === 'indexedDB' ? 'IndexedDB' : '本地存储'}；词库和文章：本地存储。</p>
+              <p className="mt-1">约 {storageDiagnostics.approximateMegabytes} MB · {storageDiagnostics.studyEventCount} 条学习记录 · {storageDiagnostics.nceLessonCacheCount} 课字幕 · {audioCacheCount} 课音频</p>
+              <p className="mt-1">云端朗读缓存上限：64 条 / 8 MB。数据版本 v{localSummary.schemaVersion || 4}。</p>
+            </details>
           </details>
+          {storageDiagnostics.learningStorage?.fallbackReason && <output className="block text-xs text-amber-800">数据库暂不可用：{storageDiagnostics.learningStorage.fallbackReason}。本次使用本地存储，先前记录保留。</output>}
+          {storageDiagnostics.conflictCount > 0 && <output className="block text-xs text-amber-800">有 {storageDiagnostics.conflictCount} 处同时编辑的内容，两个版本会随备份导出，请检查。</output>}
 
           {/* Local Data Landscape Summary */}
           <div className="grid grid-cols-5 gap-1 bg-slate-50/80 p-2.5 rounded-2xl border border-slate-200/60 text-center text-xs">
@@ -372,19 +351,10 @@ export default function Settings() {
               <strong className="text-emerald-700 text-sm font-mono">{localSummary.streakDays}天</strong>
             </div>
           </div>
-          <p className="text-[11px] text-slate-500">已保存 {localSummary.nceExamCount} 份新概念试卷；未交卷草稿也随备份导出。数据结构 v{localSummary.schemaVersion || 3}，升级会自动迁移。</p>
-
-          <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2"><HardDrive className="h-4 w-4 text-sky-700" /><div><p className="text-xs font-semibold text-sky-900">本地存储与课程缓存</p><p className="mt-0.5 text-[10.5px] text-slate-500">约 {storageDiagnostics.approximateMegabytes} MB · {storageDiagnostics.studyEventCount} 条学习记录 · {storageDiagnostics.nceLessonCacheCount} 课字幕 · {audioCacheCount} 课音频</p></div></div>
-              <button type="button" onClick={handleClearCourseCache} className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-100 hover:bg-sky-100"><Trash2 className="h-3 w-3" />清理课程缓存</button>
-            </div>
-            <p className="mt-2 text-[10px] leading-4 text-slate-500">清理只移除课程目录和字幕缓存，不会删除单词、错题、试卷和学习进度。</p>
-
             {/* A failed write (quota / blocked storage) used to be recorded but never shown,
                 so ratings, streaks and events could silently fail to persist. */}
-            {storageDiagnostics.lastWriteError ? (
-              <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-[10.5px] leading-4 text-rose-800">
+            {storageDiagnostics.lastWriteError && (
+              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800">
                 <p className="font-semibold">
                   {storageDiagnostics.lastWriteError.quotaExceeded
                     ? '⚠️ 本地存储已写满，最近一次保存失败'
@@ -392,24 +362,21 @@ export default function Settings() {
                 </p>
                 <p className="mt-1">
                   受影响的键：<span className="font-mono">{storageDiagnostics.lastWriteError.key}</span>
-                  。请先<strong>导出备份</strong>，再清理课程缓存或删除不再需要的口语记录后重试。
+                  。请先<strong>导出备份</strong>，再释放存储空间后重试。
                 </p>
               </div>
-            ) : (
-              <p className="mt-2 text-[10px] leading-4 text-emerald-700">本地存储写入正常。</p>
             )}
-          </div>
 
           {/* API Key Security Toggle for Export */}
           <div className="p-2.5 bg-sky-50/60 border border-sky-200/70 rounded-2xl flex items-center justify-between text-xs">
             <div>
               <span className="font-semibold text-sky-900 block text-xs">
-                {includeApiKeyInExport ? '⚠️ 导出时包含 API Key (高风险)' : '🔒 安全模式：默认排除 API Key'}
+                备份包含 API Key
               </span>
               <span className="text-[10.5px] text-slate-500 block">
                 {includeApiKeyInExport
-                  ? '备份文件内包含密钥原文，切勿通过微信群或公开网盘传输！'
-                  : '不含密钥，但仍有个人学习记录，请妥善保管备份文件'}
+                  ? '包含密钥原文，请勿公开分享。'
+                  : '默认不含密钥，请妥善保管学习记录。'}
               </span>
             </div>
             <input
@@ -434,7 +401,7 @@ export default function Settings() {
 
             <label className="py-2.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200/80 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-all active:scale-95">
               <Upload className="w-3.5 h-3.5 text-sky-600" />
-              <span>导入恢复 (带预览)</span>
+              <span>导入备份</span>
               <input
                 type="file"
                 accept=".json"
@@ -445,13 +412,13 @@ export default function Settings() {
           </div>
 
           {/* Demo data: the same "30 个演示生词" the home screen explains on first run. */}
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+          {StorageService.isUsingSampleVocabulary() && <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-amber-900">
-                {StorageService.isUsingSampleVocabulary() ? '当前词库是内置示例数据' : '示例数据已清空或已替换'}
+                当前词库是示例数据
               </p>
               <p className="mt-0.5 text-[10.5px] leading-4 text-amber-800">
-                示例生词只是用来体验流程的，不代表你的学习记录。清空后从零积累你自己的词库，学习统计不受影响。
+                清空示例词与文章，学习记录保留。
               </p>
             </div>
             <button
@@ -462,32 +429,26 @@ export default function Settings() {
             >
               清空示例数据
             </button>
-          </div>
+          </div>}
 
           {/* Danger Zone */}
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-[11px] text-slate-400">误操作急救</span>
+            <span className="text-xs text-slate-400">重置</span>
             <button
               onClick={() => setShowResetModal(true)}
               className="text-slate-400 hover:text-rose-600 text-xs flex items-center gap-1 transition-colors"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>恢复官方初始演示数据...</span>
+              <span>恢复示例数据</span>
             </button>
           </div>
         </div>
 
         {/* Section 1: AI Model Configuration */}
         <details id="settings-ai" className="settings-group">
-        <summary>AI 连接 <span>口语与深度讲解</span></summary>
+        <summary>AI 连接</summary>
         <div className="study-card rounded-[26px] p-5 space-y-3.5">
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <Key className="w-4 h-4 text-sky-600" />
-              <h3 className="text-sm font-bold text-slate-900">
-                AI 核心配置 (大模型连接)
-              </h3>
-            </div>
+          <div className="flex justify-end">
             {currentPreset.helpUrl && (
               <a
                 href={currentPreset.helpUrl}
@@ -504,7 +465,7 @@ export default function Settings() {
           {/* Provider Preset */}
           <div>
             <label htmlFor="settings-provider" className="block text-xs font-semibold text-slate-700 mb-1">
-              选择 AI 服务商 (支持 OpenAI 兼容协议)
+              AI 服务商
             </label>
             <select id="settings-provider"
               value={settings.provider}
@@ -522,7 +483,7 @@ export default function Settings() {
           {/* API Key */}
           <div>
             <label htmlFor="settings-apiKey" className="block text-xs font-semibold text-slate-700 mb-1">
-              API Key（保存在当前浏览器，并直接用于连接所选 AI 服务商）*
+              API Key
             </label>
             <div className="relative flex items-center">
               <input id="settings-apiKey"
@@ -541,6 +502,7 @@ export default function Settings() {
                 {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            <p className="mt-2 text-xs text-slate-500">密钥保存在此浏览器，并用于连接所选服务商。</p>
           </div>
 
           {/* Advanced Collapse Toggle */}
@@ -550,7 +512,7 @@ export default function Settings() {
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="text-[11px] text-slate-500 hover:text-sky-600 flex items-center gap-1 font-medium transition-colors"
             >
-              <span>{showAdvanced ? '收起高级极客参数 ▲' : '展开高级参数 (Base URL / 换模型) ▼'}</span>
+              <span>{showAdvanced ? '收起接口与模型 ▲' : '接口与模型 ▼'}</span>
             </button>
           </div>
 
@@ -560,7 +522,7 @@ export default function Settings() {
               {/* Base URL */}
               <div>
                 <label htmlFor="settings-baseUrl" className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  API 基础路径 (Base URL)
+                  接口地址
                 </label>
                 <input id="settings-baseUrl"
                   type="text"
@@ -574,7 +536,7 @@ export default function Settings() {
               {/* Model */}
               <div>
                 <label htmlFor="settings-model" className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  调用模型名称 (Model)
+                  模型
                 </label>
                 <input id="settings-model"
                   type="text"
@@ -596,7 +558,7 @@ export default function Settings() {
             >
               <Zap className="w-3.5 h-3.5 text-amber-500" />
               <span>
-                {testStatus.state === 'testing' ? '正在连接测试...' : '🧪 测试 API 连接状态'}
+                {testStatus.state === 'testing' ? '正在测试…' : '测试连接'}
               </span>
             </button>
 
@@ -622,34 +584,21 @@ export default function Settings() {
         {/* Section 2: Speech & TTS Settings */}
         </details>
         <details id="settings-sound" className="settings-group">
-        <summary>声音 <span>朗读与语音偏好</span></summary>
+        <summary>声音</summary>
         <div className="study-card rounded-[26px] p-5 space-y-3.5">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-sky-600" />
-              <h3 className="text-sm font-bold text-slate-850">
-                发音与语音偏好
-              </h3>
-            </div>
+          <div className="flex justify-end">
             <button
               onClick={handleTestSpeech}
               className="text-xs text-sky-600 hover:underline flex items-center gap-1"
             >
+              <Volume2 className="w-4 h-4" />
               <span>试听发音</span>
             </button>
           </div>
 
           {/* Non-course speech mode */}
           <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-3.5">
-            <div className="flex items-start gap-2">
-              <Sparkles className="mt-0.5 h-4 w-4 flex-none text-sky-600" />
-              <div>
-                <p className="text-xs font-bold text-sky-950">非课文内容使用自然语音</p>
-                <p className="mt-1 text-[11px] leading-5 text-sky-800/75">
-                  单词、精读、口语和练习会使用这里的设置；新概念课文继续播放原声，不受影响。
-                </p>
-              </div>
-            </div>
+            <p className="text-xs font-semibold text-sky-950">朗读方式</p>
             <select
               value={settings.speechMode || 'natural'}
               aria-label="非课文朗读方式"
@@ -660,12 +609,7 @@ export default function Settings() {
               <option value="cloud">☁️ 云端真人感（需配置语音接口）</option>
               <option value="system">设备系统语音</option>
             </select>
-            <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-sky-800/70">
-              <span>本机自然音色 {speechStatus.naturalVoiceCount} 个 · 增强音色 {speechStatus.enhancedVoiceCount} 个</span>
-              <span className={speechStatus.cloudConfigured ? 'font-semibold text-emerald-700' : 'text-slate-500'}>
-                {speechStatus.cloudConfigured ? '云端已配置' : '云端未配置'}
-              </span>
-            </div>
+            {settings.speechMode === 'cloud' && <p className="mt-2 text-xs text-sky-800">{speechStatus.cloudConfigured ? '云端语音已配置' : '请展开下方云端语音配置'}</p>}
           </div>
 
           {/* Accent */}
@@ -686,23 +630,25 @@ export default function Settings() {
           {/* Voice Selection */}
           <div>
             <label htmlFor="settings-preferredVoiceURI" className="block text-xs font-medium text-slate-700 mb-1">
-              外教音色选择 (精选自然女声)
+              音色
             </label>
             <select id="settings-preferredVoiceURI"
               value={settings.preferredVoiceURI || ''}
               onChange={(e) => updateSetting('preferredVoiceURI', e.target.value)}
               className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
             >
-              <option value="">✨ 智能优选（iPhone 推荐：Ava / Samantha 自然甜美女声）</option>
+              <option value="">自动选择</option>
               {availableVoices.map((v) => (
                 <option key={v.voiceURI} value={v.voiceURI}>
                   👩 {v.name} · {tts.getVoiceQualityLabel(v)} ({v.lang})
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-slate-600 mt-1">
-              💡 自动优先匹配 Natural / Online / Premium 音色；如果设备没有这类音色，会平稳退回系统语音。
-            </p>
+            <details className="mt-2 text-xs text-slate-500">
+              <summary className="cursor-pointer">朗读说明</summary>
+              <p className="mt-2">这些设置用于单词、精读与口语，新概念课文继续使用原声。</p>
+              <p className="mt-1">自动选择优先使用自然音色，没有可用音色时使用系统语音。本机有 {speechStatus.naturalVoiceCount} 个自然音色、{speechStatus.enhancedVoiceCount} 个增强音色。</p>
+            </details>
           </div>
 
           <details className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
@@ -711,7 +657,7 @@ export default function Settings() {
             </summary>
             <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
               <p className="text-[11px] leading-5 text-slate-500">
-                支持 OpenAI Audio Speech 或兼容接口。只对新概念之外的内容生效；密钥仅保存在当前浏览器，不会写入代码。
+                支持 OpenAI 兼容语音接口，密钥保存在此浏览器。
               </p>
               <div>
                 <label htmlFor="settings-speechBaseUrl" className="mb-1 block text-[11px] font-medium text-slate-600">语音接口地址</label>
@@ -778,7 +724,7 @@ export default function Settings() {
                 />
               </div>
               <p className="text-[10px] leading-4 text-amber-700">
-                提醒：静态网站中的云端请求会把输入文字发送到你配置的服务，并可能产生费用；没有配置时会自动使用本机自然音色。
+                朗读文字会发送至配置的服务，并可能产生费用。
               </p>
             </div>
           </details>
@@ -804,9 +750,9 @@ export default function Settings() {
               className="w-full accent-sky-600"
             />
             <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-              <span>0.7x (初学者慢速)</span>
-              <span>1.0x (常速)</span>
-              <span>1.2x (挑战快速)</span>
+              <span>慢</span>
+              <span>正常</span>
+              <span>快</span>
             </div>
           </div>
 
@@ -814,10 +760,7 @@ export default function Settings() {
           <div className="flex items-center justify-between pt-1">
             <div>
               <span className="text-xs font-medium text-slate-800 block">
-                口语对练时自动朗读 AI 回复
-              </span>
-              <span className="text-[11px] text-slate-600">
-                收到外教回复时立即进行语音跟读
+                自动朗读口语回复
               </span>
             </div>
             <input
@@ -852,7 +795,7 @@ export default function Settings() {
               <div className="flex items-center gap-2">
                 <span className="text-xl">📦</span>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-sm">备份文件解析与合并预览</h3>
+                  <h3 className="font-bold text-slate-900 text-sm">备份预览</h3>
                   <p className="text-[10.5px] text-slate-500">生成时间: {importPreview.exportedAt}</p>
                 </div>
               </div>
@@ -860,9 +803,9 @@ export default function Settings() {
 
             <div className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-xs space-y-2">
               <p>练习草稿 {importPreview.sessionCount} 份 · 阅读证据 {importPreview.readingEvidenceCount} 份 · 口语纠错 {importPreview.oralCorrectionCount} 条</p>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={includeConnections} onChange={(event) => setIncludeConnections(event.target.checked)} />同时恢复 AI 连接配置（默认关闭）</label>
-              {importPreview.connectionChanges?.map((change) => <p key={change.field} className="break-all text-[10.5px] text-slate-600">{change.field}：{change.current || '未配置'} → {change.incoming || '未配置'}</p>)}
-              <p className="text-[10.5px] text-slate-600">连接域名改变时，不会沿用本地旧密钥。默认仅合并学习数据与普通偏好。</p>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={includeConnections} onChange={(event) => setIncludeConnections(event.target.checked)} />同时恢复 AI 连接配置</label>
+              {importPreview.connectionChanges?.map((change) => <p key={change.field} className="break-all text-xs text-slate-600">{{ baseUrl: 'AI 服务', speechBaseUrl: '语音服务', model: 'AI 模型', speechModel: '语音模型' }[change.field] || change.field}：{change.current || '未配置'} → {change.incoming || '未配置'}</p>)}
+              <p className="text-xs text-slate-600">默认仅合并学习数据与偏好。勾选后会恢复连接配置，域名改变时清空旧密钥。</p>
             </div>
 
             <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/70 space-y-1.5 text-xs">
@@ -893,13 +836,13 @@ export default function Settings() {
               <div className="flex justify-between pt-1 border-t border-slate-200/60">
                 <span className="text-slate-500">包含 API Key:</span>
                 <span className={importPreview.hasApiKey ? 'text-amber-700 font-bold' : 'text-slate-500'}>
-                  {importPreview.hasApiKey ? '是（仅勾选连接配置时导入）' : '否（域名改变将清空旧密钥）'}
+                  {importPreview.hasApiKey ? '是（勾选连接配置后导入）' : '否'}
                 </span>
               </div>
             </div>
 
             <p className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-xl border border-emerald-200/60 leading-relaxed">
-              ✨ <strong>智能增量合并保护</strong>：导入将保留你当前设备上已有的个人笔记与更高掌握阶段，绝不暴力抹除！
+              导入会合并现有学习记录。
             </p>
 
             <div className="flex gap-2 pt-1">
@@ -915,7 +858,7 @@ export default function Settings() {
                 disabled={importing}
                 className="flex-1 py-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95"
               >
-                {importing ? '正在恢复…' : '确认增量合并导入'}
+                {importing ? '正在恢复…' : '确认导入'}
               </button>
             </div>
       </Modal>
@@ -924,7 +867,7 @@ export default function Settings() {
       {/* Safety Reset Modal */}
       <Modal
         open={showResetModal}
-        ariaLabel="恢复官方初始演示数据"
+        ariaLabel="恢复示例数据"
         onClose={() => setShowResetModal(false)}
         size="sm"
         showCloseButton={false}
@@ -932,15 +875,15 @@ export default function Settings() {
       >
             <div className="flex items-center gap-2 pb-2 border-b border-rose-100 text-rose-700 font-bold text-sm">
               <AlertCircle className="w-5 h-5 text-rose-600" />
-              <span>重置确认（危险操作）</span>
+              <span>恢复示例数据</span>
             </div>
 
             <p className="text-xs text-slate-700 leading-relaxed">
-              此操作将恢复官方初始的 <strong>30 个演示生词</strong> 与 <strong>8 篇经典外刊</strong>。你后来添加的个人词条与笔记将被重置。
+              将恢复 <strong>30 个示例生词</strong> 与 <strong>8 篇示例文章</strong>，替换当前词库和文章。
             </p>
 
             <p className="text-[11px] text-amber-900 bg-amber-50 p-2 rounded-xl border border-amber-200/80 leading-tight">
-              💡 强烈建议在重置前，先点击上方“<strong>导出全量备份</strong>”保存一份 JSON 文件防身！
+              请先<strong>导出全量备份</strong>，以便恢复个人内容。
             </p>
 
             <div className="flex gap-2 pt-1">
@@ -948,13 +891,13 @@ export default function Settings() {
                 onClick={() => setShowResetModal(false)}
                 className="flex-1 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
               >
-                放弃重置
+                取消
               </button>
               <button
                 onClick={handleConfirmReset}
                 className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
               >
-                确认重置为初始数据
+                确认恢复
               </button>
             </div>
       </Modal>

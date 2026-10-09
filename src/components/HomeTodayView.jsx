@@ -15,35 +15,30 @@ import {
   Sparkles,
   Timer,
 } from 'lucide-react';
-import { ApiKeyNotice } from './ui/ApiKeyNotice';
 
 const taskIcons = { vocab: Layers, oral: MessageCircle, reader: BookOpen };
 const modules = [
   {
     id: 'vocab',
-    title: '记住新单词',
-    subtitle: '分类词卡 · 每次一点',
+    title: '闪卡复习',
     icon: Layers,
     tone: 'blue',
   },
   {
     id: 'reader',
-    title: '读懂好文章',
-    subtitle: '中英伴读 · 随读随记',
+    title: '精读',
     icon: BookOpen,
     tone: 'peach',
   },
   {
     id: 'oral',
-    title: '大胆开口说',
-    subtitle: '场景对话 · 轻松练习',
+    title: '口语',
     icon: MessageCircle,
     tone: 'mint',
   },
   {
     id: 'grammar',
-    title: '搭好句子骨架',
-    subtitle: '语法讲解 · 动手造句',
+    title: '语法',
     icon: Sparkles,
     tone: 'lilac',
   },
@@ -53,14 +48,11 @@ export default function HomeTodayView({
   snapshot,
   plan,
   weekly,
-  greeting,
-  remainingTasks,
   completedCount,
   deferredCount,
   dayIsFinished,
   usingSampleData,
   showDemoNotice,
-  hasKey,
   showWeekly,
   setShowWeekly,
   showDuration,
@@ -93,8 +85,7 @@ export default function HomeTodayView({
           </div>
           <div className="today-heading-row">
             <div>
-              <h1>今天，学点新的。</h1>
-              <p>{greeting}</p>
+              <h1>今日学习</h1>
             </div>
             <button
               type="button"
@@ -109,17 +100,16 @@ export default function HomeTodayView({
 
         {showDemoNotice && usingSampleData && (
           <div className="today-demo today-demo-intro">
-            <strong>欢迎，先试一小步</strong>
-            <p>内置词卡和文章供你体验。分类词卡可自由练习，收藏之后才进入你的生词本。</p>
+            <strong>正在体验示例内容</strong>
             <div>
-              <button type="button" onClick={dismissDemoNotice}>知道了，开始学习</button>
+              <button type="button" onClick={dismissDemoNotice}>继续体验</button>
               <button type="button" onClick={startWithMyOwnDeck}>移除演示生词</button>
             </div>
           </div>
         )}
 
         <button type="button" className="today-dictionary" onClick={() => onNavigate('dictionary')}>
-          <Search size={19} /><span>查个单词，读懂新表达</span><span>英汉词典</span><ArrowRight size={16} />
+          <Search size={19} /><span>查词</span><ArrowRight size={16} />
         </button>
 
         <div className="today-overview" aria-label="学习概览">
@@ -156,31 +146,21 @@ export default function HomeTodayView({
                 {plan.dailyMinutes}
                 <small> 分钟</small>
               </strong>
-              <p>每日小目标</p>
+              <p>每日目标</p>
             </span>
           </div>
         </div>
 
         <section className="today-focus" aria-label="下一步学习">
           <div className="focus-copy">
-            <span className="focus-eyebrow">
-              <span />
-              {dayIsFinished ? '今日计划已完成' : '现在，专注这一小步'}
-            </span>
             <h2>
               {nextTask?.title ||
                 (deferredCount
-                  ? '慢慢来，明天再继续'
+                  ? '剩余任务已推迟'
                   : dayIsFinished
-                    ? '今天的进步，值得庆祝'
-                    : '从一小步开始')}
+                    ? '今日计划已完成'
+                    : '开始学习')}
             </h2>
-            <p>
-              {nextTask?.description ||
-                (deferredCount
-                  ? `已完成 ${completedCount} 项，另有 ${deferredCount} 项推迟。`
-                  : '去新概念或精读，发现一点新知识。')}
-            </p>
             <button
               type="button"
               className="focus-start"
@@ -190,18 +170,13 @@ export default function HomeTodayView({
             >
               <span>
                 {nextTask
-                  ? '开始这一小步'
+                  ? '开始学习'
                   : dayIsFinished
                     ? '再学一点'
                     : '去学新概念'}
               </span>
               <ArrowRight size={18} />
             </button>
-            <span className="focus-minutes">
-              {nextTask
-                ? `约 ${nextTask.minutes} 分钟，轻松完成`
-                : '按自己的节奏就好'}
-            </span>
           </div>
           <div className="focus-ring">
             <svg
@@ -233,7 +208,7 @@ export default function HomeTodayView({
 
         <section className="today-plan">
           <div className="today-section-title">
-            <h2>今天的小目标</h2>
+            <h2>今日任务</h2>
             <div className="duration-picker">
               <button
                 type="button"
@@ -288,7 +263,6 @@ export default function HomeTodayView({
                           : `约 ${task.minutes} 分钟`}
                     </span>
                     <strong>{task.title}</strong>
-                    <p>{task.description}</p>
                   </button>
                   {task.done ? (
                     <Check size={18} className="task-done" />
@@ -337,25 +311,17 @@ export default function HomeTodayView({
               );
             })}
             {plan.totalCount === 0 && (
-              <p className="empty-plan">今天暂时没有安排，去开始一小步吧。</p>
+              <p className="empty-plan">暂无任务</p>
             )}
           </div>
-          <p className="plan-footnote">
-            {remainingTasks
-              ? `还有 ${remainingTasks} 项，按你的节奏来。`
-              : dayIsFinished
-                ? '今天已经完成，明天继续。'
-                : `还有 ${deferredCount} 项推迟到明天。`}
-          </p>
         </section>
 
         <section className="today-explore">
           <div className="today-section-title">
-            <h2>换个方式学</h2>
-            <span>找到你的学习节奏</span>
+            <h2>学习工具</h2>
           </div>
           <div className="explore-grid">
-            {modules.map(({ id, title, subtitle, icon: Icon, tone }) => (
+            {modules.map(({ id, title, icon: Icon, tone }) => (
               <button
                 type="button"
                 key={id}
@@ -371,7 +337,6 @@ export default function HomeTodayView({
                 </span>
                 <ArrowRight size={17} className="explore-arrow" />
                 <strong>{title}</strong>
-                <p>{subtitle}</p>
               </button>
             ))}
           </div>
@@ -388,7 +353,7 @@ export default function HomeTodayView({
               <Flame size={21} />
             </span>
             <span>
-              <strong>这一周的你</strong>
+              <strong>本周记录</strong>
               <p>
                 {weekly.activeDays} 天有学习 · {weekly.totalActions} 个学习动作
               </p>
@@ -397,7 +362,6 @@ export default function HomeTodayView({
           </button>
           {showWeekly && (
             <div className="weekly-content nce-reveal">
-              <p>每天留下一点痕迹，比偶尔冲刺更有效</p>
               <div className="weekly-calendar" aria-label="近七天学习节奏">
                 {weekly.activityCalendar.map((day) => (
                   <div
@@ -426,19 +390,12 @@ export default function HomeTodayView({
                 ))}
               </div>
               <p className="weekly-advice">{weekly.recommendation}</p>
-              <small>
-                {weekly.totalMinutes
-                  ? `记录约 ${weekly.totalMinutes} 分钟`
-                  : '从今天开始积累真实记录'}
-              </small>
+              {weekly.totalMinutes > 0 && <span>{weekly.totalMinutes} 分钟</span>}
             </div>
           )}
         </section>
 
         <div className="today-notices">
-          {!hasKey && (
-            <ApiKeyNotice onOpenSettings={() => onNavigate('settings')} />
-          )}
           {snapshot.events.filter(
             (event) => event.at > (snapshot.appState.lastExportAt || 0),
           ).length >= 20 && (
@@ -447,12 +404,11 @@ export default function HomeTodayView({
               className="backup-reminder"
               onClick={() => onNavigate('settings')}
             >
-              积累了新的学习记录，点此导出备份。
+              备份学习记录
             </button>
           )}
         </div>
         <footer className="today-footer">
-          <span>学习记录保存在这台设备上</span>
           <button type="button" onClick={refresh}>
             刷新计划
           </button>

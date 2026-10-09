@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
-  BookOpen,
   BookmarkPlus,
   Check,
   ChevronDown,
@@ -21,7 +20,6 @@ import {
   buildDictionaryWordPayload,
   clearDictionaryHistory,
   createDictionaryService,
-  DICTIONARY_WORD_COUNT,
   lookupOnlineDictionary,
   normalizeDictionaryQuery,
   readDictionaryState,
@@ -279,18 +277,7 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
   return (
     <section className={`dictionary-page h-full overflow-y-auto${embedded ? ' is-embedded' : ''}`}>
       <div className="dictionary-layout">
-        <header className="dictionary-header">
-          <div>
-            <p>YOUR POCKET DICTIONARY</p>
-            <h1>每个词，都读懂。</h1>
-            <span>
-              英汉词典 · {Math.floor(DICTIONARY_WORD_COUNT / 1000) / 10} 万词条
-            </span>
-          </div>
-          <span className="dictionary-mark">
-            <BookOpen size={26} strokeWidth={1.6} />
-          </span>
-        </header>
+        {!embedded && <header className="dictionary-header"><h1>词典</h1></header>}
         <div className="dictionary-main">
           <form
             className="dictionary-search"
@@ -370,7 +357,6 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
               <div className="dictionary-empty">
                 <Search size={28} />
                 <h2>词库暂未收录 “{submitted}”</h2>
-                <p>检查一下拼写，也可以试试在线英文词典。</p>
                 {suggestions.length > 0 && (
                   <div className="dictionary-chips" aria-label="你可能要查">
                     {suggestions.map((word) => (
@@ -396,9 +382,6 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
               >
                 <div className="dictionary-word-heading">
                   <div>
-                    <span className="dictionary-entry-label">
-                      {entry.englishOnly ? '英文词典' : '英汉释义'}
-                    </span>
                     <h2>{entry.word}</h2>
                     <div className="dictionary-pronunciation">
                       <span>{entry.phonetic || '词库暂未提供音标'}</span>
@@ -411,7 +394,6 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
                         听发音
                       </button>
                     </div>
-                    {entry.phonetic && entry.phoneticSource && <small className="dictionary-ipa-source">音标来源：{entry.phoneticSource}</small>}
                   </div>
                   <button
                     type="button"
@@ -475,7 +457,7 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
                 {entry.contextSentence && (
                   <section className="dictionary-example">
                     <div>
-                      <h3>放进句子里</h3>
+                      <h3>{entry.aiEnriched ? 'AI 例句' : '例句'}</h3>
                       <button
                         type="button"
                         aria-label="播放例句"
@@ -488,7 +470,6 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
                     {entry.contextSentenceCn && (
                       <span>{entry.contextSentenceCn}</span>
                     )}
-                    {entry.aiEnriched && <small>AI 补充例句与用法</small>}
                   </section>
                 )}
                 {entry.collocations?.length > 0 && (
@@ -530,6 +511,8 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
                   </button>
                 )}
                 <footer className="dictionary-source">
+                  <details className="dictionary-provenance">
+                    <summary>来源 <ChevronDown size={14} /></summary>
                   {entry.source === 'ECDICT' ? (
                     <a
                       href="https://github.com/skywind3000/ECDICT"
@@ -549,6 +532,9 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
                   ) : (
                     <span>释义来源：学习词库</span>
                   )}
+                    {entry.phonetic && entry.phoneticSource && <p>音标来源：{entry.phoneticSource}</p>}
+                    {entry.aiEnriched && <p>例句与搭配由 AI 补充</p>}
+                  </details>
                   <button type="button" onClick={reviewWord}>
                     {saved ? '复习这个词' : '收藏并复习'}{' '}
                     <ArrowRight size={13} />
@@ -558,23 +544,8 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
             )}
           </div>
           {!submitted && !entry && (
-            <section className="dictionary-discover">
-              <span className="dictionary-discover-icon">
-                <Sparkles size={24} />
-              </span>
-              <p>ONE WORD AT A TIME</p>
-              <h2>
-                遇见一个词，
-                <br />
-                打开一个新世界。
-              </h2>
-              <span>
-                读文章、练口语时遇到的生词，
-                <br />
-                随时回来查一查。
-              </span>
+            <section className="dictionary-discover" aria-label="推荐查询">
               <div className="dictionary-featured">
-                <span>不妨从这些词开始</span>
                 <div>
                   {featured.map((word) => (
                     <button
@@ -621,8 +592,7 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
           )}
           <section className="dictionary-topics">
             <header>
-              <h2>换个领域，认识新词</h2>
-              <span>点击查看一个分类词</span>
+              <h2>分类词库</h2>
             </header>
             <div>
               {VOCABULARY_CATEGORIES.map((category) => (
@@ -648,14 +618,14 @@ export default function Dictionary({ onNavigate = () => {}, onQueryChange = null
             <summary>
               <span>
                 <Download size={17} />
-                {offlineReady ? '离线词库已就绪' : '把词典装进口袋'}
+                {offlineReady ? '离线词库已就绪' : '下载离线词库'}
               </span>
               <ChevronDown size={16} />
             </summary>
             <p>
               {offlineReady
-                ? '全部基础词条已保存在此设备。例句补充和在线词典需要联网。'
-                : '下载约 11 MB 的词库，断网也能查基础释义。查过的词会自动保存。'}
+                ? '词库已下载。在线例句仍需联网。'
+                : '约 11 MB，下载后可离线查词。'}
             </p>
             {!offlineReady &&
               (downloadProgress === null ? (

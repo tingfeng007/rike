@@ -446,18 +446,16 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
   return (
     <div className="study-page oral-page flex flex-col h-full min-h-0">
       <header className="oral-compact-header flex-none flex items-center justify-between gap-3 border-b border-stone-200 bg-[#fffdf8] px-4 py-2.5" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)' }}>
-        <span className="oral-avatar" aria-hidden="true">{currentScenario.icon}</span><div className="min-w-0 flex-1"><h1 className="truncate text-base font-bold text-[#102a43]">{currentScenario.name}</h1><p className="mt-1 text-[11px] text-slate-500"><span className="oral-status-dot" />{!hasApiKey ? '配置 AI 后，开始聊天' : practiceWithVocab && wantedWordsList.length ? `目标词 ${wantedWordsList.filter((item) => activatedWords[item.word.toLowerCase()]).length}/${wantedWordsList.length} · 用英语聊一聊` : '随时可以开始聊天'}</p></div>
+        <span className="oral-avatar" aria-hidden="true">{currentScenario.icon}</span><div className="min-w-0 flex-1"><h1 className="truncate text-base font-bold text-[#102a43]">{currentScenario.name}</h1>{practiceWithVocab && wantedWordsList.length > 0 && <p className="mt-1 text-[11px] text-slate-500">目标词 {wantedWordsList.filter((item) => activatedWords[item.word.toLowerCase()]).length}/{wantedWordsList.length}</p>}</div>
         <button type="button" onClick={() => onNavigate('dictionary')} aria-label="打开词典" className="rounded-xl bg-white p-2.5 text-sky-700"><Search size={18} /></button>
         <button type="button" onClick={() => setShowCorrections(true)} className="rounded-xl bg-white px-3 py-2.5 text-xs font-semibold text-slate-700">纠错复习</button>
         <button type="button" onClick={() => setShowPracticeOptions(true)} aria-haspopup="dialog" className="shrink-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700">场景</button>
       </header>
       <BottomSheet open={showPracticeOptions} onClose={() => setShowPracticeOptions(false)} title="口语练习设置" bodyClassName="!p-0" footer={<button type="button" onClick={() => setShowPracticeOptions(false)} className="w-full rounded-xl bg-[#102a43] py-3 text-sm font-semibold text-white">返回对话</button>}>
       <StudyHeader
-        eyebrow="SPEAK · ACTIVE ENGLISH"
         title={currentScenario.name}
-        description={`${currentScenario.desc} · 让今天记住的词真正说出口。`}
+        description={currentScenario.desc}
         icon={<span className="text-base">{currentScenario.icon}</span>}
-        status={hasApiKey ? 'Key 已配置' : '待配置 Key'}
         actions={(
           <>
             <button
@@ -700,7 +698,7 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
                   {msg.feedback.betterAlternative && (
                     <div className="flex items-center justify-between pt-2 border-t border-amber-200/60 mt-1">
                       <div className="flex-1 pr-2">
-                        <span className="text-[10px] text-amber-800 block font-semibold">✨ 外教级地道说法:</span>
+                        <span className="text-[10px] text-amber-800 block font-semibold">参考表达</span>
                         <span className="text-amber-950 font-bold select-text font-serif text-[13px]">
                           "{msg.feedback.betterAlternative}"
                         </span>
@@ -781,14 +779,14 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
         {dataError && <output className="mb-2 block text-xs text-rose-700">{dataError}</output>}
         {/* Newbie Onboarding Banner when no key is set */}
         {!hasApiKey && (
-          <button type="button" onClick={() => setShowQuickKeyModal(true)} className="mb-2 flex w-full items-center justify-between gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800"><span>配置 AI 后即可对练</span><span className="font-semibold">去配置 →</span></button>
+          <button type="button" onClick={() => setShowQuickKeyModal(true)} className="mb-2 flex w-full items-center justify-between gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800"><span className="font-semibold">配置口语 AI</span></button>
         )}
 
         {isRecording && (
           <div className="mb-2 px-3.5 py-2 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200/80 rounded-2xl flex items-center justify-between text-xs text-rose-800 shadow-xs animate-pulse">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
-              <span className="font-medium">正在聆听... 说完点右侧立即发送</span>
+              <span className="font-medium">正在聆听…</span>
             </div>
             <button
               onClick={() => {
@@ -797,7 +795,7 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
               }}
               className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] hover:from-emerald-700 hover:to-teal-700 transition-all shadow-xs active:scale-95"
             >
-              🚀 说完，立即发送
+              结束并发送
             </button>
           </div>
         )}
@@ -830,7 +828,7 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
                   handleSendMessage();
                 }
               }}
-              placeholder="用英语回复或点麦克风说话..."
+              placeholder="用英语回复…"
               aria-label="输入英语回复"
               className="w-full bg-transparent resize-none outline-hidden text-sm text-slate-800 placeholder-slate-400 max-h-24 py-1.5"
             />
@@ -937,7 +935,7 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
               <div className="flex items-center gap-2">
                 <Key className="w-4 h-4 text-sky-600" />
                 <h3 className="font-bold text-slate-900 text-sm">
-                  填入 AI 密钥开启外教伴读
+                  连接设置
                 </h3>
               </div>
               <button
@@ -948,13 +946,14 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              LingoFlow 不自建服务器保存对话；聊天内容会直接发送给你选择的 AI 服务商处理。建议不要输入密码、证件号等敏感信息。
-            </p>
+            <details className="text-xs text-slate-600">
+              <summary className="cursor-pointer">连接说明</summary>
+              <p className="mt-2 leading-relaxed">对话会发送至你选择的 AI 服务商处理。</p>
+            </details>
 
             <div>
               <label htmlFor="oral-quick-key" className="block text-xs font-semibold text-slate-700 mb-1">
-                DeepSeek API Key (sk-...)
+                DeepSeek API Key
               </label>
               <input
                 id="oral-quick-key"
@@ -965,14 +964,13 @@ export default function OralCoach({ onNavigateToVocab, onNavigate = () => {}, in
                 className="w-full text-xs font-mono px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
               />
               <div className="flex justify-between items-center mt-1 text-[11px]">
-                <span className="text-slate-400">密钥仅保存在本地手机中</span>
                 <a
                   href="https://platform.deepseek.com"
                   target="_blank"
                   rel="noreferrer"
                   className="text-sky-600 hover:underline flex items-center gap-0.5 font-medium"
                 >
-                  <span>获取免费 Key</span>
+                  <span>获取 API Key</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>

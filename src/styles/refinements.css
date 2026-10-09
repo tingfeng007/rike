@@ -13,20 +13,20 @@
 .today-layout { gap: 20px; }
 .today-heading-row { margin-top: 10px; }
 .today-heading h1 { font-size: 29px; letter-spacing: -.035em; }
-.today-focus { padding: 22px; background: linear-gradient(120deg, #246be8, #325fd4 65%, #4359c9); }
+.today-focus { min-height: 0; padding: 22px; background: linear-gradient(120deg, #246be8, #325fd4 65%, #4359c9); }
 .today-focus p, .focus-eyebrow { color: #f5f9ff; }
 .focus-eyebrow { font-size: 11px; letter-spacing: .04em; }
 .focus-start { margin-top: 16px; min-height: 44px; color: #205ec8; }
-.today-focus h2 { margin-top: 10px; }
+.today-focus h2 { margin-top: 0; }
 .focus-minutes, .focus-ring small { font-size: 11px; color: #f0f5ff; }
 .today-overview p { font-size: 12px; }
-.today-dictionary > span:first-of-type { font-size: 14px; color: #526079; }
-.today-dictionary > span:last-of-type { font-size: 11px; color: #526079; }
+.today-dictionary > span { font-size: 14px; color: #526079; }
 .today-demo-intro { padding: 15px 17px; border: 1px solid #dce8fc; background: #edf4ff; border-radius: 18px; }
 .today-demo-intro p { font-size: 13px; line-height: 1.7; }
 .today-demo-intro button { min-height: 40px; }
-.explore-card { padding: 16px; }
+.explore-card { min-height: 110px; padding: 16px; }
 .explore-card strong { margin-top: 12px; }
+.today-footer { justify-content: flex-end; }
 .grammar-page .study-card :is(p, li, ul) { font-size: 14px; line-height: 1.85; }
 .grammar-page .study-card h3 { font-size: 15px; }
 .grammar-topic { background: #fff; color: #526079; border-color: #e3e9f2; }
@@ -59,6 +59,10 @@
   .today-plan { grid-column: 2; align-self: start; }
   .today-explore .explore-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .today-weekly { margin-top: 0; }
+}
+@media (min-width: 1100px) {
+  .app-navigation { margin-top: 28px; }
+  .nav-settings { margin-top: auto; }
 }
 @media (max-width: 759px) {
   .today-layout { padding: max(env(safe-area-inset-top, 0px), 20px) 16px 22px; gap: 18px; }

@@ -17,7 +17,6 @@ import {
   Trophy,
   Clock,
   CheckCircle,
-  AlertTriangle,
   Film,
   Headphones,
   BookPlus,
@@ -657,9 +656,8 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
   return (
     <div className="study-page vocab-page flex flex-col h-full">
       <StudyHeader
-        eyebrow="WORDS THAT STAY WITH YOU"
         title={activeTab === 'flashcard' ? '记忆词卡' : activeTab === 'list' ? '我的词库' : '巩固测验'}
-        status={StorageService.isUsingSampleVocabulary() ? '示例词卡 · 收藏后开启个人复习' : `${vocabulary.length} 个词 · 今日复习 ${studyStats.todayReviewedCount || 0} 词`}
+        status={StorageService.isUsingSampleVocabulary() ? '示例词卡' : `${vocabulary.length} 个词 · 今日复习 ${studyStats.todayReviewedCount || 0} 词`}
         actions={<>
           <details className="vocab-menu"><summary aria-label="词卡更多功能"><MoreHorizontal size={20} /></summary><div>
             <button type="button" aria-current={activeTab === 'flashcard' ? 'page' : undefined} onClick={(event) => { setActiveTab('flashcard'); event.currentTarget.closest('details').open = false; }}>闪卡复习</button>
@@ -703,7 +701,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               </div>
               {category && showDeckSettings && <div className="vocab-level-row"><label htmlFor="vocab-learning-level">学习等级</label><select id="vocab-learning-level" value={selectedLevel} onChange={(event) => { const level = event.target.value; setSelectedLevel(level); startCategory(selectedCategory, level); }}><option value="all">全部等级 · 32 词</option><option value="starter">入门常用 · 8 词</option><option value="core">核心表达 · 16 词</option><option value="advanced">专业进阶 · 8 词</option></select></div>}
               <div className="deck-action-row"><button type="button" aria-expanded={showDeckSettings} onClick={() => setShowDeckSettings((value) => !value)}>练习设置 · {learningMode === 'recall' ? '看词回忆' : '听音拼写'}</button>{category && <button type="button" onClick={() => collectCategory()}>收藏本组</button>}</div>
-              {showDeckSettings && <fieldset className="deck-settings"><legend>选择适合自己的练习</legend><label htmlFor="vocab-learning-mode">练习方式</label><select id="vocab-learning-mode" value={learningMode} onChange={(event) => {setLearningMode(event.target.value);setIsFlipped(false);setSpellingAnswer('');setSpellingChecked(false);}}><option value="recall">看词回忆</option><option value="spelling">听音拼写</option></select><span>每组数量</span><div className="flex gap-2">{SESSION_SIZE_OPTIONS.map((size) => <button key={String(size)} type="button" aria-pressed={sessionSize === size} onClick={() => changeSessionSize(size)}>{size === 'all' ? '全部' : size}</button>)}</div><p>{category ? `${category.description} 本类 ${category.words.length} 词，优先抽取未练过、未出现的词；遇见想记住的词再收藏。` : '缺少释义的词先留在“需要释义”清单，补齐后再复习。'}</p>{category && <ol className="vocab-learning-route">{category.learningRoute.map((stage) => <li key={stage.level}>{stage.title}</li>)}</ol>}</fieldset>}
+              {showDeckSettings && <fieldset className="deck-settings"><legend>练习设置</legend><label htmlFor="vocab-learning-mode">练习方式</label><select id="vocab-learning-mode" value={learningMode} onChange={(event) => {setLearningMode(event.target.value);setIsFlipped(false);setSpellingAnswer('');setSpellingChecked(false);}}><option value="recall">看词回忆</option><option value="spelling">听音拼写</option></select><span>每组数量</span><div className="flex gap-2">{SESSION_SIZE_OPTIONS.map((size) => <button key={String(size)} type="button" aria-pressed={sessionSize === size} onClick={() => changeSessionSize(size)}>{size === 'all' ? '全部' : size}</button>)}</div>{category && <><p>{category.description}</p><ol className="vocab-learning-route">{category.learningRoute.map((stage) => <li key={stage.level}>{stage.title}</li>)}</ol></>}<details className="col-span-2 text-slate-500"><summary className="cursor-pointer">复习帮助</summary><p className="mt-2">分类练习优先抽取未练过、未出现的词，收藏后进入个人间隔复习。个人词卡按评分调整间隔；缺少释义的词需先在“需要释义”中补齐。</p></details></fieldset>}
             </div>
             {!reviewCompleted && currentCard ? (
               <>
@@ -816,10 +814,6 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                         <div className="h-10"></div>
                       )}
 
-                      <div className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1">
-                        <RotateCw className="w-3 h-3" />
-                        <span>{learningMode === 'spelling' ? '完成拼写后查看参考答案' : '用下方按钮查看释义'}</span>
-                      </div>
                     </div>
 
                     {/* --- BACK SIDE --- */}
@@ -885,16 +879,14 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                           <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200/70 rounded-xl text-xs text-amber-900 leading-relaxed">
                             <span className="font-bold text-[10.5px] text-amber-800 flex items-center gap-1 mb-0.5">
                               <StickyNote className="w-3 h-3 text-amber-600" />
-                              <span>我的专属助记笔记:</span>
+                              <span>助记笔记</span>
                             </span>
                             <p>{currentCard.userNote}</p>
                           </div>
                         )}
                       </div>
 
-                      <div className="pt-2 text-center text-[10.5px] text-slate-400 font-medium">
-                        {category ? '收藏后可加入个人间隔复习' : `已复习 ${currentCard.reviewCount || 0} 次 · 下次间隔 ${currentCard.intervalDays || 1} 天`}
-                      </div>
+                      {!category && <details className="pt-2 text-xs text-slate-500"><summary className="cursor-pointer">复习安排</summary><p className="mt-1">已复习 {currentCard.reviewCount || 0} 次 · 下次间隔 {currentCard.intervalDays || 1} 天</p></details>}
                     </div>
                   </div>
                 </fieldset>
@@ -909,8 +901,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     onClick={(event) => { event.stopPropagation(); handleRateCard('again'); }}
                     className="flex flex-col items-center py-2.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="text-sm font-semibold">再认识一下</span>
-                    <span className="text-[10px] text-rose-600 mt-0.5">今天再来一次</span>
+                    <strong className="text-sm font-semibold">再认识一下</strong>
                   </button>
 
                   <button
@@ -919,8 +910,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     onClick={(event) => { event.stopPropagation(); handleRateCard('hard'); }}
                     className="flex flex-col items-center py-2.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="text-sm font-semibold">有点印象</span>
-                    <span className="text-[10px] text-amber-700 mt-0.5">{category ? '稍后再加强' : '+1~2 天'}</span>
+                    <strong className="text-sm font-semibold">有点印象</strong>
                   </button>
 
                   <button
@@ -929,13 +919,9 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     onClick={(event) => { event.stopPropagation(); handleRateCard('good'); }}
                     className="flex flex-col items-center py-2.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="text-sm font-semibold">记住了</span>
-                    <span className="text-[10px] text-emerald-700 mt-0.5">{category ? '继续下一词' : '延长间隔'}</span>
+                    <strong className="text-sm font-semibold">记住了</strong>
                   </button>
                 </div>
-                {!isFlipped && (
-                  <p className="vocab-rating-hint mt-2 text-center text-[11px] text-slate-400">{learningMode === 'spelling' ? '先完成拼写，再选择掌握程度' : '先查看释义，再选择掌握程度'}</p>
-                )}
               </>
             ) : (
               /* Review Finished / No Due Cards Celebration */
@@ -948,17 +934,8 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     ? '选一个分类，开始学词'
                     : dueTotal > 0
                       ? '这一组复习完成'
-                      : '太棒了！今日闪卡已全部搞定'}
+                      : '今日复习完成'}
                 </h3>
-                <p className="text-xs text-slate-600 max-w-xs mt-2 leading-relaxed">
-                  {category ? '本组练习位置会保留。收藏想记住的词，再到“我的生词”按间隔复习。' : vocabulary.length === 0
-                    ? '上方有 8 个内置分类，含中文释义和双语例句。也可以添加自己的生词。'
-                    : dueTotal > 0
-                      // Never claim the day is clear while cards are still due — offer the
-                      // next batch instead (the reviewed ones already left the due list).
-                      ? `今天还剩 ${dueTotal} 个到期词。可以再做一组，也可以明天继续——进度已经保存。`
-                      : '今天没有到期词。本应用按你的评分安排下一次复习；也可以继续练习分类词或补齐缺少的释义。'}
-                </p>
 
                 <div className="mt-6 flex flex-col w-full max-w-xs space-y-2">
                   {category && <button type="button" onClick={() => startCategory(selectedCategory)} className="w-full rounded-xl bg-[#102a43] py-2.5 text-xs font-semibold text-white">再练一组</button>}
@@ -982,7 +959,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                       className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
                     >
                       <RotateCw className="w-3.5 h-3.5" />
-                      <span>🎲 随便翻翻（随机抽选 8 词强化）</span>
+                      <span>随机练 8 词</span>
                     </button>
                   )}
                   <button
@@ -1014,7 +991,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索生词、中文释义或专属笔记..."
+                placeholder="搜索生词、释义或笔记"
                 className="w-full text-xs text-slate-800 placeholder-slate-400 outline-hidden bg-transparent"
               />
               {searchQuery && (
@@ -1075,9 +1052,6 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                   👑
                 </div>
                 <h4 className="font-bold text-slate-850 text-sm">暂无已牢记的生词</h4>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                  科学记忆机制：当一个生词在闪卡复习中连续选择【✅ 掌握】达到 3~5 次以上，系统就会自动将其晋升为“👑 已牢记掌握”！
-                </p>
                 <div className="pt-1">
                   <button
                     onClick={() => {
@@ -1086,7 +1060,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                     }}
                     className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95"
                   >
-                    去闪卡挑战温故
+                    闪卡复习
                   </button>
                 </div>
               </div>
@@ -1134,11 +1108,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                           {item.tags?.[0] || '生词'}
                         </span>
                         <span>复习次数: {item.reviewCount || 0}</span>
-                        <span>
-                          {item.status === 'mastered'
-                            ? '🌟 已掌握'
-                            : `间隔: ${item.intervalDays || 1} 天`}
-                        </span>
+                        {item.status === 'mastered' && <span>已掌握</span>}
                         <span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">
                           下次复习: {formatDueDate(item.nextReviewDate)}
                         </span>
@@ -1206,11 +1176,8 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-amber-500" />
-                  AI 语境实战小测验
+                  AI 语境测验
                 </h3>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  基于你生词本里的单词生成地道填空考题
-                </p>
               </div>
 
               <button
@@ -1225,7 +1192,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
             {isGeneratingQuiz ? (
               <div className="flex flex-col items-center justify-center py-16 text-slate-600 text-xs space-y-2">
                 <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
-                <span>AI 正在为你量身定制例句填空测验...</span>
+                <span>正在生成题目…</span>
               </div>
             ) : quizQuestions.length > 0 ? (
               <div className="space-y-4">
@@ -1309,7 +1276,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                         <Trophy className={`w-6 h-6 ${quizScore.correct === quizScore.total ? 'text-amber-500' : 'text-sky-600'}`} />
                         <div>
                           <h4 className="font-bold text-slate-900 text-sm">
-                            {quizScore.correct === quizScore.total ? '🎉 满分通关！太厉害了' : '🎯 测验完成，巩固进步！'}
+                            测验完成
                           </h4>
                           <p className="text-xs text-slate-600">
                             得分：{quizScore.correct} / {quizScore.total} 题（正确率 {quizScore.percent}%）
@@ -1320,18 +1287,14 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
                     {quizScore.wrongs.length > 0 ? (
                       <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
-                        <div className="flex items-center gap-1 font-semibold text-rose-900">
-                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                          <span>错题反哺已生效：</span>
-                        </div>
                         <p className="leading-relaxed text-[11px]">
-                          薄弱词汇 <span className="font-bold font-mono">[{quizScore.wrongs.join(', ')}]</span> 已自动重置加入今日待复习闪卡队伍，记得稍后强化温习！
+                          已加入今日复习：<span className="font-bold font-mono">{quizScore.wrongs.join(', ')}</span>
                         </p>
                       </div>
                     ) : (
                       <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-1.5 font-medium">
                         <CheckCircle className="w-4 h-4 text-emerald-600 flex-none" />
-                        <span>所有考题全部正确，所考察生词记忆非常牢固！</span>
+                        <span>全部答对</span>
                       </div>
                     )}
 
@@ -1377,11 +1340,8 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 <Film className="w-5 h-5 text-amber-500" />
                 <div>
                   <h3 className="font-bold text-slate-900 text-base">
-                    生词微剧场 · AI 专属小说
+                    生词微剧场
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    把背不会的单词编进高潮迭起的故事中，听广播剧沉浸式记忆
-                  </p>
                 </div>
               </div>
               <button
@@ -1400,7 +1360,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
             {/* Genre Select */}
             <div>
               <p className="block text-xs font-bold text-slate-700 mb-2">
-                第一步：选择剧场风格
+                故事风格
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {[
@@ -1433,7 +1393,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
             {/* Words To Include */}
             <div>
               <p className="block text-xs font-bold text-slate-700 mb-1.5">
-                第二步：选择要融入剧场的生词 (点击切换)
+                故事词汇
               </p>
               <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1">
                 {vocabulary.slice(0, 10).map((w) => {
@@ -1471,12 +1431,12 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 {isGeneratingStory ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>AI 编剧正在构思情节与对话...</span>
+                    <span>正在生成故事…</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 text-amber-200" />
-                    <span>🎬 开始生成专属微剧场</span>
+                    <span>生成故事</span>
                   </>
                 )}
               </button>
@@ -1570,7 +1530,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               <div className="flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-sky-600" />
                 <h3 className="font-bold text-slate-900 text-sm">
-                  编辑词条与专属助记笔记
+                  编辑词条与助记笔记
                 </h3>
               </div>
               <button
@@ -1638,7 +1598,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               <div>
                 <label htmlFor="vocab-edit-note" className="block text-xs font-semibold text-amber-800 mb-1 flex items-center gap-1">
                   <StickyNote className="w-3.5 h-3.5 text-amber-600" />
-                  <span>我的专属助记口诀 / 记忆心得 (卡片翻面立现)</span>
+                  <span>我的助记笔记</span>
                 </label>
                 <textarea
                   id="vocab-edit-note"
@@ -1694,7 +1654,7 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
 
               <div>
                 <label htmlFor="vocab-add-context" className="block text-xs font-medium text-slate-700 mb-1">
-                  原句或语境（可选，保存在词卡中）
+                  原句或语境（可选）
                 </label>
                 <textarea
                   id="vocab-add-context"
@@ -1738,11 +1698,6 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
                 <span className="text-xl">🔥</span>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">今日学习与打卡明细</h3>
-                  <p className="text-[10.5px] text-slate-500">
-                    {studyStats.todayTotalActions > 0
-                      ? '✨ 今日学习指标已点亮！连续打卡中'
-                      : '🎯 今日尚未打卡，完成任一学习即可点亮'}
-                  </p>
                 </div>
               </div>
               <button
@@ -1787,15 +1742,13 @@ export default function VocabularySRS({ onOpenSource = null, sectionSwitch = nul
               </div>
             </div>
 
-            <p className="text-[11px] text-slate-500 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/50 leading-relaxed">
-              💡 <strong>真实可信打卡规则</strong>：无论是跟外教聊 1 句英语、在文章中划 1 个金句批注、还是复习 1 个生词，都会自动算作今日有效学习并保持连击！
-            </p>
+            <details className="text-xs text-slate-500"><summary className="cursor-pointer">打卡帮助</summary><p className="mt-2 leading-6">完成对话、批注或词卡复习等有效学习会记录当日活动；仅打开页面不会计入。</p></details>
 
             <button
               onClick={() => setShowStatsDetail(false)}
               className="w-full py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95"
             >
-              我知道了，继续学习
+              继续学习
             </button>
       </Modal>
     </div>

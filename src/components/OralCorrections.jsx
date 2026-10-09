@@ -30,10 +30,10 @@ export default function OralCorrections({ open, onClose, onPractice }) {
     toast.success(recalled ? '已安排三天后再练' : '已安排明天再练');
   };
   return (
-    <BottomSheet open={open} onClose={onClose} title="隔日纠错句库" description="对话中的纠错明天再练。先重说，再看参考表达。" size="lg">
+    <BottomSheet open={open} onClose={onClose} title="隔日纠错句库" size="lg">
       <p className="mb-4 text-sm text-slate-600">今天待复习 {due.length} 句 · 已积累 {items.length} 句</p>
-      {!items.length && <p className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">完成口语对话后，有修改建议的句子会自动留在这里，隔天再练一次。</p>}
-      {items.length > 0 && due.length === 0 && <p className="mb-4 rounded-xl bg-sky-50 p-3 text-sm text-sky-800">今天没有到期句子，也可以提前练一遍。</p>}
+      {!items.length && <p className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">暂无纠错记录</p>}
+      {items.length > 0 && due.length === 0 && <p className="mb-4 rounded-xl bg-sky-50 p-3 text-sm text-sky-800">今天没有到期句子</p>}
       <div className="space-y-4">
         {(due.length ? due : items.slice(-10).reverse()).map((item) => (
           <section key={item.id} className="rounded-2xl border border-slate-200 p-4">

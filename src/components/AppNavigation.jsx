@@ -7,7 +7,6 @@ import {
   MessageSquare,
   Search,
   Settings,
-  Sparkles,
 } from 'lucide-react';
 
 const destinations = [
@@ -30,10 +29,9 @@ export default function AppNavigation({
           <BookOpen size={24} />
         </span>
         <strong>
-          LingoFlow<span>A LITTLE, EVERY DAY</span>
+          LingoFlow
         </strong>
       </div>
-      <p className="nav-caption">你的学习空间</p>
       <div className="app-navigation">
         {destinations.map(({ id, label, icon: Icon }) => (
           <button
@@ -64,11 +62,6 @@ export default function AppNavigation({
         <Search size={21} strokeWidth={1.9} />
         <span>词典</span>
       </button>
-      <div className="nav-encouragement">
-        <Sparkles size={20} />
-        <strong>小小进步，也算数。</strong>
-        <span>让英语成为日常的一部分</span>
-      </div>
       <button
         type="button"
         className="nav-settings"

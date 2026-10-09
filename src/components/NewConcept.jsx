@@ -912,15 +912,13 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
     return (
       <section className="study-page nce-page course-overview h-full overflow-y-auto p-4 pb-28">
         <div className="course-layout">
-        <header className="course-heading"><p>一步一步，打好基础</p><h1>新概念英语</h1></header>
+        <header className="course-heading"><h1>新概念英语</h1></header>
         <div className="course-book-card nce-reveal">
-          <div className="course-book-cover" aria-hidden="true"><span>NEW<br />CONCEPT<br />ENGLISH</span><strong>01</strong><small>听 · 读 · 写 · 练</small><BookOpen size={26} /></div>
+          <div className="course-book-cover" aria-hidden="true"><strong>01</strong><BookOpen size={26} /></div>
           <div className="relative">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] text-sky-200 font-semibold tracking-[0.18em]">COURSE · NCE 1</p>
                 <h2 className="text-2xl font-bold mt-2 tracking-tight">从第一册开始</h2>
-                <p className="text-xs text-slate-300 mt-2 leading-5">听读建立语感，听写主动回忆，最后用练习巩固。</p>
               </div>
             </div>
             <div className="course-metrics grid grid-cols-4 gap-2 mt-5">
@@ -938,31 +936,30 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
         {continueUnit && (
           <button onClick={() => openUnit(continueUnit)} className="course-resume w-full mt-4 rounded-2xl bg-white border border-sky-100 p-4 flex items-center gap-3 text-left shadow-sm hover:border-sky-300 transition-colors">
             <span className="w-11 h-11 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center"><Play className="w-5 h-5" /></span>
-            <span className="flex-1 min-w-0"><span className="block text-[11px] text-sky-600 font-semibold">{latestUnit ? '继续上次学习' : '从第一课开始'}</span><span className="block font-semibold text-slate-800 mt-1 truncate editorial-serif">{displayUnitTitle(continueUnit)}</span><span className="block text-xs text-slate-400 mt-1">{lessonRange(continueUnit)} · 听读、听写、单词、练习</span></span>
+            <span className="flex-1 min-w-0"><span className="block text-[11px] text-sky-600 font-semibold">{latestUnit ? '继续上次学习' : '从第一课开始'}</span><span className="block font-semibold text-slate-800 mt-1 truncate editorial-serif">{displayUnitTitle(continueUnit)}</span><span className="block text-xs text-slate-400 mt-1">{lessonRange(continueUnit)}</span></span>
             <ChevronRight className="w-5 h-5 text-slate-300 shrink-0" />
           </button>
         )}
 
         <button type="button" onClick={() => openExam()} className="course-exam w-full mt-3 relative overflow-hidden rounded-[24px] bg-[#f3e7ce] border border-amber-200 p-4 flex items-center gap-3 text-left shadow-sm hover:border-amber-400 transition-colors nce-reveal">
-          <span className="absolute -right-3 -top-8 text-8xl font-black text-amber-950/5 pointer-events-none">A+</span>
           <span className="relative w-12 h-12 rounded-2xl bg-[#102a43] text-amber-300 flex items-center justify-center shrink-0"><FileText className="w-6 h-6" /></span>
-          <span className="relative flex-1 min-w-0"><span className="block text-[10px] tracking-[0.16em] font-bold text-amber-900/70">EXAM · 第一册</span><span className="block text-lg font-bold text-[#102a43] mt-0.5 editorial-serif">试题中心</span><span className="block text-xs text-amber-900/70 mt-1">限时测验 · 交卷评分 · 错题回看</span></span>
+          <span className="relative flex-1 min-w-0"><span className="block text-lg font-bold text-[#102a43] editorial-serif">试题中心</span></span>
           <ChevronRight className="relative w-5 h-5 text-amber-900/50 shrink-0" />
         </button>
 
         {reviewItemCount > 0 && (
           <button type="button" onClick={() => openReview()} className="w-full mt-2 rounded-2xl bg-amber-50 border border-amber-100 p-3 flex items-center gap-3 text-left hover:border-amber-300 transition-colors">
             <span className="w-9 h-9 rounded-xl bg-white text-amber-600 flex items-center justify-center"><RotateCcw className="w-4 h-4" /></span>
-            <span className="flex-1"><span className="block text-sm font-semibold text-amber-900">逐题复盘薄弱点</span><span className="block text-xs text-amber-700/70 mt-0.5">{reviewItemCount} 项待重练 · 答对后移出列表</span></span>
+            <span className="flex-1"><span className="block text-sm font-semibold text-amber-900">逐题复盘薄弱点</span><span className="block text-xs text-amber-700/70 mt-0.5">{reviewItemCount} 项待重练</span></span>
             <ChevronRight className="w-4 h-4 text-amber-400" />
           </button>
         )}
 
-        {usingOfflineCopy && <div className="rounded-xl bg-amber-50 text-amber-700 text-xs p-3 mt-3">当前使用已缓存的课程目录；恢复联网后会自动更新。</div>}
+        {usingOfflineCopy && <div className="rounded-xl bg-amber-50 text-amber-700 text-xs p-3 mt-3">正在使用离线课程目录。</div>}
         {error && !selectedUnit && <div className="rounded-xl bg-rose-50 text-rose-700 text-sm p-3 mt-3">{error}</div>}
 
         <div className="mt-5 flex items-center justify-between gap-3">
-          <div><p className="text-xs text-slate-400">COURSE MAP</p><h2 className="text-lg font-bold text-slate-900 mt-1">144 课学习地图</h2></div>
+          <div><h2 className="text-lg font-bold text-slate-900">144 课学习地图</h2></div>
           <span className="text-xs text-slate-400">{filteredUnits.length}/{units.length || 72} 单元</span>
         </div>
         <div className="mt-3 flex items-center gap-2 bg-white rounded-2xl border border-slate-200 px-3 py-2.5">
@@ -977,7 +974,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
         </div>
 
         {loading && <div className="text-center text-sm text-slate-500 py-12">正在加载第一册课程目录…</div>}
-        {!loading && filteredUnits.length === 0 && <div className="text-center bg-white rounded-2xl border border-slate-200 text-sm text-slate-500 py-12 mt-3">没有找到符合条件的课文。换个关键词或筛选条件试试。</div>}
+        {!loading && filteredUnits.length === 0 && <div className="text-center bg-white rounded-2xl border border-slate-200 text-sm text-slate-500 py-12 mt-3">没有找到符合条件的课文。</div>}
         <div className="course-units space-y-2 mt-3">
           {filteredUnits.map((unit) => {
             const originalIndex = units.findIndex((item) => item.filename === unit.filename);
@@ -1015,13 +1012,13 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
       <button onClick={backToLessons} className="flex items-center gap-1 text-sm text-slate-500 mb-3 hover:text-slate-800"><ArrowLeft className="w-4 h-4" />第一册课程</button>
       <div className="rounded-[28px] bg-gradient-to-br from-white via-white to-sky-50 border border-white p-4 mb-3 shadow-sm nce-reveal">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0"><p className="text-[11px] text-sky-600 font-semibold tracking-[0.14em]">UNIT {String(selectedUnitIndex + 1).padStart(2, '0')} · {lessonRange(selectedUnit)}</p><h1 className="text-2xl font-bold text-slate-900 mt-1 truncate editorial-serif">{displayUnitTitle(selectedUnit)}</h1><p className="text-xs text-slate-400 mt-1">{progressLabel(currentProgress)} · 掌握 {masteryCount}/4{currentReviewCount ? ` · ${currentReviewCount} 项待复习` : ''}</p></div>
+          <div className="min-w-0"><p className="text-[11px] text-sky-600 font-semibold tracking-[0.14em]">{lessonRange(selectedUnit)}</p><h1 className="text-2xl font-bold text-slate-900 mt-1 truncate editorial-serif">{displayUnitTitle(selectedUnit)}</h1><p className="text-xs text-slate-400 mt-1">{progressLabel(currentProgress)} · 掌握 {masteryCount}/4{currentReviewCount ? ` · ${currentReviewCount} 项待复习` : ''}</p></div>
           <div className="flex gap-1.5 shrink-0"><button type="button" onClick={() => setShowNotes((value) => !value)} className={`p-2 rounded-xl border transition-colors ${showNotes || currentProgress.note ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-white text-slate-500 border-slate-200'}`} title="本课笔记"><NotebookPen className="w-5 h-5" /></button><button onClick={() => setShowChinese((value) => !value)} className={`p-2 rounded-xl border transition-colors ${showChinese ? 'bg-sky-50 text-sky-600 border-sky-100' : 'bg-white text-slate-500 border-slate-200'}`} title="切换中英"><Languages className="w-5 h-5" /></button></div>
         </div>
         <div className="grid grid-cols-4 gap-1.5 mt-4">{[['听读', masterySteps[0]], ['听写', masterySteps[1]], ['单词', masterySteps[2]], ['练习', masterySteps[3]]].map(([label, done]) => <div key={label} className={`rounded-xl px-2 py-1.5 text-center text-[10px] font-semibold ${done ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>{done ? '✓ ' : ''}{label}</div>)}</div>
       </div>
 
-      {showNotes && <div className="rounded-2xl bg-amber-50/80 border border-amber-100 p-3 mb-3 nce-reveal"><div className="flex items-center justify-between"><span className="text-xs font-bold text-amber-900">本课学习笔记</span><span className="text-[10px] text-amber-700/70">只保存在当前设备</span></div><textarea value={noteDraft} onChange={(event) => { setNoteDraft(event.target.value); setNoteSaved(false); }} rows={3} placeholder="记下易错词、语法点或自己的例句…" className="allow-select w-full mt-2 rounded-xl bg-white/80 border border-amber-100 p-3 text-sm leading-6 outline-none focus:border-amber-300" /><button type="button" onClick={saveLessonNote} className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold ${noteSaved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-600 text-white'}`}><Save className="w-3.5 h-3.5" />{noteSaved ? '笔记已保存' : '保存笔记'}</button></div>}
+      {showNotes && <div className="rounded-2xl bg-amber-50/80 border border-amber-100 p-3 mb-3 nce-reveal"><div className="flex items-center justify-between"><span className="text-xs font-bold text-amber-900">本课学习笔记</span></div><textarea value={noteDraft} onChange={(event) => { setNoteDraft(event.target.value); setNoteSaved(false); }} rows={3} placeholder="记下易错词、语法点或自己的例句…" className="allow-select w-full mt-2 rounded-xl bg-white/80 border border-amber-100 p-3 text-sm leading-6 outline-none focus:border-amber-300" /><button type="button" onClick={saveLessonNote} className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold ${noteSaved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-600 text-white'}`}><Save className="w-3.5 h-3.5" />{noteSaved ? '笔记已保存' : '保存笔记'}</button></div>}
 
       <div className="grid grid-cols-4 gap-1.5 mb-3">
         {[['lesson', '01 听读', lines.length ? '已载入' : '加载中'], ['dictation', '02 听写', currentProgress.dictationCompleted ? `${currentProgress.dictationBest || 0} 分` : `${dictationItems.length} 句`], ['vocab', '03 单词', lessonWords.length ? `${lessonWords.length - unsavedWordCount}/${lessonWords.length}` : '等待'], ['exercise', '04 练习', currentProgress.exercisesCompleted ? `${currentProgress.exerciseScore || 0}/${exercises.length}` : `${exercises.length} 题`]].map(([step, label, hint]) => (
@@ -1030,7 +1027,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
       </div>
 
       {error && <div className="rounded-xl bg-amber-50 text-amber-700 text-xs p-3 mb-3">{error}</div>}
-      {usingOfflineCopy && <div className="rounded-xl bg-amber-50 text-amber-700 text-xs p-3 mb-3">网络不可用，正在使用这课之前缓存的字幕；音频不可用时可以点击句子使用系统朗读。</div>}
+      {usingOfflineCopy && <div className="rounded-xl bg-amber-50 text-amber-700 text-xs p-3 mb-3">正在使用离线课文。</div>}
 
       <div className="sticky top-2 z-10 rounded-2xl bg-white/95 backdrop-blur-xl border border-white p-3 mb-3 shadow-lg shadow-slate-900/5">
         <div className="flex items-center justify-between gap-3 mb-2"><span className="text-xs font-semibold text-slate-700">听读训练</span><div className="flex items-center gap-2"><label className="text-[11px] text-slate-400" htmlFor="nce-playback-rate">速度</label><select id="nce-playback-rate" value={playbackRate} onChange={(event) => changePlaybackRate(Number(event.target.value))} className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-slate-600"><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></div></div>
@@ -1070,7 +1067,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
 
       {view === 'vocab' && (
         <div className="rounded-2xl bg-white border border-slate-200 p-4">
-          <div className="flex items-start justify-between gap-3 mb-3"><div><h2 className="font-semibold text-slate-800">本课重点词</h2><p className="text-xs text-slate-400 mt-1">按出现频率排序 · 已收录 {lessonWords.length - unsavedWordCount}/{lessonWords.length}</p></div><button type="button" onClick={saveAllWords} disabled={isSavingAllWords || unsavedWordCount === 0} className="text-xs px-2.5 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed">{isSavingAllWords ? '收录中…' : unsavedWordCount ? `一键收录 ${unsavedWordCount} 词` : '已全部收录'}</button></div>
+          <div className="flex items-start justify-between gap-3 mb-3"><div><h2 className="font-semibold text-slate-800">本课重点词</h2><p className="text-xs text-slate-400 mt-1">已收录 {lessonWords.length - unsavedWordCount}/{lessonWords.length}</p></div><button type="button" onClick={saveAllWords} disabled={isSavingAllWords || unsavedWordCount === 0} className="text-xs px-2.5 py-1.5 rounded-xl bg-sky-50 text-sky-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed">{isSavingAllWords ? '收录中…' : unsavedWordCount ? `一键收录 ${unsavedWordCount} 词` : '已全部收录'}</button></div>
           <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 mb-3"><Search className="w-4 h-4 text-slate-400" /><input value={wordFilter} onChange={(event) => setWordFilter(event.target.value)} placeholder="筛选本课单词" className="bg-transparent outline-none text-sm flex-1" /></div>
           {selectedUnit && lessonWords.length === 0 ? <div className="text-center py-8 text-sm text-slate-500">课文加载后会生成本课重点词。</div> : <div className="space-y-2">{filteredWords.map((item) => {
             const saved = Boolean(savedWords.get(item.word)?.translation);
@@ -1110,7 +1107,7 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
                 {meaning?.translation ? (
                   <p className="mt-2 text-xs font-medium text-slate-700">{meaning.translation}</p>
                 ) : (
-                  <p className="mt-2 text-[11px] text-slate-400">还没有释义——点“查释义”之后收录，词条会带上中文意思。</p>
+                  <p className="mt-2 text-[11px] text-slate-400">暂无释义</p>
                 )}
                 <p className="text-xs text-slate-500 mt-2">{item.sentence}</p>
                 {item.sentenceCn && <p className="text-xs text-slate-400 mt-1">{item.sentenceCn}</p>}
@@ -1130,11 +1127,11 @@ export default function NewConcept({ intent = null, onNavigate = null }) {
         </div>
       )}
 
-      <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-700">本课掌握度</span><span className="text-xs font-bold text-sky-700">{currentMastery.score}% · {currentMastery.label}</span></div><div className="grid grid-cols-5 gap-1.5 mt-2">{[['听读', masterySteps[0]], ['听写', masterySteps[1]], ['单词', masterySteps[2]], ['练习', masterySteps[3]], ['测验', currentMastery.examBonus]].map(([label, done]) => <div key={label} className="text-center"><div className={`h-1.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-slate-100'}`} /><span className={`text-[9px] mt-1 block ${done ? 'text-emerald-600' : 'text-slate-400'}`}>{label}</span></div>)}</div>{currentReviewCount > 0 && <p className="text-[11px] text-amber-700 mt-2">还有 {currentReviewCount} 项薄弱内容，改对后会自动移出复习列表。</p>}{currentProgress.nextReviewAt && <p className="text-[11px] text-slate-400 mt-2">下次课程复习：{new Date(currentProgress.nextReviewAt).toLocaleDateString('zh-CN')}</p>}</div>
+      <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-700">本课掌握度</span><span className="text-xs font-bold text-sky-700">{currentMastery.score}% · {currentMastery.label}</span></div><div className="grid grid-cols-5 gap-1.5 mt-2">{[['听读', masterySteps[0]], ['听写', masterySteps[1]], ['单词', masterySteps[2]], ['练习', masterySteps[3]], ['测验', currentMastery.examBonus]].map(([label, done]) => <div key={label} className="text-center"><div className={`h-1.5 rounded-full ${done ? 'bg-emerald-400' : 'bg-slate-100'}`} /><span className={`text-[9px] mt-1 block ${done ? 'text-emerald-600' : 'text-slate-400'}`}>{label}</span></div>)}</div>{currentReviewCount > 0 && <p className="text-[11px] text-amber-700 mt-2">待复习 {currentReviewCount} 项</p>}{currentProgress.nextReviewAt && <p className="text-[11px] text-slate-400 mt-2">下次课程复习：{new Date(currentProgress.nextReviewAt).toLocaleDateString('zh-CN')}</p>}</div>
       <div className="flex gap-2 mt-3"><button onClick={playCurrentLine} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white text-sm flex items-center justify-center gap-1"><Play className="w-4 h-4" />{activeLine >= 0 ? '朗读当前句' : '从第一句开始'}</button><button onClick={markComplete} disabled={currentProgress.status === 'completed'} className={`flex-1 py-2.5 rounded-xl text-sm flex items-center justify-center gap-1 ${currentProgress.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 className="w-4 h-4" />{currentProgress.status === 'completed' ? '已完成本课' : masteryCount === 4 ? '完成本课' : '标记完成'}</button></div>
       <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
         <button type="button" onClick={finishRecall} disabled={!recallEvidenceRef.current || currentProgress.lastRecallSessionId === recallSessionRef.current} className="w-full rounded-xl bg-sky-600 py-2.5 text-sm font-semibold text-white disabled:opacity-40">完成本课回忆复习</button>
-        <p className="mt-2 text-[11px] leading-5 text-sky-900/70">本次先完成听写（至少 90 分且关键词正确）或句子练习（至少 80%），纠正今天的错题，再更新复习日期。打开课文或播放音频不会延后日期。</p>
+        <details className="mt-2 text-xs text-sky-900/70"><summary className="cursor-pointer">复习规则</summary><p className="mt-2 leading-5">本次听写达到 90 分且关键词正确，或句子练习达到 80%，并纠正今天的错题后，可更新复习日期。</p></details>
       </div>
       {currentReviewCount > 0 && <button type="button" onClick={() => openReview(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 py-2.5 text-sm font-semibold text-sky-900"><RotateCcw className="w-4 h-4" />复盘本课 {currentReviewCount} 项</button>}
       <button type="button" onClick={() => openExam(selectedUnit)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-semibold text-amber-900"><FileText className="w-4 h-4" />做本课试题</button>
